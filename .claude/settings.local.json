@@ -1,0 +1,50 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export DATABASE_URL=\"postgresql://postgres:postgres@localhost:5433/sitespeak_dev_db\")",
+      "Bash(echo:*)",
+      "Bash(cat:*)",
+      "Bash(redis-cli:*)",
+      "Bash(mkdir:*)",
+      "Bash(tree:*)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Read(\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak/**)",
+      "Bash(docker-compose:*)",
+      "Bash(npm run dev:server:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker start:*)",
+      "Bash(docker run:*)",
+      "Bash(node:*)",
+      "Bash(timeout:*)",
+      "Bash(dir:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(npm run:*)",
+      "Bash(.migrate.bat)",
+      "Bash(cmd:*)",
+      "Bash(npx jest:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npm --version)",
+      "Bash(curl:*)",
+      "Bash(PORT=5001 npx tsx server/index.ts)",
+      "Bash(DEBUG=*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "C:\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak",
+      "C:\\d C:\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak",
+      "C:\\mnt\\c\\Users\\bilal\\OneDrive\\Masaüstü\\SiteSpeak"
+    ]
+  }
+}

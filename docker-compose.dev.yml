@@ -1,0 +1,135 @@
+# SiteSpeak Development Docker Compose
+
+services:
+  # Development SiteSpeak Application
+  sitespeak-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: sitespeak-dev
+    ports:
+      - '3000:3000' # Client dev server
+      - '5000:5000' # API server
+      - '8080:8080' # Demo sites
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/client/node_modules
+      - /app/server/node_modules
+      - sitespeak-dev-uploads:/app/uploads
+      - sitespeak-dev-temp:/app/temp
+      - sitespeak-dev-knowledge-base:/app/server/knowledge-base
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      CLIENT_URL: http://localhost:3000
+      API_URL: http://localhost:5000
+      FRONTEND_URL: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@sitespeak-postgres-dev:5432/sitespeak_dev_db
+      REDIS_URL: redis://sitespeak-redis-dev:6379
+      JWT_SECRET: development-jwt-secret-key-32-chars-min
+      ENCRYPTION_KEY: development-encryption-key-32-ch
+      SESSION_SECRET: development-session-secret-32-chars-min
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: gpt-4o
+      EMBEDDING_MODEL: text-embedding-3-small
+      VOICE_AI_ENABLED: true
+      AUTO_CRAWLER_ENABLED: true
+      INTENT_ENGINE_ENABLED: true
+      USE_PLAYWRIGHT_CRAWLER: true
+      ENABLE_ANALYTICS: true
+      LOG_LEVEL: info
+      SITESPEAK_KB_QUIET: false
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+    depends_on:
+      - sitespeak-postgres-dev
+      - sitespeak-redis-dev
+    networks:
+      - sitespeak-dev-network
+    command: npm run dev
+
+  # PostgreSQL for Development
+  sitespeak-postgres-dev:
+    image: pgvector/pgvector:pg15
+    container_name: sitespeak-postgres-dev
+    environment:
+      POSTGRES_DB: sitespeak_dev_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8'
+    ports:
+      - '5433:5432' # Different port to avoid conflicts
+    volumes:
+      - sitespeak-postgres-dev-data:/var/lib/postgresql/data
+      - ./server/src/db/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - sitespeak-dev-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d sitespeak_dev_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Development
+  sitespeak-redis-dev:
+    image: redis:7-alpine
+    container_name: sitespeak-redis-dev
+    ports:
+      - '6380:6379' # Different port to avoid conflicts
+    volumes:
+      - sitespeak-redis-dev-data:/data
+    networks:
+      - sitespeak-dev-network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Development Database Admin (Optional)
+  sitespeak-pgadmin-dev:
+    image: dpage/pgadmin4:latest
+    container_name: sitespeak-pgadmin-dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@sitespeak.dev
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - '8081:80'
+    depends_on:
+      - sitespeak-postgres-dev
+    networks:
+      - sitespeak-dev-network
+    profiles:
+      - admin
+
+  # Redis Admin (Optional)
+  sitespeak-redis-admin-dev:
+    image: redislabs/redisinsight:latest
+    container_name: sitespeak-redis-admin-dev
+    ports:
+      - '8082:8001'
+    depends_on:
+      - sitespeak-redis-dev
+    networks:
+      - sitespeak-dev-network
+    profiles:
+      - admin
+
+volumes:
+  sitespeak-postgres-dev-data:
+    driver: local
+  sitespeak-redis-dev-data:
+    driver: local
+  sitespeak-dev-uploads:
+    driver: local
+  sitespeak-dev-temp:
+    driver: local
+  sitespeak-dev-knowledge-base:
+    driver: local
+
+networks:
+  sitespeak-dev-network:
+    driver: bridge

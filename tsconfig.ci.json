@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Relax unused locals/parameters for CI to match local suppressed rules
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  }
+}
+
+

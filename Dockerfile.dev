@@ -1,0 +1,52 @@
+# SiteSpeak Development Dockerfile
+FROM node:20-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    libc6-compat \
+    python3 \
+    make \
+    g++ \
+    curl \
+    git \
+    netcat-openbsd \
+    bash
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user for development
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 developer
+
+# Copy package files
+COPY package*.json ./
+COPY client/package*.json ./client/
+COPY server/package*.json ./server/
+
+# Install dependencies
+RUN npm install
+RUN cd client && npm install
+RUN cd server && npm install
+
+# Create necessary directories
+RUN mkdir -p temp/audio uploads/optimized uploads/thumbnails project_definitions server/knowledge-base
+
+# Copy and make scripts executable
+COPY server/docker-scripts/ ./docker-scripts/
+RUN chmod +x ./docker-scripts/*.sh
+
+RUN chown -R developer:nodejs /app
+
+# Switch to development user
+USER developer
+
+# Expose ports
+EXPOSE 3000 5000 8080
+
+# Development health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:5000/api/health || exit 1
+
+# Development command (will be overridden by docker-compose)
+CMD ["./docker-scripts/start-dev.sh"]

@@ -1,0 +1,145 @@
+# SiteSpeak Production Docker Compose
+version: '3.8'
+
+services:
+  # Main SiteSpeak Application
+  sitespeak-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sitespeak-app
+    restart: unless-stopped
+    ports:
+      - '3000:3000' # Client (if served by backend)
+      - '5000:5000' # API Server
+
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - CLIENT_URL=${CLIENT_URL:-https://yourdomain.com}
+      - API_URL=${API_URL:-https://api.yourdomain.com}
+      - FRONTEND_URL=${FRONTEND_URL:-https://yourdomain.com}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:sitespeak2024@sitespeak-postgres:5432/sitespeak_db}
+      - REDIS_URL=${REDIS_URL:-redis://:sitespeak2024@sitespeak-redis:6379}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - SESSION_SECRET=${SESSION_SECRET:-${JWT_SECRET}}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - VOICE_AI_ENABLED=${VOICE_AI_ENABLED:-true}
+      - AUTO_CRAWLER_ENABLED=${AUTO_CRAWLER_ENABLED:-false}
+      - INTENT_ENGINE_ENABLED=${INTENT_ENGINE_ENABLED:-true}
+      - USE_PLAYWRIGHT_CRAWLER=${USE_PLAYWRIGHT_CRAWLER:-true}
+      - ENABLE_ANALYTICS=${ENABLE_ANALYTICS:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SITESPEAK_KB_QUIET=${SITESPEAK_KB_QUIET:-false}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY:-}
+    volumes:
+      - sitespeak-uploads:/app/uploads
+      - sitespeak-published:/app/published-sites
+      - sitespeak-temp:/app/temp
+      - sitespeak-db:/app/project_definitions
+      - sitespeak-knowledge-base:/app/server/knowledge-base
+    depends_on:
+      - sitespeak-postgres
+      - sitespeak-redis
+    networks:
+      - sitespeak-network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/api/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database with pgvector
+  sitespeak-postgres:
+    image: pgvector/pgvector:pg15
+    container_name: sitespeak-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sitespeak_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: sitespeak2024
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8'
+    ports:
+      - '5432:5432'
+    volumes:
+      - sitespeak-postgres-data:/var/lib/postgresql/data
+      - ./server/src/db/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - sitespeak-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d sitespeak_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Caching and Sessions
+  sitespeak-redis:
+    image: redis:7-alpine
+    container_name: sitespeak-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass sitespeak2024
+    ports:
+      - '6379:6379'
+    volumes:
+      - sitespeak-redis-data:/data
+    networks:
+      - sitespeak-network
+    healthcheck:
+      test: ['CMD', 'redis-cli', '--raw', 'incr', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Nginx Reverse Proxy (Optional)
+  sitespeak-nginx:
+    image: nginx:alpine
+    container_name: sitespeak-nginx
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - sitespeak-ssl-certs:/etc/nginx/ssl
+      - sitespeak-published:/var/www/published:ro
+    depends_on:
+      - sitespeak-app
+    networks:
+      - sitespeak-network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  sitespeak-postgres-data:
+    driver: local
+  sitespeak-redis-data:
+    driver: local
+  sitespeak-uploads:
+    driver: local
+  sitespeak-published:
+    driver: local
+  sitespeak-temp:
+    driver: local
+  sitespeak-db:
+    driver: local
+  sitespeak-knowledge-base:
+    driver: local
+  sitespeak-ssl-certs:
+    driver: local
+
+networks:
+  sitespeak-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
