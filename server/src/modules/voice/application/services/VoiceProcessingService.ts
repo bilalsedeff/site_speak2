@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import fs from 'fs/promises';
+import { ReadStream } from 'fs';
 import path from 'path';
 import { createLogger } from '@shared/utils';
 import { config } from '../../../../infrastructure/config';
@@ -24,6 +25,31 @@ export interface SpeechToTextResponse {
     end: number;
     text: string;
   }>;
+}
+
+interface OpenAITranscriptionCreateParams {
+  file: ReadStream;
+  model: string;
+  language?: string;
+  prompt?: string;
+  temperature?: number;
+  response_format: string;
+}
+
+interface OpenAITranscriptionResponse {
+  text: string;
+  language?: string;
+  duration?: number;
+  segments?: Array<{
+    start: number;
+    end: number;
+    text: string;
+  }>;
+}
+
+// Type guard function for transcription response validation
+function isTranscriptionWithMetadata(transcription: any): transcription is OpenAITranscriptionResponse {
+  return transcription && typeof transcription.text === 'string';
 }
 
 export interface TextToSpeechRequest {
@@ -87,14 +113,21 @@ export class VoiceProcessingService {
       const startTime = Date.now();
 
       // Call OpenAI Whisper API
-      const transcription = await this.openai.audio.transcriptions.create({
+      const transcriptionParams: OpenAITranscriptionCreateParams = {
         file: fileStream,
         model: 'whisper-1',
-        language: request.language,
-        prompt: request.prompt,
         temperature: request.temperature || 0,
         response_format: 'verbose_json',
-      });
+      };
+
+      if (request.language) {
+        transcriptionParams.language = request.language;
+      }
+      if (request.prompt) {
+        transcriptionParams.prompt = request.prompt;
+      }
+
+      const transcription = await this.openai.audio.transcriptions.create(transcriptionParams);
 
       await audioFile.close();
 
@@ -116,7 +149,7 @@ export class VoiceProcessingService {
           start: segment.start,
           end: segment.end,
           text: segment.text,
-        })),
+        })) || [],
       };
     } catch (error) {
       logger.error('Speech-to-text failed', {

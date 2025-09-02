@@ -1,6 +1,9 @@
 import express from 'express';
 import { createLogger } from '../../../shared/utils.js';
 import { universalAIAssistantService } from '../application/UniversalAIAssistantService.js';
+import { authenticateRequest, requireTenantAccess, requireAdminAccess } from '../../../shared/middleware/auth.js';
+import { rateLimitMiddleware } from '../../../shared/middleware/rateLimit.js';
+import { actionDispatchController } from './ActionDispatchController.js';
 
 const logger = createLogger({ service: 'ai-routes' });
 const router = express.Router();
@@ -9,7 +12,7 @@ const router = express.Router();
  * POST /api/ai/conversation
  * Process a conversation input and return AI response
  */
-router.post('/conversation', async (req, res) => {
+router.post('/conversation', async (req: Request, res: Response) => {
   try {
     const { input, siteId, sessionId, userId, browserLanguage, context } = req.body;
 
@@ -68,7 +71,7 @@ router.post('/conversation', async (req, res) => {
  * POST /api/ai/actions/register
  * Register actions for a site
  */
-router.post('/actions/register', async (req, res) => {
+router.post('/actions/register', async (req: Request, res: Response) => {
   try {
     const { siteId, actions } = req.body;
 
@@ -123,7 +126,7 @@ router.get('/actions/:siteId', async (req, res) => {
  * POST /api/ai/conversation/stream
  * Stream a conversation response in real-time
  */
-router.post('/conversation/stream', async (req, res) => {
+router.post('/conversation/stream', async (req: Request, res: Response) => {
   try {
     const { input, siteId, sessionId, userId, context } = req.body;
 
@@ -186,7 +189,7 @@ router.post('/conversation/stream', async (req, res) => {
  * POST /api/ai/actions/execute
  * Execute a specific action directly
  */
-router.post('/actions/execute', async (req, res) => {
+router.post('/actions/execute', async (req: Request, res: Response) => {
   try {
     const { siteId, actionName, parameters, sessionId, userId } = req.body;
 
@@ -240,7 +243,7 @@ router.post('/actions/execute', async (req, res) => {
  * GET /api/ai/sessions/:sessionId/history
  * Get session history
  */
-router.get('/sessions/:sessionId/history', async (req, res) => {
+router.get('/sessions/:sessionId/history', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
     const history = await universalAIAssistantService.getSessionHistory(sessionId);
@@ -267,7 +270,7 @@ router.get('/sessions/:sessionId/history', async (req, res) => {
  * GET /api/ai/metrics
  * Get service metrics and statistics
  */
-router.get('/metrics', async (req, res) => {
+router.get('/metrics', async (req: Request, res: Response) => {
   try {
     const metrics = universalAIAssistantService.getMetrics();
     
@@ -294,11 +297,86 @@ router.get('/metrics', async (req, res) => {
 /**
  * GET /api/ai/health
  */
-router.get('/health', (req, res) => {
+router.get('/health', (req: Request, res: Response) => {
   res.json({
     success: true,
     data: { status: 'healthy', timestamp: new Date().toISOString(), service: 'universal-ai-assistant' },
   });
 });
+
+// Action dispatch routes
+const dispatchRoutes = express.Router();
+
+// Initialize dispatch configuration
+dispatchRoutes.post(
+  '/init',
+  authenticateRequest,
+  requireTenantAccess,
+  rateLimitMiddleware('dispatch_init', { requests: 10, windowMs: 60000 }),
+  actionDispatchController.initializeDispatch
+);
+
+// Execute action
+dispatchRoutes.post(
+  '/execute',
+  // Note: Authentication is optional for execute to support widget calls
+  // Security is handled within the dispatch service via origin validation
+  rateLimitMiddleware('dispatch_execute', { requests: 100, windowMs: 60000 }),
+  actionDispatchController.executeAction
+);
+
+// Get available actions
+dispatchRoutes.get(
+  '/:siteId/:tenantId',
+  authenticateRequest,
+  requireTenantAccess,
+  rateLimitMiddleware('dispatch_actions', { requests: 50, windowMs: 60000 }),
+  actionDispatchController.getAvailableActions
+);
+
+// Generate embed script
+dispatchRoutes.post(
+  '/embed/script',
+  authenticateRequest,
+  requireTenantAccess,
+  rateLimitMiddleware('dispatch_embed', { requests: 20, windowMs: 60000 }),
+  actionDispatchController.generateEmbedScript
+);
+
+// Generate iframe embed
+dispatchRoutes.post(
+  '/embed/iframe',
+  authenticateRequest,
+  requireTenantAccess,
+  rateLimitMiddleware('dispatch_embed', { requests: 20, windowMs: 60000 }),
+  actionDispatchController.generateIframeEmbed
+);
+
+// Get statistics
+dispatchRoutes.get(
+  '/stats',
+  authenticateRequest,
+  rateLimitMiddleware('dispatch_stats', { requests: 10, windowMs: 60000 }),
+  actionDispatchController.getStats
+);
+
+// Admin routes
+dispatchRoutes.post(
+  '/admin/clear-cache',
+  authenticateRequest,
+  requireAdminAccess,
+  rateLimitMiddleware('admin_cache', { requests: 5, windowMs: 60000 }),
+  actionDispatchController.clearCaches
+);
+
+// Health check for dispatch service (public)
+dispatchRoutes.get(
+  '/health',
+  rateLimitMiddleware('health', { requests: 30, windowMs: 60000 }),
+  actionDispatchController.healthCheck
+);
+
+// Mount dispatch routes under /actions/dispatch
+router.use('/actions/dispatch', dispatchRoutes);
 
 export { router as aiRoutes };

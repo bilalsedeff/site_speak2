@@ -86,7 +86,7 @@ export class PgVectorClient {
    * Upsert chunks with embeddings (idempotent by content_hash)
    */
   async upsertChunks(chunks: ChunkInsert[]): Promise<void> {
-    if (chunks.length === 0) return;
+    if (chunks.length === 0) {return;}
 
     logger.info('Upserting chunks', { count: chunks.length });
 

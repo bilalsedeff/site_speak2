@@ -2,8 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
 import { jwtService, JWTPayload } from './jwt';
-import { createLogger } from '@shared/utils';
-import type { UserRole } from '../../../shared/types';
+import { createLogger } from '../../../../shared/utils';
+import type { UserRole } from '../../../../shared/types';
 
 const logger = createLogger({ service: 'auth-middleware' });
 
@@ -87,9 +87,9 @@ export function authenticate() {
       };
 
       logger.debug('User authenticated successfully', {
-        userId: req.user.id,
-        tenantId: req.user.tenantId,
-        role: req.user.role,
+        userId: req.user.id || 'unknown',
+        tenantId: req.user.tenantId || 'unknown',
+        role: req.user.role || 'unknown',
         correlationId: req.correlationId,
       });
 

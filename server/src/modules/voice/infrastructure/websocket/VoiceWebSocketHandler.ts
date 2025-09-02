@@ -425,7 +425,7 @@ export class VoiceWebSocketHandler {
    * Send event to client
    */
   private sendEvent(session: VoiceSession, event: TurnEvent): void {
-    if (!session.isActive) return;
+    if (!session.isActive) {return;}
 
     try {
       session.socket.emit('voice_event', event);
@@ -475,7 +475,7 @@ export class VoiceWebSocketHandler {
    * Send ping to maintain connection
    */
   private sendPing(session: VoiceSession): void {
-    if (!session.isActive) return;
+    if (!session.isActive) {return;}
 
     try {
       const pingData = Buffer.from(JSON.stringify({

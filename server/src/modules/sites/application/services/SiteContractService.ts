@@ -1,17 +1,13 @@
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../../shared/utils';
 import type { 
   Site,
-  SiteConfiguration,
-  SiteContent,
-  SitePage,
-} from '../../domain/entities/Site';
+} from '../../../../shared/types';
 import { 
   SiteContract,
   BusinessInfo,
   SiteAction,
   SitePage as ContractPage,
   PageSection,
-  SectionContent,
 } from '../../domain/entities/SiteContract';
 
 const logger = createLogger({ service: 'site-contract' });
@@ -447,7 +443,7 @@ export class SiteContractService {
   }
 
   private extractContactInfo(content: any, type: 'email' | 'phone'): string | undefined {
-    if (!content) return undefined;
+    if (!content) {return undefined;}
 
     const text = JSON.stringify(content).toLowerCase();
     
@@ -547,8 +543,8 @@ export class SiteContractService {
   private assessComplexity(pageCount: number, actionCount: number): 'simple' | 'moderate' | 'complex' {
     const totalComplexity = pageCount + actionCount;
     
-    if (totalComplexity <= 10) return 'simple';
-    if (totalComplexity <= 25) return 'moderate';
+    if (totalComplexity <= 10) {return 'simple';}
+    if (totalComplexity <= 25) {return 'moderate';}
     return 'complex';
   }
 }

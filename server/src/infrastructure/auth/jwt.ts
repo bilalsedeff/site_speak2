@@ -44,9 +44,9 @@ export class JWTService {
 
   constructor() {
     this.accessTokenSecret = config.JWT_SECRET;
-    this.refreshTokenSecret = config.JWT_REFRESH_SECRET;
-    this.defaultIssuer = config.JWT_ISSUER;
-    this.defaultAudience = config.JWT_AUDIENCE;
+    this.refreshTokenSecret = config.JWT_REFRESH_SECRET || config.JWT_SECRET;
+    this.defaultIssuer = config.JWT_ISSUER || 'sitespeak';
+    this.defaultAudience = config.JWT_AUDIENCE || 'sitespeak-users';
   }
 
   /**
@@ -61,7 +61,7 @@ export class JWTService {
       };
 
       return jwt.sign(tokenPayload, this.accessTokenSecret, {
-        expiresIn: options?.expiresIn || config.JWT_ACCESS_EXPIRES_IN,
+        expiresIn: (options?.expiresIn || config.JWT_ACCESS_EXPIRES_IN) as string | number,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
       });
@@ -83,7 +83,7 @@ export class JWTService {
       };
 
       return jwt.sign(tokenPayload, this.refreshTokenSecret, {
-        expiresIn: options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN,
+        expiresIn: (options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN) as string | number,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
       });
@@ -199,7 +199,7 @@ export class JWTService {
   isTokenExpired(token: string): boolean {
     try {
       const decoded = this.decodeToken(token);
-      if (!decoded?.exp) return true;
+      if (!decoded?.exp) {return true;}
       
       return Date.now() >= decoded.exp * 1000;
     } catch (error) {
@@ -213,7 +213,7 @@ export class JWTService {
   getTokenExpiration(token: string): Date | null {
     try {
       const decoded = this.decodeToken(token);
-      if (!decoded?.exp) return null;
+      if (!decoded?.exp) {return null;}
       
       return new Date(decoded.exp * 1000);
     } catch (error) {
@@ -225,7 +225,7 @@ export class JWTService {
    * Extract token from Authorization header
    */
   extractTokenFromHeader(authHeader: string | undefined): string | null {
-    if (!authHeader) return null;
+    if (!authHeader) {return null;}
     
     const match = authHeader.match(/^Bearer\s+(.+)$/);
     return match ? match[1] : null;

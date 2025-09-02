@@ -1,0 +1,33 @@
+{
+  "name": "@sitespeak/site-contract",
+  "version": "1.0.0",
+  "description": "Site contract system for emitting JSON-LD, ARIA audit reports, action manifests, and sitemaps",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./emitters": "./dist/emitters/index.js",
+    "./validators": "./dist/validators/index.js"
+  },
+  "scripts": {
+    "build": "tsc && vite build",
+    "dev": "vite build --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@sitespeak/design-system": "workspace:*",
+    "fast-xml-parser": "^4.5.0",
+    "jsdom": "^25.0.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "typescript": "^5.9.2",
+    "vite": "^7.0.6",
+    "vitest": "^2.1.8"
+  }
+}

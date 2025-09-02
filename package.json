@@ -195,6 +195,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.62.1",
+    "@opentelemetry/sdk-node": "^0.203.0",
     "@replit/vite-plugin-cartographer": "^0.2.8",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
     "@tailwindcss/typography": "^0.5.15",
@@ -203,6 +205,7 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/chai": "^5.2.2",
+    "@types/compression": "^1.8.1",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/cypress": "^0.1.6",
     "@types/d3-array": "^3.2.1",

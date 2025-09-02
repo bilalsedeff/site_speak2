@@ -198,7 +198,14 @@ export class Tenant {
       },
     };
 
-    return limits[plan];
+    return limits[plan] || limits['free'] || {
+      maxSites: 1,
+      maxKnowledgeBaseMB: 10,
+      maxAITokensPerMonth: 10000,
+      maxVoiceMinutesPerMonth: 60,
+      maxUsers: 1,
+      maxCustomDomains: 0,
+    };
   }
 
   /**

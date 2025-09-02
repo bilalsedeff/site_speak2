@@ -1,9 +1,13 @@
-import { StateGraph, Annotation, START, END, MemorySaver } from '@langchain/langgraph';
+import { StateGraph, Annotation, START, END, MemorySaver, CompiledStateGraph } from '@langchain/langgraph';
 import { HumanMessage, BaseMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { createLogger } from '../../../shared/utils.js';
 import { config } from '../../../infrastructure/config';
 import { SiteAction, ActionParameter } from '../../../shared/types';
+import { securityGuards } from '../application/services/SecurityGuards';
+import { privacyGuards } from '../application/services/PrivacyGuards';
+import { resourceBudgetsService } from '../application/services/ResourceBudgets';
+import { errorRecoverySystem } from '../application/services/ErrorRecoverySystem';
 
 const logger = createLogger({ service: 'langraph' });
 
@@ -15,32 +19,47 @@ const SessionState = Annotation.Root({
     reducer: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
   }),
   userInput: Annotation<string>(),
-  detectedLanguage: Annotation<string | null>({ default: () => null }),
+  detectedLanguage: Annotation<string | null>({
+    reducer: (x: string | null, y: string | null) => y ?? x,
+    default: () => null
+  }),
   intent: Annotation<{
     category: string;
     confidence: number;
-    extractedEntities: Record<string, any>;
-  } | null>({ default: () => null }),
+    extractedEntities: Record<string, unknown>;
+  } | null>({
+    reducer: (x, y) => y ?? x,
+    default: () => null
+  }),
   kbResults: Annotation<Array<{
     id: string;
     content: string;
     url: string;
     score: number;
-    metadata: Record<string, any>;
-  }>>({ default: () => [] }),
+    metadata: Record<string, unknown>;
+  }>>({
+    reducer: (x, y) => y.length > 0 ? y : x,
+    default: () => []
+  }),
   actionPlan: Annotation<Array<{
     actionName: string;
-    parameters: Record<string, any>;
+    parameters: Record<string, unknown>;
     reasoning: string;
     riskLevel: string;
-  }>>({ default: () => [] }),
+  }>>({
+    reducer: (x, y) => y.length > 0 ? y : x,
+    default: () => []
+  }),
   toolResults: Annotation<Array<{
     toolName: string;
-    input: Record<string, any>;
-    output: any;
+    input: Record<string, unknown>;
+    output: unknown;
     success: boolean;
     error?: string;
-  }>>({ default: () => [] }),
+  }>>({
+    reducer: (x, y) => x.concat(y),
+    default: () => []
+  }),
   finalResponse: Annotation<{
     text: string;
     audioUrl?: string;
@@ -60,18 +79,107 @@ const SessionState = Annotation.Root({
       processingTime: number;
       actionsExecuted: number;
     };
-  } | null>({ default: () => null }),
-  needsConfirmation: Annotation<boolean>({ default: () => false }),
-  confirmationReceived: Annotation<boolean>({ default: () => false }),
-  error: Annotation<string | null>({ default: () => null }),
+  } | null>({
+    reducer: (x, y) => y ?? x,
+    default: () => null
+  }),
+  needsConfirmation: Annotation<boolean>({
+    reducer: (x: boolean, y: boolean) => y ?? x,
+    default: () => false
+  }),
+  confirmationReceived: Annotation<boolean>({
+    reducer: (x: boolean, y: boolean) => y ?? x,
+    default: () => false
+  }),
+  error: Annotation<string | null>({
+    reducer: (x: string | null, y: string | null) => y ?? x,
+    default: () => null
+  }),
+  
+  // Enterprise Security & Privacy
+  securityResult: Annotation<{
+    allowed: boolean;
+    riskLevel: 'low' | 'medium' | 'high';
+    issues: Array<{ type: string; severity: string; description: string }>;
+  } | null>({
+    reducer: (x, y) => y ?? x,
+    default: () => null
+  }),
+  privacyResult: Annotation<{
+    hasPII: boolean;
+    detectedTypes: string[];
+    redactionApplied: boolean;
+  } | null>({
+    reducer: (x, y) => y ?? x,
+    default: () => null
+  }),
+  
+  // Resource Management
+  resourceUsage: Annotation<{
+    tokensUsed: number;
+    actionsExecuted: number;
+    apiCallsMade: number;
+    budgetRemaining: Record<string, number>;
+  }>({
+    reducer: (x, y) => ({ ...x, ...y }),
+    default: () => ({ tokensUsed: 0, actionsExecuted: 0, apiCallsMade: 0, budgetRemaining: {} })
+  }),
+  
+  // Error Recovery
+  errorRecoveryAttempted: Annotation<boolean>({
+    reducer: (x: boolean, y: boolean) => y ?? x,
+    default: () => false
+  }),
+  errorRecoveryStrategy: Annotation<string | null>({
+    reducer: (x: string | null, y: string | null) => y ?? x,
+    default: () => null
+  }),
+  
+  // Original input storage for privacy redaction
+  originalInput: Annotation<string>(),
+  
+  // Tenant context for security
+  tenantId: Annotation<string>(),
+  userId: Annotation<string | null>({
+    reducer: (x: string | null, y: string | null) => y ?? x,
+    default: () => null
+  }),
 });
 
 export type SessionStateType = typeof SessionState.State;
 
 export interface LangGraphDependencies {
-  kbService: any;
-  actionExecutor: any;
-  languageDetector: any;
+  kbService: {
+    semanticSearch(params: {
+      siteId: string;
+      query: string;
+      topK: number;
+      locale: string;
+    }): Promise<Array<{
+      id: string;
+      content: string;
+      url: string;
+      score: number;
+      metadata: Record<string, unknown>;
+    }>>;
+  };
+  actionExecutor: {
+    execute(params: {
+      siteId: string;
+      actionName: string;
+      parameters: Record<string, unknown>;
+      sessionId?: string;
+      userId?: string;
+    }): Promise<{
+      success: boolean;
+      result: unknown;
+      executionTime: number;
+      error?: string;
+    }>;
+  };
+  languageDetector: {
+    detect(text: string, browserLanguage?: string): Promise<string>;
+  };
 }
 
 /**
@@ -83,7 +191,7 @@ export interface LangGraphDependencies {
 export class LangGraphOrchestrator {
   private llm: ChatOpenAI;
   private checkpointer: MemorySaver;
-  private graph: any;
+  private graph: CompiledStateGraph<typeof SessionState.State, unknown>;
   private availableActions: Map<string, SiteAction> = new Map();
 
   constructor(
@@ -183,8 +291,14 @@ export class LangGraphOrchestrator {
   /**
    * Build the LangGraph state machine
    */
-  private buildGraph(): any {
+  private buildGraph(): CompiledStateGraph<typeof SessionState.State, unknown> {
     const workflow = new StateGraph(SessionState)
+      // Enterprise security/privacy/resource nodes
+      .addNode('validateSecurity', this.validateSecurity.bind(this))
+      .addNode('validatePrivacy', this.validatePrivacy.bind(this))
+      .addNode('checkResources', this.checkResources.bind(this))
+      
+      // Core processing nodes
       .addNode('ingestUserInput', this.ingestUserInput.bind(this))
       .addNode('detectLanguage', this.detectLanguage.bind(this))
       .addNode('understandIntent', this.understandIntent.bind(this))
@@ -194,22 +308,43 @@ export class LangGraphOrchestrator {
       .addNode('finalize', this.finalize.bind(this))
       .addNode('humanInTheLoop', this.humanInTheLoop.bind(this))
       .addNode('observe', this.observe.bind(this))
+      
+      // Error recovery node
+      .addNode('handleError', this.handleError.bind(this))
 
-    // Define the flow
-    workflow.addEdge(START, 'ingestUserInput');
+    // Define the enterprise flow: security → privacy → resources → processing
+    workflow.addEdge(START, 'validateSecurity');
+    workflow.addConditionalEdges(
+      'validateSecurity',
+      (state: SessionStateType) => {
+        return state.securityResult?.allowed ? 'validatePrivacy' : 'finalize';
+      }
+    );
+    workflow.addEdge('validatePrivacy', 'checkResources');
+    workflow.addEdge('checkResources', 'ingestUserInput');
     workflow.addEdge('ingestUserInput', 'detectLanguage');
     workflow.addEdge('detectLanguage', 'understandIntent');
     workflow.addEdge('understandIntent', 'retrieveKB');
     workflow.addEdge('retrieveKB', 'decide');
     
-    // Conditional routing from decide
+    // Conditional routing from decide with error recovery
     workflow.addConditionalEdges(
       'decide',
       (state: SessionStateType) => {
-        if (state.error) return 'finalize';
-        if (state.needsConfirmation) return 'humanInTheLoop';
-        if (state.actionPlan.length > 0) return 'toolCall';
+        if (state.error && !state.errorRecoveryAttempted) {return 'handleError';}
+        if (state.error) {return 'finalize';}
+        if (state.needsConfirmation) {return 'humanInTheLoop';}
+        if (state.actionPlan.length > 0) {return 'toolCall';}
         return 'finalize';
+      }
+    );
+    
+    // Error recovery can loop back to appropriate step
+    workflow.addConditionalEdges(
+      'handleError',
+      (state: SessionStateType) => {
+        if (state.error) {return 'finalize';} // Recovery failed
+        return 'decide'; // Try again after recovery
       }
     );
 
@@ -574,9 +709,245 @@ export class LangGraphOrchestrator {
    */
   private isTaskComplete(state: SessionStateType): boolean {
     // Simple heuristic - if we have successful tool results and no obvious next steps
-    if (state.toolResults.length === 0) return false;
+    if (state.toolResults.length === 0) {return false;}
     
     const lastResult = state.toolResults[state.toolResults.length - 1];
     return lastResult && lastResult.success && state.intent?.category !== 'multi_step';
+  }
+
+  // ========== ENTERPRISE NODES ==========
+
+  /**
+   * Enterprise Node: Security validation and risk assessment
+   */
+  private async validateSecurity(state: SessionStateType): Promise<Partial<SessionStateType>> {
+    logger.info('Validating security', { 
+      sessionId: state.sessionId,
+      tenantId: state.tenantId
+    });
+
+    try {
+      const securityResult = await securityGuards.validateSecurity({
+        tenantId: state.tenantId,
+        siteId: state.siteId,
+        userId: state.userId,
+        sessionId: state.sessionId,
+        userInput: state.userInput,
+        clientInfo: {
+          origin: 'web', // Could be enhanced to detect actual origin
+          userAgent: 'SiteSpeak-AI/1.0',
+          ipAddress: '127.0.0.1' // Would be extracted from request in real implementation
+        }
+      });
+
+      return { securityResult };
+    } catch (error) {
+      logger.error('Security validation failed', { 
+        sessionId: state.sessionId,
+        error 
+      });
+      
+      return {
+        securityResult: {
+          allowed: false,
+          riskLevel: 'high',
+          issues: [{ type: 'validation_error', severity: 'error', description: 'Security validation failed' }]
+        }
+      };
+    }
+  }
+
+  /**
+   * Enterprise Node: Privacy validation and PII detection/redaction
+   */
+  private async validatePrivacy(state: SessionStateType): Promise<Partial<SessionStateType>> {
+    logger.info('Validating privacy and detecting PII', { 
+      sessionId: state.sessionId,
+      inputLength: state.userInput.length
+    });
+
+    try {
+      const piiResult = await privacyGuards.detectAndRedactPII({
+        tenantId: state.tenantId,
+        siteId: state.siteId,
+        content: state.userInput,
+        contentType: 'user_input',
+        context: {
+          userId: state.userId,
+          sessionId: state.sessionId
+        }
+      });
+
+      // Convert PII result to privacy result format expected by state
+      const privacyResult = {
+        hasPII: piiResult.hasPII,
+        detectedTypes: piiResult.detectedTypes.map(dt => dt.type),
+        redactionApplied: piiResult.redactedText !== state.userInput
+      };
+
+      // Store original input for audit purposes, use redacted for processing
+      const updates: Partial<SessionStateType> = {
+        originalInput: state.userInput,
+        privacyResult
+      };
+
+      // If redaction was applied, update userInput with redacted version
+      if (privacyResult.redactionApplied) {
+        updates.userInput = piiResult.redactedText;
+      }
+
+      return updates;
+    } catch (error) {
+      logger.error('Privacy validation failed', { 
+        sessionId: state.sessionId,
+        error 
+      });
+      
+      return {
+        privacyResult: {
+          hasPII: false,
+          detectedTypes: [],
+          redactionApplied: false
+        }
+      };
+    }
+  }
+
+  /**
+   * Enterprise Node: Resource budget checking and allocation
+   */
+  private async checkResources(state: SessionStateType): Promise<Partial<SessionStateType>> {
+    logger.info('Checking resource budgets', { 
+      sessionId: state.sessionId,
+      tenantId: state.tenantId
+    });
+
+    try {
+      // Check tokens budget
+      const tokenBudgetCheck = await resourceBudgetsService.checkResourceAvailability({
+        tenantId: state.tenantId,
+        siteId: state.siteId,
+        type: 'tokens',
+        amount: this.estimateTokenUsage(state.userInput),
+        metadata: { sessionId: state.sessionId }
+      });
+
+      // Check actions budget
+      const actionBudgetCheck = await resourceBudgetsService.checkResourceAvailability({
+        tenantId: state.tenantId,
+        siteId: state.siteId,
+        type: 'actions',
+        amount: 1,
+        metadata: { sessionId: state.sessionId }
+      });
+
+      if (!tokenBudgetCheck.allowed || !actionBudgetCheck.allowed) {
+        const reason = !tokenBudgetCheck.allowed ? 'Token budget exceeded' : 'Action budget exceeded';
+        
+        logger.warn('Resource budget exceeded', { 
+          sessionId: state.sessionId,
+          tenantId: state.tenantId,
+          reason,
+          tokenBudget: tokenBudgetCheck,
+          actionBudget: actionBudgetCheck
+        });
+        
+        return {
+          error: `Request exceeds resource limits: ${reason}`,
+          resourceUsage: {
+            tokensUsed: tokenBudgetCheck.budget - tokenBudgetCheck.remaining,
+            actionsExecuted: actionBudgetCheck.budget - actionBudgetCheck.remaining,
+            apiCallsMade: 0,
+            budgetRemaining: {
+              tokens: tokenBudgetCheck.remaining,
+              actions: actionBudgetCheck.remaining
+            }
+          }
+        };
+      }
+
+      return {
+        resourceUsage: {
+          tokensUsed: tokenBudgetCheck.budget - tokenBudgetCheck.remaining,
+          actionsExecuted: actionBudgetCheck.budget - actionBudgetCheck.remaining,
+          apiCallsMade: 0,
+          budgetRemaining: {
+            tokens: tokenBudgetCheck.remaining,
+            actions: actionBudgetCheck.remaining
+          }
+        }
+      };
+    } catch (error) {
+      logger.error('Resource check failed', { 
+        sessionId: state.sessionId,
+        error 
+      });
+      
+      return {
+        resourceUsage: {
+          tokensUsed: 0,
+          actionsExecuted: 0, 
+          apiCallsMade: 0,
+          budgetRemaining: {}
+        }
+      };
+    }
+  }
+
+  /**
+   * Enterprise Node: Error handling and recovery
+   */
+  private async handleError(state: SessionStateType): Promise<Partial<SessionStateType>> {
+    if (!state.error || state.errorRecoveryAttempted) {
+      return {}; // No error or already attempted recovery
+    }
+
+    logger.info('Attempting error recovery', { 
+      sessionId: state.sessionId,
+      error: state.error
+    });
+
+    try {
+      const recoveryResult = await errorRecoverySystem.analyzeAndRecover({
+        sessionId: state.sessionId,
+        siteId: state.siteId,
+        errorMessage: state.error,
+        timestamp: new Date(),
+        userInput: state.userInput,
+        intent: state.intent,
+        previousActions: state.toolResults.map(tr => ({
+          name: tr.toolName,
+          success: tr.success,
+          timestamp: new Date() // Would be stored with each tool result in real implementation
+        }))
+      });
+
+      const shouldClearError = recoveryResult.shouldRetry && recoveryResult.recoveryStrategies.length > 0;
+
+      return {
+        errorRecoveryAttempted: true,
+        errorRecoveryStrategy: recoveryResult.recoveryStrategies[0]?.name || 'no_strategy',
+        // Clear error if recovery strategy suggests retry
+        error: shouldClearError ? null : state.error
+      };
+    } catch (error) {
+      logger.error('Error recovery failed', { 
+        sessionId: state.sessionId,
+        error 
+      });
+      
+      return {
+        errorRecoveryAttempted: true,
+        errorRecoveryStrategy: 'failed'
+      };
+    }
+  }
+
+  /**
+   * Helper: Estimate token usage for budget planning
+   */
+  private estimateTokenUsage(input: string): number {
+    // Rough estimate: ~4 characters per token
+    return Math.ceil(input.length / 4) + 500; // Add buffer for system prompts
   }
 }

@@ -5,6 +5,18 @@ import { voiceProcessingService } from '../application/services/VoiceProcessingS
 
 const logger = createLogger({ service: 'voice-controller' });
 
+// Extend Express Request to include file upload (from multer)
+interface RequestWithFile extends Request {
+  file?: {
+    fieldname: string;
+    originalname: string;
+    encoding: string;
+    mimetype: string;
+    size: number;
+    buffer: Buffer;
+  };
+}
+
 // Request schemas
 const ProcessAudioSchema = z.object({
   language: z.string().optional(),
@@ -23,7 +35,7 @@ export class VoiceController {
   /**
    * Process uploaded audio file (speech-to-text)
    */
-  async processAudio(req: Request, res: Response, next: NextFunction) {
+  async processAudio(req: RequestWithFile, res: Response, next: NextFunction) {
     try {
       const user = req.user!;
       const data = ProcessAudioSchema.parse(req.body);
@@ -88,7 +100,7 @@ export class VoiceController {
         userId: req.user?.id,
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
   }
 

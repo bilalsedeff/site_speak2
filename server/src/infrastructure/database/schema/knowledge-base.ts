@@ -69,7 +69,7 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   embedding: vector('embedding', { dimensions: 1536 }), // OpenAI ada-002/3-small dimensions
   
   // Chunk hierarchy and relationships
-  parentChunkId: uuid('parent_chunk_id').references(() => knowledgeChunks.id),
+  parentChunkId: uuid('parent_chunk_id'),
   chunkOrder: integer('chunk_order').default(0),
   chunkLevel: integer('chunk_level').default(0), // 0 = root, 1 = section, 2 = subsection, etc.
   

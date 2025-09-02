@@ -38,7 +38,7 @@ export function VoiceSettings({ onClose }: VoiceSettingsProps) {
     { id: 'echo', name: 'Echo', description: 'Warm, friendly voice' },
     { id: 'fable', name: 'Fable', description: 'Expressive, storytelling voice' },
     { id: 'onyx', name: 'Onyx', description: 'Deep, authoritative voice' },
-    { id: 'nova', name: 'Nova', name: 'Bright, energetic voice' },
+    { id: 'nova', name: 'Nova', description: 'Bright, energetic voice' },
     { id: 'shimmer', name: 'Shimmer', description: 'Soft, gentle voice' },
   ]
 

@@ -1,5 +1,6 @@
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../../shared/utils.js';
 import { embeddingService } from './EmbeddingService';
+import { webCrawlerService, type CrawlOptions } from './WebCrawlerService.js';
 import type { 
   KnowledgeBase, 
   KnowledgeChunk,
@@ -109,7 +110,7 @@ export class KnowledgeBaseService {
       if (request.filters) {
         filteredResults = similarityResults.filter(result => {
           const chunk = result.metadata?.['chunk'] as KnowledgeChunk;
-          if (!chunk) return false;
+          if (!chunk) {return false;}
 
           if (request.filters?.contentType && 
               !request.filters.contentType.includes(chunk.metadata.contentType)) {
@@ -160,7 +161,60 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Start crawling and indexing a knowledge base
+   * Start comprehensive site crawling and indexing
+   */
+  async startSiteCrawling(request: {
+    knowledgeBaseId: string;
+    siteId: string;
+    tenantId: string;
+    baseUrl: string;
+    options?: Partial<CrawlOptions>;
+  }): Promise<string> {
+    try {
+      logger.info('Starting site crawling', {
+        knowledgeBaseId: request.knowledgeBaseId,
+        siteId: request.siteId,
+        baseUrl: request.baseUrl,
+      });
+
+      const crawlOptions: CrawlOptions = {
+        maxDepth: 3,
+        maxPages: 100,
+        timeoutMs: 30000,
+        concurrency: 2,
+        allowJsRendering: true,
+        blockResources: ['image', 'font', 'media', 'analytics'],
+        respectRobots: true,
+        useConditionalRequests: true,
+        userAgent: 'SiteSpeak-Crawler/1.0 (+https://sitespeak.ai/crawler)',
+        ...request.options
+      };
+
+      const sessionId = await webCrawlerService.startCrawl({
+        url: request.baseUrl,
+        siteId: request.siteId,
+        tenantId: request.tenantId,
+        options: crawlOptions
+      });
+
+      logger.info('Site crawling session started', {
+        knowledgeBaseId: request.knowledgeBaseId,
+        sessionId,
+      });
+
+      return sessionId;
+    } catch (error) {
+      logger.error('Failed to start site crawling', {
+        error,
+        knowledgeBaseId: request.knowledgeBaseId,
+        siteId: request.siteId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Start crawling and indexing a knowledge base (legacy method)
    */
   async startIndexing(knowledgeBaseId: string): Promise<void> {
     try {
@@ -185,7 +239,52 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Get indexing progress
+   * Get crawling/indexing progress by session ID
+   */
+  async getCrawlingProgress(sessionId: string): Promise<IndexingProgress> {
+    try {
+      const crawlSession = webCrawlerService.getCrawlStatus(sessionId);
+      
+      if (!crawlSession) {
+        return {
+          status: 'error',
+          progress: 0,
+          message: 'Crawl session not found',
+          processedUrls: 0,
+          totalUrls: 0,
+        };
+      }
+
+      const progress = crawlSession.progress.discovered > 0 
+        ? Math.round((crawlSession.progress.processed / crawlSession.progress.discovered) * 100)
+        : 0;
+
+      const statusMap: Record<string, IndexingProgress['status']> = {
+        'initializing': 'crawling',
+        'crawling': 'crawling',
+        'processing': 'indexing',
+        'completed': 'completed',
+        'failed': 'error'
+      };
+
+      return {
+        status: statusMap[crawlSession.status] || 'idle',
+        progress,
+        message: `${crawlSession.status}: ${crawlSession.progress.processed}/${crawlSession.progress.discovered} pages processed`,
+        processedUrls: crawlSession.progress.processed,
+        totalUrls: crawlSession.progress.discovered,
+      };
+    } catch (error) {
+      logger.error('Failed to get crawling progress', {
+        error,
+        sessionId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get indexing progress (legacy method)
    */
   async getIndexingProgress(knowledgeBaseId: string): Promise<IndexingProgress> {
     try {
@@ -330,7 +429,7 @@ export class KnowledgeBaseService {
     
     for (const sentence of sentences) {
       const trimmedSentence = sentence.trim();
-      if (!trimmedSentence) continue;
+      if (!trimmedSentence) {continue;}
       
       const potentialChunk = currentChunk + (currentChunk ? '. ' : '') + trimmedSentence;
       
@@ -386,8 +485,8 @@ export class KnowledgeBaseService {
     
     let excerpt = content.substring(start, end);
     
-    if (start > 0) excerpt = '...' + excerpt;
-    if (end < content.length) excerpt = excerpt + '...';
+    if (start > 0) {excerpt = '...' + excerpt;}
+    if (end < content.length) {excerpt = excerpt + '...';}
     
     return excerpt;
   }
@@ -404,6 +503,63 @@ export class KnowledgeBaseService {
       hash = hash & hash; // Convert to 32bit integer
     }
     return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * Get comprehensive service statistics
+   */
+  getServiceStats(): {
+    knowledgeBase: {
+      // TODO: Add actual KB stats from repository
+    };
+    webCrawler: {
+      robotsCache: number;
+      etagCache: number;
+      activeSessions: number;
+    };
+  } {
+    return {
+      knowledgeBase: {
+        // TODO: Implement when repository is connected
+      },
+      webCrawler: webCrawlerService.getCacheStats()
+    };
+  }
+
+  /**
+   * Clear all service caches
+   */
+  clearAllCaches(): void {
+    webCrawlerService.clearCaches();
+    logger.info('All knowledge base service caches cleared');
+  }
+
+  /**
+   * Validate crawl options
+   */
+  validateCrawlOptions(options: Partial<CrawlOptions>): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    if (options.maxPages && (options.maxPages < 1 || options.maxPages > 1000)) {
+      errors.push('Max pages must be between 1 and 1000');
+    }
+    
+    if (options.maxDepth && (options.maxDepth < 1 || options.maxDepth > 10)) {
+      errors.push('Max depth must be between 1 and 10');
+    }
+    
+    if (options.timeoutMs && (options.timeoutMs < 1000 || options.timeoutMs > 60000)) {
+      errors.push('Timeout must be between 1000 and 60000 milliseconds');
+    }
+    
+    if (options.concurrency && (options.concurrency < 1 || options.concurrency > 10)) {
+      errors.push('Concurrency must be between 1 and 10');
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
   }
 
   /**

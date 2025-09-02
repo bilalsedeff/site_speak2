@@ -1,8 +1,8 @@
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../shared/utils.js';
 import { LangGraphOrchestrator, SessionStateType } from '../domain/LangGraphOrchestrator';
 import { ActionExecutorService, actionExecutorService } from './ActionExecutorService';
 import { LanguageDetectorService, languageDetectorService } from './LanguageDetectorService';
-import { KnowledgeBaseService, knowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
+import { KnowledgeBaseService } from './services/KnowledgeBaseService';
 import type { SiteAction, ActionParameter } from '../../../shared/types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -69,9 +69,27 @@ export class AIOrchestrationService {
 
   constructor(
     private dependencies: {
-      kbService: any; // Knowledge Base Service
-      websocketService?: any; // WebSocket service for real-time updates
-      ttsService?: any; // Text-to-Speech service
+      kbService: {
+        semanticSearch(params: {
+          siteId: string;
+          query: string;
+          topK: number;
+          locale: string;
+        }): Promise<Array<{
+          id: string;
+          content: string;
+          url: string;
+          score: number;
+          metadata: Record<string, unknown>;
+        }>>;
+      };
+      websocketService?: {
+        notifyActionExecuted(data: unknown): Promise<void>;
+        broadcast(event: string, data: unknown): Promise<void>;
+      };
+      ttsService?: {
+        generateSpeech(text: string, options: Record<string, unknown>): Promise<string>;
+      };
     }
   ) {
     // Clean up inactive sessions every 5 minutes
@@ -418,7 +436,7 @@ export class AIOrchestrationService {
 
 // Export singleton instance
 export const aiOrchestrationService = new AIOrchestrationService({
-  kbService: knowledgeBaseService,
+  kbService: new KnowledgeBaseService(),
   websocketService: null, // TODO: Inject WebSocket service
   ttsService: null, // TODO: Inject TTS service
 });

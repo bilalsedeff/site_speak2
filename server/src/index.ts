@@ -22,7 +22,7 @@ async function startServer() {
     logger.info('Starting SiteSpeak server...', {
       environment: config.NODE_ENV,
       port: config.PORT,
-      version: process.env.npm_package_version || '1.0.0',
+      version: process.env['npm_package_version'] || '1.0.0',
     });
 
     // Create and initialize server
@@ -88,7 +88,7 @@ process.on('unhandledRejection', (reason, promise) => {
   });
   
   // In production, we might want to exit
-  if (process.env.NODE_ENV === 'production') {
+      if (process.env['NODE_ENV'] === 'production') {
     process.exit(1);
   }
 });

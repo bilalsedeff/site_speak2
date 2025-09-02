@@ -4,6 +4,15 @@
 
 import { Request, Response, NextFunction } from 'express';
 
+// Re-export existing implementations  
+export * from './jwt';
+export * from './session';
+export * from './middleware';
+
+// Re-export service instances
+export { jwtService } from './jwt';
+export { sessionManager } from './session';
+
 // Placeholder auth middleware - implement when needed
 export function optionalAuth() {
   return (req: Request, res: Response, next: NextFunction) => {

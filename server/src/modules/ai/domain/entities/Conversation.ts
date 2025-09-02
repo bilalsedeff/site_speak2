@@ -138,7 +138,7 @@ export class Conversation {
    * Get conversation duration in minutes
    */
   getDuration(): number | null {
-    if (!this.endedAt) return null;
+    if (!this.endedAt) {return null;}
     return Math.floor((this.endedAt.getTime() - this.createdAt.getTime()) / (1000 * 60));
   }
 
@@ -168,7 +168,7 @@ export class Conversation {
     const messageCount = this.messages.length;
     const duration = this.getDuration();
     
-    if (!firstUserMessage) return 'No messages';
+    if (!firstUserMessage) {return 'No messages';}
     
     const truncatedMessage = firstUserMessage.length > 100 
       ? firstUserMessage.substring(0, 100) + '...'

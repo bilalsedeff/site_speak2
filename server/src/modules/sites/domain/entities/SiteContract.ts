@@ -259,7 +259,7 @@ export class SiteContract {
    */
   getPageActions(pageId: string): SiteAction[] {
     const page = this.pages.find(p => p.id === pageId);
-    if (!page) return [];
+    if (!page) {return [];}
 
     return page.actions
       .map(actionId => this.actions.find(a => a.id === actionId))
@@ -426,24 +426,24 @@ ${urls}
     const warnings: string[] = [];
 
     // Check required business info
-    if (!this.businessInfo.name) errors.push('Business name is required');
-    if (!this.businessInfo.description) errors.push('Business description is required');
-    if (!this.businessInfo.category) errors.push('Business category is required');
+    if (!this.businessInfo.name) {errors.push('Business name is required');}
+    if (!this.businessInfo.description) {errors.push('Business description is required');}
+    if (!this.businessInfo.category) {errors.push('Business category is required');}
 
     // Check pages
-    if (this.pages.length === 0) errors.push('At least one page is required');
+    if (this.pages.length === 0) {errors.push('At least one page is required');}
     
     const homePage = this.pages.find(page => page.path === '/');
-    if (!homePage) errors.push('Home page (/) is required');
+    if (!homePage) {errors.push('Home page (/) is required');}
 
     // Check actions
-    if (this.actions.length === 0) warnings.push('No actions defined - users may not be able to interact with the site');
+    if (this.actions.length === 0) {warnings.push('No actions defined - users may not be able to interact with the site');}
 
     // Check accessibility
-    if (this.accessibility.wcagLevel !== 'AA') warnings.push('WCAG AA compliance recommended for better accessibility');
+    if (this.accessibility.wcagLevel !== 'AA') {warnings.push('WCAG AA compliance recommended for better accessibility');}
 
     // Check SEO
-    if (!this.seo.sitemap) warnings.push('Sitemap not generated - may affect SEO');
+    if (!this.seo.sitemap) {warnings.push('Sitemap not generated - may affect SEO');}
 
     return {
       valid: errors.length === 0,

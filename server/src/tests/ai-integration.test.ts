@@ -78,7 +78,7 @@ describe('AI Integration Tests', () => {
         chunks.push(chunk);
         
         // Break after receiving some chunks to avoid infinite loops
-        if (chunks.length > 5) break;
+        if (chunks.length > 5) {break;}
       }
 
       expect(chunks.length).toBeGreaterThan(0);

@@ -1,9 +1,9 @@
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import Inter font */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
 
 @layer base {
   :root {
@@ -27,6 +27,12 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+    
+    /* Motion tokens per Material M3 */
+    --motion-fast: 150ms;
+    --motion-default: 250ms;
+    --motion-slow: 350ms;
+    --motion-ease: cubic-bezier(0.4, 0.0, 0.2, 1);
   }
 
   .dark {
@@ -62,20 +68,47 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-feature-settings: 'cv11', 'ss01';
     font-variation-settings: 'opsz' 32;
+    /* Baseline body text 16px+ per UI/UX guidelines */
+    font-size: 16px;
+    line-height: 1.5; /* 1.4-1.6 range */
+  }
+
+  /* Typography scale with 50-75 CPL compliance */
+  h1, h2, h3, h4, h5, h6 {
+    line-height: 1.2; /* 1.2-1.35 for headings */
+    /* Headings never exceed 80 CPL */
+    max-width: 80ch;
+  }
+
+  /* Long-form content maintains 50-75 CPL */
+  p, .prose {
+    max-width: 75ch;
+    line-height: 1.6;
+  }
+
+  /* Focus styles meet WCAG 2.2 requirements */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
 @layer components {
-  /* Voice UI Components */
+  /* Voice UI Components - Built-in, calm, discoverable */
   .voice-button {
     @apply relative inline-flex items-center justify-center rounded-full;
     @apply bg-primary text-primary-foreground;
-    @apply transition-all duration-200 ease-in-out;
+    /* Motion: 100-500ms range, use shortest non-jarring time */
+    transition: all var(--motion-fast) var(--motion-ease);
     @apply hover:bg-primary/90 active:scale-95;
+    /* Touch targets: ≥44pt on iOS, ≥48dp on Android */
+    min-width: 48px;
+    min-height: 48px;
   }
 
   .voice-button.listening {
-    @apply bg-red-500 animate-voice-pulse;
+    @apply bg-red-500;
+    animation: voice-pulse 1.5s ease-in-out infinite;
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
   }
 
@@ -83,7 +116,14 @@
     @apply bg-yellow-500;
   }
 
-  /* Voice Visualizer */
+  /* Voice panel with live waveform and suggestion chips */
+  .voice-panel {
+    @apply bg-card/95 backdrop-blur-glass border border-border rounded-2xl shadow-2xl;
+    /* Compact panel as per guidelines */
+    max-width: 380px;
+    min-width: 320px;
+  }
+
   .voice-visualizer {
     @apply flex items-end justify-center space-x-1 h-8;
   }
@@ -92,23 +132,23 @@
     @apply bg-primary rounded-full;
     width: 3px;
     height: 4px;
-    @apply animate-voice-wave;
+    animation: voice-wave 0.6s ease-in-out infinite;
   }
 
-  .voice-wave:nth-child(2) {
-    animation-delay: 0.1s;
-  }
-  
-  .voice-wave:nth-child(3) {
-    animation-delay: 0.2s;
-  }
-  
-  .voice-wave:nth-child(4) {
-    animation-delay: 0.3s;
-  }
-  
-  .voice-wave:nth-child(5) {
-    animation-delay: 0.4s;
+  .voice-wave:nth-child(2) { animation-delay: 0.1s; }
+  .voice-wave:nth-child(3) { animation-delay: 0.2s; }
+  .voice-wave:nth-child(4) { animation-delay: 0.3s; }
+  .voice-wave:nth-child(5) { animation-delay: 0.4s; }
+
+  /* Suggestion chips for discoverability */
+  .suggestion-chip {
+    @apply inline-flex items-center px-3 py-1.5 text-xs font-medium;
+    @apply bg-muted text-muted-foreground rounded-full;
+    @apply hover:bg-accent hover:text-accent-foreground;
+    @apply cursor-pointer transition-colors;
+    /* Touch target compliance */
+    min-height: 32px;
+    margin: 4px;
   }
 
   /* Editor Components */
@@ -125,18 +165,20 @@
     @apply p-3 border border-border rounded-md cursor-grab;
     @apply hover:border-primary hover:bg-accent/50;
     @apply active:cursor-grabbing;
+    transition: all var(--motion-fast) var(--motion-ease);
   }
 
   .drop-zone {
     @apply border-2 border-dashed border-muted-foreground/25;
-    @apply rounded-lg p-4 transition-colors;
+    @apply rounded-lg p-4;
+    transition: all var(--motion-fast) var(--motion-ease);
   }
 
   .drop-zone.active {
     @apply border-primary bg-primary/5;
   }
 
-  /* Loading States */
+  /* Loading States - fatigue-aware */
   .skeleton {
     @apply animate-pulse bg-muted rounded;
   }
@@ -149,19 +191,159 @@
     @apply w-2 h-2 bg-current rounded-full animate-pulse;
   }
 
-  .loading-dots span:nth-child(2) {
-    animation-delay: 0.15s;
+  .loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+  /* Empty States - teach the next step */
+  .empty-state {
+    @apply flex flex-col items-center justify-center p-8 text-center;
   }
-  
-  .loading-dots span:nth-child(3) {
-    animation-delay: 0.3s;
+
+  .empty-state-icon {
+    @apply w-16 h-16 mb-4 text-muted-foreground/40;
+  }
+
+  .empty-state-title {
+    @apply text-lg font-semibold mb-2;
+  }
+
+  .empty-state-description {
+    @apply text-sm text-muted-foreground mb-6;
+    /* Keep within readable line length */
+    max-width: 50ch;
+  }
+
+  /* Form components - fatigue-aware */
+  .form-group {
+    @apply space-y-2;
+  }
+
+  .form-label {
+    @apply text-sm font-medium text-foreground;
+  }
+
+  .form-input {
+    @apply w-full px-3 py-2 text-sm border border-input rounded-md;
+    @apply bg-background text-foreground;
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+    /* Touch target compliance */
+    min-height: 44px;
+    transition: all var(--motion-fast) var(--motion-ease);
+  }
+
+  .form-error {
+    @apply text-sm text-destructive;
+  }
+
+  .form-help {
+    @apply text-xs text-muted-foreground;
+  }
+
+  /* Tables - zebra rows + sticky header */
+  .data-table {
+    @apply w-full border-collapse;
+  }
+
+  .data-table th {
+    @apply bg-muted/50 text-left p-4 font-medium text-muted-foreground;
+    @apply border-b border-border sticky top-0 z-10;
+  }
+
+  .data-table tr:nth-child(even) {
+    @apply bg-muted/25;
+  }
+
+  .data-table td {
+    @apply p-4 border-b border-border;
+  }
+
+  /* Progressive navigation components */
+  .breadcrumbs {
+    @apply flex items-center space-x-2 text-sm text-muted-foreground;
+  }
+
+  .breadcrumb-item {
+    @apply hover:text-foreground;
+    transition: color var(--motion-fast) var(--motion-ease);
+  }
+
+  .breadcrumb-separator {
+    @apply text-muted-foreground/50;
+  }
+
+  /* Density tiers */
+  .density-comfortable {
+    @apply p-4;
+  }
+
+  .density-compact {
+    @apply p-2;
+  }
+
+  /* Page layouts per UI/UX guidelines */
+  .layout-dashboard {
+    @apply grid grid-cols-1 lg:grid-cols-3 gap-6;
+  }
+
+  .layout-hero {
+    @apply mb-8;
+  }
+
+  .layout-catalog {
+    @apply grid grid-cols-1 lg:grid-cols-4 gap-6;
+  }
+
+  .layout-filters {
+    @apply lg:col-span-1 space-y-4 lg:sticky lg:top-4 lg:h-fit;
+  }
+
+  .layout-content {
+    @apply lg:col-span-3;
+  }
+
+  .layout-detail {
+    @apply grid grid-cols-1 lg:grid-cols-3 gap-8;
+  }
+
+  .layout-detail-content {
+    @apply lg:col-span-2;
+  }
+
+  .layout-detail-sidebar {
+    @apply lg:col-span-1 lg:sticky lg:top-4 lg:h-fit;
+  }
+
+  /* Notifications - non-blocking */
+  .toast {
+    @apply fixed bottom-4 right-4 z-50;
+    @apply bg-card border border-border rounded-lg shadow-lg p-4;
+    @apply max-w-sm;
+    animation: toast-enter var(--motion-default) var(--motion-ease);
+  }
+
+  .toast.success {
+    @apply border-green-200 bg-green-50 text-green-900;
+  }
+
+  .toast.error {
+    @apply border-red-200 bg-red-50 text-red-900;
   }
 }
 
 @layer utilities {
-  /* Typography */
+  /* Typography utilities */
   .text-gradient {
     @apply bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent;
+  }
+
+  /* Reading length utilities - enforce 50-75 CPL */
+  .max-reading-width {
+    max-width: 75ch;
+  }
+
+  .max-heading-width {
+    max-width: 80ch;
   }
 
   /* Focus styles */
@@ -199,6 +381,24 @@
     backdrop-filter: blur(12px);
     background-color: hsla(var(--background), 0.8);
   }
+
+  /* 8-point grid utilities */
+  .spacing-4 { @apply p-1; }    /* 4px */
+  .spacing-8 { @apply p-2; }    /* 8px */
+  .spacing-16 { @apply p-4; }   /* 16px */
+  .spacing-24 { @apply p-6; }   /* 24px */
+  .spacing-32 { @apply p-8; }   /* 32px */
+
+  /* Touch target utilities */
+  .touch-target {
+    min-width: 48px;
+    min-height: 48px;
+  }
+
+  .touch-target-ios {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* Global styles */
@@ -218,7 +418,7 @@ html {
   }
 }
 
-/* Reduced motion support */
+/* Reduced motion support - respect user settings */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -228,6 +428,16 @@ html {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Override voice animations for reduced motion */
+  .voice-button.listening {
+    animation: none;
+  }
+
+  .voice-wave {
+    animation: none;
+    height: 8px; /* Static height */
+  }
 }
 
 /* High contrast mode support */
@@ -235,4 +445,42 @@ html {
   .voice-button {
     border: 2px solid currentColor;
   }
+
+  .form-input:focus {
+    outline: 3px solid currentColor;
+    outline-offset: 2px;
+  }
+}
+
+/* Keyframes */
+@keyframes voice-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+@keyframes voice-wave {
+  0%, 100% { height: 4px; }
+  50% { height: 20px; }
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Shared-element transitions: 250-350ms with ease-in-out */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }

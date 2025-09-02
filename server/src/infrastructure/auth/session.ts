@@ -79,7 +79,7 @@ export class InMemorySessionStore implements SessionStore {
 
   async update(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | null> {
     const session = this.sessions.get(sessionId);
-    if (!session) return null;
+    if (!session) {return null;}
 
     const updatedSession = { ...session, ...updates };
     this.sessions.set(sessionId, updatedSession);
@@ -94,7 +94,7 @@ export class InMemorySessionStore implements SessionStore {
 
   async delete(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
-    if (!session) return false;
+    if (!session) {return false;}
 
     this.sessions.delete(sessionId);
     
@@ -117,7 +117,7 @@ export class InMemorySessionStore implements SessionStore {
 
   async deleteByUserId(userId: string): Promise<number> {
     const sessionIds = this.userSessions.get(userId);
-    if (!sessionIds) return 0;
+    if (!sessionIds) {return 0;}
 
     let count = 0;
     for (const sessionId of sessionIds) {
@@ -138,7 +138,7 @@ export class InMemorySessionStore implements SessionStore {
 
   async updateActivity(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
-    if (!session || !session.isActive) return false;
+    if (!session || !session.isActive) {return false;}
 
     session.lastActivityAt = new Date();
     this.sessions.set(sessionId, session);

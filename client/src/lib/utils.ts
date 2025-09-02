@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]) {
  * Format bytes to human readable string
  */
 export function formatBytes(bytes: number, decimals: number = 2): string {
-  if (bytes === 0) return '0 Bytes'
+  if (bytes === 0) {return '0 Bytes'}
 
   const k = 1024
   const dm = decimals < 0 ? 0 : decimals
@@ -34,7 +34,7 @@ export function formatNumber(num: number): string {
  * Truncate text to specified length
  */
 export function truncate(str: string, length: number): string {
-  if (str.length <= length) return str
+  if (str.length <= length) {return str}
   return str.substring(0, length) + '...'
 }
 
@@ -109,8 +109,8 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * Parse error messages
  */
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
+  if (error instanceof Error) {return error.message}
+  if (typeof error === 'string') {return error}
   return 'An unexpected error occurred'
 }
 

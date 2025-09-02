@@ -1,5 +1,8 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import type { Site, CreateSiteRequest, UpdateSiteRequest } from '@shared/types'
+import type { Site } from '../../../../shared/types'
+import { CreateSiteRequestSchema, UpdateSiteRequestSchema } from '../../../../shared/schemas/site.schemas';
+type CreateSiteRequest = typeof CreateSiteRequestSchema._type;
+type UpdateSiteRequest = typeof UpdateSiteRequestSchema._type;
 import { sitesApi } from '@/services/api'
 
 interface SitesState {

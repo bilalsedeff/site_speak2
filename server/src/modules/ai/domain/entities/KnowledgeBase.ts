@@ -253,8 +253,8 @@ export class KnowledgeBase {
    * Check if knowledge base needs reindexing
    */
   needsReindexing(): boolean {
-    if (!this.settings.autoReindex) return false;
-    if (!this.lastIndexedAt) return true;
+    if (!this.settings.autoReindex) {return false;}
+    if (!this.lastIndexedAt) {return true;}
 
     const reindexIntervalMs = this.settings.reindexInterval * 60 * 60 * 1000;
     const timeSinceLastIndex = Date.now() - this.lastIndexedAt.getTime();

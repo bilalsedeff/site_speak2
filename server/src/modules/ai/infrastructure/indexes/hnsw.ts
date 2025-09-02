@@ -278,7 +278,7 @@ export class HNSWIndexManager {
    */
   private parseMemoryString(memStr: string): number {
     const match = memStr.match(/^(\d+)(kB|MB|GB)?$/);
-    if (!match) return 0;
+    if (!match) {return 0;}
 
     const value = parseInt(match[1]);
     const unit = match[2] || '';

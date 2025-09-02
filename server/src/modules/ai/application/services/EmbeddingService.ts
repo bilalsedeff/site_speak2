@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../../shared/utils.js';
 import { config } from '../../../../infrastructure/config';
 
 const logger = createLogger({ service: 'embedding' });
@@ -84,11 +84,16 @@ export class EmbeddingService {
         
         for (let i = 0; i < request.texts.length; i++) {
           if (request.texts[i].trim().length > 0) {
-            fullEmbeddings.push(embeddings[validIndex]);
-            validIndex++;
+            const embedding = embeddings?.[validIndex];
+            if (embedding) {
+              fullEmbeddings.push(embedding);
+              validIndex++;
+            } else {
+              fullEmbeddings.push(new Array(1536).fill(0));
+            }
           } else {
             // Return zero embedding for empty texts
-            fullEmbeddings.push(new Array(embeddings[0].length).fill(0));
+            fullEmbeddings.push(new Array(embeddings?.[0]?.length || 1536).fill(0));
           }
         }
         
@@ -139,10 +144,10 @@ export class EmbeddingService {
   async generateEmbedding(text: string, model?: string): Promise<number[]> {
     const response = await this.generateEmbeddings({
       texts: [text],
-      model,
+      model: model || this.defaultModel,
     });
     
-    return response.embeddings[0];
+    return response.embeddings[0] || new Array(1536).fill(0);
   }
 
   /**
@@ -158,9 +163,11 @@ export class EmbeddingService {
     let normB = 0;
 
     for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
+      const aVal = a[i] || 0;
+      const bVal = b[i] || 0;
+      dotProduct += aVal * bVal;
+      normA += aVal * aVal;
+      normB += bVal * bVal;
     }
 
     normA = Math.sqrt(normA);
@@ -188,7 +195,7 @@ export class EmbeddingService {
         .map(item => ({
           id: item.id,
           score: this.cosineSimilarity(request.queryEmbedding, item.embedding),
-          metadata: item.metadata,
+          metadata: item.metadata || {},
         }))
         .filter(result => !request.threshold || result.score >= request.threshold)
         .sort((a, b) => b.score - a.score)
@@ -230,7 +237,7 @@ export class EmbeddingService {
       
       const response = await this.generateEmbeddings({
         texts: batch,
-        model,
+        model: model || this.defaultModel,
       });
       
       allEmbeddings.push(...response.embeddings);
@@ -266,9 +273,9 @@ export class EmbeddingService {
    * Validate embedding vector
    */
   validateEmbedding(embedding: number[], expectedDimension?: number): boolean {
-    if (!Array.isArray(embedding)) return false;
-    if (embedding.length === 0) return false;
-    if (!embedding.every(num => typeof num === 'number' && !isNaN(num))) return false;
+    if (!Array.isArray(embedding)) {return false;}
+    if (embedding.length === 0) {return false;}
+    if (!embedding.every(num => typeof num === 'number' && !isNaN(num))) {return false;}
     
     if (expectedDimension && embedding.length !== expectedDimension) {
       return false;

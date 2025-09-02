@@ -9,11 +9,10 @@
 export {
   makeQueue,
   makeWorker,
-  makeScheduler,
   shutdownQueues,
   checkQueueHealth,
   registerJobSchema,
-} from './factory.js';
+} from './factory';
 
 // Re-export conventions
 export {
@@ -37,17 +36,17 @@ export type {
 } from './conventions.js';
 
 // Re-export BullMQ types
-export type { Queue, Worker, QueueScheduler, Job } from 'bullmq';
+export type { Queue, Worker, Job } from 'bullmq';
 
-import { Queue, Worker, QueueScheduler } from 'bullmq';
-import { makeQueue, shutdownQueues } from './factory.js';
-import { QueueNames, QueueConfigs, registerAllJobSchemas } from './conventions.js';
-import { logger } from '../telemetry/logger.js';
+import { Queue, Worker } from 'bullmq';
+import { makeQueue, shutdownQueues } from './factory';
+import { QueueNames, QueueConfigs, registerAllJobSchemas } from './conventions';
+import { logger } from '../telemetry/logger';
 
 /**
  * Global queue instances registry
  */
-const queueInstances = new Set<Queue | Worker | QueueScheduler>();
+const queueInstances = new Set<Queue | Worker>();
 
 /**
  * Initialize queue system with default queues
@@ -90,7 +89,7 @@ export async function initializeQueueSystem(): Promise<void> {
  * Add queue/worker instance to shutdown registry
  */
 export function registerQueueInstance(
-  instance: Queue | Worker | QueueScheduler
+  instance: Queue | Worker
 ): void {
   queueInstances.add(instance);
 }
@@ -140,7 +139,6 @@ export const createQueueService = () => {
     queues,
     makeQueue,
     makeWorker,
-    makeScheduler,
     registerInstance: registerQueueInstance,
   };
 };

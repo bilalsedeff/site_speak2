@@ -5,14 +5,17 @@
  * structured logging, and OpenTelemetry integration.
  */
 
-import { trace, context } from '@opentelemetry/api';
-import { createLogger as createBaseLogger, Logger as BaseLogger, LogLevel, sanitizeLogData } from '../../../shared/utils.js';
-import { cfg } from '../config/index.js';
+import { trace } from '@opentelemetry/api';
+import { createLogger as createBaseLogger, Logger as BaseLogger, LogLevel, sanitizeLogData } from '../../../../../shared/utils';
 
 /**
  * Enhanced logger interface with trace correlation
  */
 export interface EnhancedLogger extends BaseLogger {
+  // Override child to return EnhancedLogger instead of BaseLogger
+  child(context: Record<string, any>): EnhancedLogger;
+  
+  // Additional trace/context methods
   withTrace(traceId?: string, spanId?: string): EnhancedLogger;
   withTenant(tenantId: string): EnhancedLogger;
   withUser(userId: string): EnhancedLogger;
@@ -49,8 +52,10 @@ export class TelemetryLogger implements EnhancedLogger {
 
   child(context: Record<string, any>): EnhancedLogger {
     const childLogger = new TelemetryLogger();
-    childLogger.baseLogger = this.baseLogger.child(context);
-    childLogger.extraContext = { ...this.extraContext, ...context };
+    // Create new base logger with combined context
+    const combinedContext = { ...this.extraContext, ...context };
+    childLogger.baseLogger = createBaseLogger(combinedContext);
+    childLogger.extraContext = combinedContext;
     return childLogger;
   }
 
@@ -98,8 +103,21 @@ export class TelemetryLogger implements EnhancedLogger {
     // Sanitize sensitive data
     const sanitizedMeta = sanitizeLogData(fullMeta);
 
-    // Log using base logger
-    this.baseLogger[level](message, sanitizedMeta);
+    // Log using base logger with explicit method calling
+    switch (level) {
+      case 'debug':
+        this.baseLogger.debug(message, sanitizedMeta);
+        break;
+      case 'info':
+        this.baseLogger.info(message, sanitizedMeta);
+        break;
+      case 'warn':
+        this.baseLogger.warn(message, sanitizedMeta);
+        break;
+      case 'error':
+        this.baseLogger.error(message, sanitizedMeta);
+        break;
+    }
 
     // Add to active span if available
     if (activeSpan && level === 'error') {

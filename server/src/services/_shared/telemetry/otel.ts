@@ -145,7 +145,7 @@ export async function initializeOpenTelemetry(): Promise<void> {
  * Get trace sampler based on configuration
  */
 function getSampler(): any {
-  if (!NodeSDK) return null;
+  if (!NodeSDK) {return null;}
 
   try {
     const { TraceIdRatioBasedSampler, AlwaysOnSampler, AlwaysOffSampler, ParentBasedSampler } = 

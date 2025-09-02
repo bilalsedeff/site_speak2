@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000, // 5 minutes
-      cacheTime: 10 * 60 * 1000, // 10 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes (renamed from cacheTime in v4)
       retry: (failureCount, error: any) => {
         // Don't retry on 4xx errors
         if (error?.status >= 400 && error?.status < 500) {
@@ -34,7 +34,7 @@ const queryClient = new QueryClient({
 
 // Enable React Query DevTools in development
 if (import.meta.env.DEV) {
-  import('@tanstack/react-query-devtools').then(({ ReactQueryDevtools }) => {
+  import('@tanstack/react-query-devtools').then(() => {
     // DevTools will be added dynamically
   })
 }

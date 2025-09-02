@@ -246,7 +246,7 @@ export class LanguageDetectionService {
    */
   private detectByCommonWords(text: string): { language: string; confidence: number } | null {
     const words = text.split(/\s+/).filter(word => word.length > 1);
-    if (words.length === 0) return null;
+    if (words.length === 0) {return null;}
 
     const scores: Record<string, number> = {};
 
@@ -332,7 +332,7 @@ export class LanguageDetectionService {
    * Normalize language tag to BCP-47 format
    */
   normalizeTag(tag: string): string {
-    if (!tag) return this.config.fallbackLocale;
+    if (!tag) {return this.config.fallbackLocale;}
 
     // Common mappings
     const mappings: Record<string, string> = {

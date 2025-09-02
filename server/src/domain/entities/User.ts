@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { UserRole } from '../../../shared/types';
+import type { UserRole } from '@shared/types';
 
 /**
  * User domain entity
@@ -8,7 +8,7 @@ export class User {
   constructor(
     public readonly id: string,
     public readonly email: string,
-    public name: string,
+    public readonly name: string,
     public readonly passwordHash: string,
     public readonly role: UserRole,
     public readonly tenantId: string,
@@ -138,6 +138,9 @@ export class User {
     };
 
     const userPermissions = rolePermissions[this.role];
+    if (!userPermissions) {
+      return false;
+    }
     return userPermissions.includes('*') || userPermissions.includes(permission);
   }
 
@@ -145,14 +148,19 @@ export class User {
    * Get display name
    */
   getDisplayName(): string {
-    return this.name || this.email.split('@')[0];
+    // name is required in constructor, safe to use non-null assertion
+    const trimmedName = this.name!.trim();
+    if (trimmedName.length > 0) {
+      return trimmedName;
+    }
+    return this.email.split('@')[0] || 'User';
   }
 
   /**
    * Convert to public representation
    */
   toPublic(): PublicUser {
-    return {
+    const publicUser: PublicUser = {
       id: this.id,
       email: this.email,
       name: this.name,
@@ -161,9 +169,14 @@ export class User {
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
       emailVerified: this.emailVerified,
-      lastLoginAt: this.lastLoginAt,
       preferences: this.preferences,
     };
+
+    if (this.lastLoginAt) {
+      publicUser.lastLoginAt = this.lastLoginAt;
+    }
+
+    return publicUser;
   }
 }
 

@@ -14,23 +14,31 @@ export {
   checkDatabaseHealth,
   withTransaction,
   dbUtils,
-} from '../../../infrastructure/database/index.js';
+} from '../../../infrastructure/database';
 
 // Re-export all schema definitions
-export * from '../../../infrastructure/database/schema/index.js';
+export * from '../../../infrastructure/database/schema';
 
 // Re-export pgvector client
-export { PgVectorClient } from '../../../modules/ai/infrastructure/vector-store/PgVectorClient.js';
+export { PgVectorClient } from '../../../modules/ai/infrastructure/vector-store/PgVectorClient';
 export type { 
   NNQuery, 
   Hit, 
   ChunkInsert, 
   SemanticSearchRequest 
-} from '../../../modules/ai/infrastructure/vector-store/PgVectorClient.js';
+} from '../../../modules/ai/infrastructure/vector-store/PgVectorClient';
 
 /**
  * Database service factory for dependency injection
  */
+import { 
+  db, 
+  client, 
+  dbUtils, 
+  checkDatabaseHealth, 
+  withTransaction 
+} from '../../../infrastructure/database';
+
 export const createDatabaseService = () => ({
   db,
   client,

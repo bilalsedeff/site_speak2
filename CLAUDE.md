@@ -213,3 +213,86 @@ Architecture: Hexagonal + 12-Factor; web (HTTP) and workers (crawl/index) are di
 Agent runtime: LangGraph (JS/TS) for stateful agent graphs + OpenAI function calling for tool execution; SK planners are optional references, not the main path.
 langchain-ai.github.io
 platform.openai.com
+
+MANDATORY: Before any task, thoroughly explore and understand the existing codebase
+
+MANDATORY: Search and read relevant documentation in docs/ directory
+
+Use file tree exploration, code search, and dependency analysis
+
+Understand the current architecture, patterns, and conventions
+
+Identify related existing functionality before making changes
+
+Rule #2: Keep Files Small and Focused
+
+Maximum 200-300 lines per file (excluding comments)
+
+Each file should have a single, clear responsibility
+
+If a file grows beyond this limit, refactor into smaller modules
+
+Prefer many small, focused files over few large ones
+
+Rule #3: Modular Architecture
+
+Split functionality into reusable modules whenever possible
+
+Create utility functions in dedicated utility files
+
+Use consistent module patterns and exports
+
+Avoid code duplication - extract common logic into shared modules
+
+Follow existing project structure and naming conventions
+
+Rule #4: No Major Changes Without Approval
+
+STOP: Before implementing any significant feature or architectural change, ask for approval
+
+Define "major" as:
+
+Changes affecting multiple files (>3 files)
+
+New dependencies or major dependency updates
+
+API changes or new extension commands
+
+Changes to core functionality or workflows
+
+Performance-critical modifications
+
+Rule #5: Always Update Documentation for Drastic Changes
+
+MANDATORY: Update relevant documentation in docs/ when making drastic changes to features
+
+Document new APIs, changed behavior, or modified workflows
+
+Update usage examples and code samples
+
+Keep documentation in sync with code changes
+
+Present a brief plan and get confirmation before proceeding
+Development Workflow
+
+Phase 1: Discovery & Analysis
+
+Codebase Exploration
+
+Map out the project structure
+
+Identify key entry points and main modules
+
+Understand the extension's commands, providers, and services
+
+Review package.json for dependencies and scripts
+
+Documentation Review
+
+Identify which files/modules will be affected
+
+Check for existing tests related to the change area
+
+Look for similar existing functionality
+
+Assess potential breaking changes

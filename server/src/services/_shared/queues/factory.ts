@@ -5,7 +5,7 @@
  * and proper Redis connection management.
  */
 
-import { Queue, Worker, QueueScheduler, WorkerOptions, QueueOptions, Job } from 'bullmq';
+import { Queue, Worker, WorkerOptions, QueueOptions, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { cfg } from '../config/index.js';
 import { logger } from '../telemetry/logger.js';
@@ -20,9 +20,7 @@ function createRedisConnection(): Redis {
     connectTimeout: cfg.REDIS_CONNECT_TIMEOUT,
     lazyConnect: cfg.REDIS_LAZY_CONNECT,
     maxRetriesPerRequest: cfg.REDIS_MAX_RETRIES_PER_REQUEST,
-    retryDelayOnFailover: 100,
     enableReadyCheck: false,
-    maxRetriesPerRequest: null,
   });
 }
 
@@ -40,7 +38,6 @@ const baseQueueOptions: Partial<QueueOptions> = {
     removeOnComplete: 100, // Keep last 100 completed jobs
     removeOnFail: 50,      // Keep last 50 failed jobs
     delay: cfg.QUEUE_DEFAULT_DELAY,
-    jobId: undefined, // Auto-generate unless specified
   },
 };
 
@@ -98,9 +95,10 @@ export function makeQueue(
   name: string,
   options: Partial<QueueOptions> = {}
 ): Queue {
-  const mergedOptions = {
+  const mergedOptions: QueueOptions = {
     ...baseQueueOptions,
     ...options,
+    connection: options.connection || createRedisConnection(),
   };
 
   const queue = new Queue(name, mergedOptions);
@@ -243,29 +241,14 @@ export function makeWorker<T = any, R = any>(
   return worker;
 }
 
-/**
- * Create a QueueScheduler for delayed/cron jobs
- */
-export function makeScheduler(
-  name: string,
-  options: { connection?: Redis } = {}
-): QueueScheduler {
-  const connection = options.connection || createRedisConnection();
-  
-  const scheduler = new QueueScheduler(name, { connection });
-
-  scheduler.on('error', (error: Error) => {
-    logger.error(`Scheduler ${name} error:`, error);
-  });
-
-  return scheduler;
-}
+// QueueScheduler is deprecated in BullMQ v4+
+// Use delayed jobs and cron patterns directly in queues instead
 
 /**
  * Graceful shutdown helper for all BullMQ instances
  */
 export async function shutdownQueues(
-  instances: Array<Queue | Worker | QueueScheduler>
+  instances: Array<Queue | Worker>
 ): Promise<void> {
   logger.info('Shutting down BullMQ instances...');
 
@@ -274,8 +257,6 @@ export async function shutdownQueues(
       if (instance instanceof Worker) {
         await instance.close();
       } else if (instance instanceof Queue) {
-        await instance.close();
-      } else if (instance instanceof QueueScheduler) {
         await instance.close();
       }
     } catch (error) {

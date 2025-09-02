@@ -62,14 +62,14 @@ GET    /api/templates          # List templates
 
 ## AI Module (`/ai`)
 
-**Purpose**: Artificial intelligence services including knowledge base, conversation management, and tool calling
+**Purpose**: Artificial intelligence services including knowledge base, conversation management, and comprehensive tool calling system
 
 **Submodules:**
 
 - `/ingestion` - Content crawling and knowledge base creation
-- `/retrieval` - Vector search and content retrieval
+- `/retrieval` - Vector search and content retrieval  
 - `/orchestrator` - AI agent orchestration with LangGraph
-- `/tools` - Tool calling and action execution
+- `/tools` - **NEW** ✨ Universal tool registry with OpenAI function calling
 - `/actions` - Site action manifest generation
 
 **Key Features:**
@@ -77,17 +77,28 @@ GET    /api/templates          # List templates
 - Automated website crawling and indexing
 - Vector embeddings with pgvector
 - Conversational AI with OpenAI GPT-4o
-- Tool calling and function execution
+- **Universal tool system** with 6 categories (navigation, search, forms, commerce, booking, siteops)
+- **OpenAI function calling** compatibility with JSON Schema 2020-12
 - Intent classification and entity extraction
 - Knowledge base maintenance and optimization
+- **Performance-optimized** tools with latency budgets and caching
 
 **Domain Entities:**
 
 - `KnowledgeBase` - Site-specific knowledge repository
 - `KnowledgeChunk` - Indexed content pieces with embeddings
 - `Conversation` - AI conversation sessions
-- `Tool` - Callable functions and actions
+- `AITool` - **NEW** ✨ Callable functions with schema validation and metrics
 - `Intent` - Classified user intentions
+
+**Tool Categories Implemented:**
+
+- 🧭 **Navigation** (4 tools) - goto, highlight, scrollTo, openExternal
+- 🔍 **Search** (3 tools) - siteSearch, suggestNext, quickAnswer  
+- 📝 **Forms** (4 tools) - fillField, submitForm, contactForm, newsletterSignup
+- 🛒 **Commerce** (2 tools) - listVariants, addToCart, startCheckout
+- 📅 **Booking** (3 tools) - searchSlots, holdSlot, bookSlot
+- ⚙️ **SiteOps** (3 tools) - readSitemap, warmupCache, checkRobots
 
 ## Voice Module (`/voice`)
 

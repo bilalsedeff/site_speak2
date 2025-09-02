@@ -1,10 +1,10 @@
 import { createLogger } from '../../../shared/utils.js';
 import { LangGraphOrchestrator, SessionStateType } from '../domain/LangGraphOrchestrator';
 import { AIOrchestrationService } from './AIOrchestrationService';
-import { pgVectorClient } from '../infrastructure/vector-store/PgVectorClient';
-import { languageDetectionService } from '../infrastructure/rewriter/LanguageDetection';
 import { VoiceWebSocketHandler } from '../../voice/infrastructure/websocket/VoiceWebSocketHandler';
-import { ActionExecutorService } from './ActionExecutorService';
+import { ActionExecutorService } from './services/ActionExecutorService';
+import { LanguageDetectorService } from './services/LanguageDetectorService';
+import { KnowledgeBaseService } from './services/KnowledgeBaseService';
 import { SiteAction } from '../../../shared/types';
 
 const logger = createLogger({ service: 'universal-ai-assistant' });
@@ -58,9 +58,9 @@ export interface AssistantResponse {
   };
   actions?: Array<{
     name: string;
-    parameters: Record<string, any>;
+    parameters: Record<string, unknown>;
     executed: boolean;
-    result?: any;
+    result?: unknown;
     error?: string;
   }>;
 }
@@ -110,18 +110,38 @@ export class UniversalAIAssistantService {
 
     // Initialize orchestration service with dependencies
     this.orchestrationService = new AIOrchestrationService({
-      kbService: {
-        semanticSearch: pgVectorClient.semanticSearch.bind(pgVectorClient),
-        getStats: pgVectorClient.getStats.bind(pgVectorClient),
-      },
+      kbService: new KnowledgeBaseService(),
       websocketService: this.voiceHandler,
       ttsService: null, // TODO: Implement TTS service
     });
 
+    // Initialize AI tools system
+    this.initializeAITools();
+
     logger.info('Universal AI Assistant Service initialized', {
       config: this.config,
       hasVoiceHandler: !!this.voiceHandler,
+      toolsEnabled: true,
     });
+  }
+
+  /**
+   * Initialize AI Tools system
+   */
+  private initializeAITools(): void {
+    try {
+      // Dynamic import to avoid circular dependencies
+      import('../tools').then(toolsModule => {
+        toolsModule.initializeAITools();
+        logger.info('AI Tools system initialized', {
+          stats: toolsModule.getAIToolsStats(),
+        });
+      }).catch(error => {
+        logger.warn('AI Tools initialization failed', { error });
+      });
+    } catch (error) {
+      logger.warn('AI Tools not available', { error });
+    }
   }
 
   /**
@@ -144,7 +164,8 @@ export class UniversalAIAssistantService {
       this.validateRequest(request);
 
       // Detect language if not provided
-      const detectedLanguage = await this.detectLanguage(
+      const languageDetector = new LanguageDetectorService();
+      const detectedLanguage = await languageDetector.detect(
         request.input,
         request.context?.browserLanguage
       );
@@ -196,7 +217,7 @@ export class UniversalAIAssistantService {
    */
   async *streamConversation(request: AssistantRequest): AsyncGenerator<{
     type: 'progress' | 'partial' | 'final' | 'error';
-    data: any;
+    data: unknown;
     sessionId: string;
   }> {
     const startTime = Date.now();
@@ -221,7 +242,8 @@ export class UniversalAIAssistantService {
         sessionId,
       };
 
-      const detectedLanguage = await this.detectLanguage(
+      const languageDetector = new LanguageDetectorService();
+      const detectedLanguage = await languageDetector.detect(
         request.input,
         request.context?.browserLanguage
       );
@@ -242,7 +264,7 @@ export class UniversalAIAssistantService {
         context: request.context,
       };
 
-      let finalResult: any = null;
+      let finalResult: unknown = null;
 
       for await (const chunk of this.orchestrationService.streamConversation(orchestrationRequest)) {
         yield {
@@ -338,12 +360,12 @@ export class UniversalAIAssistantService {
     siteId: string;
     tenantId: string;
     actionName: string;
-    parameters: Record<string, any>;
+    parameters: Record<string, unknown>;
     sessionId?: string;
     userId?: string;
   }): Promise<{
     success: boolean;
-    result: any;
+    result: unknown;
     executionTime: number;
     error?: string;
   }> {
@@ -376,7 +398,7 @@ export class UniversalAIAssistantService {
   /**
    * Get session history
    */
-  async getSessionHistory(sessionId: string): Promise<any> {
+  async getSessionHistory(sessionId: string): Promise<unknown> {
     return this.orchestrationService.getSessionHistory(sessionId);
   }
 
@@ -384,9 +406,9 @@ export class UniversalAIAssistantService {
    * Get service metrics
    */
   getMetrics(): typeof this.metrics & {
-    orchestrationStats: any;
-    voiceStats?: any;
-    kbStats?: any;
+    orchestrationStats: unknown;
+    voiceStats?: unknown;
+    kbStats?: unknown;
   } {
     const orchestrationStats = this.orchestrationService.getStats();
     const voiceStats = this.voiceHandler?.getMetrics();
@@ -420,47 +442,56 @@ export class UniversalAIAssistantService {
     }
   }
 
-  /**
-   * Detect language from input
-   */
-  private async detectLanguage(input: string, browserLanguage?: string): Promise<string> {
-    try {
-      return await languageDetectionService.detect(input, browserLanguage);
-    } catch (error) {
-      logger.warn('Language detection failed, using default', { 
-        error,
-        defaultLocale: this.config.defaultLocale 
-      });
-      return this.config.defaultLocale;
-    }
-  }
 
   /**
    * Build final response
    */
   private async buildResponse(
     request: AssistantRequest,
-    result: any,
+    result: unknown,
     startTime: number
   ): Promise<AssistantResponse> {
     const responseTime = Date.now() - startTime;
+    
+    // Type guard for the result object
+    const resultObj = result as {
+      sessionId?: string;
+      response?: {
+        text?: string;
+        audioUrl?: string;
+        citations?: Array<{ url: string; title: string; snippet: string }>;
+        uiHints?: Record<string, unknown>;
+        metadata?: {
+          tokensUsed?: number;
+          language?: string;
+          intent?: string;
+        };
+      };
+      actions?: Array<{
+        name: string;
+        parameters: Record<string, unknown>;
+        executed: boolean;
+        result?: unknown;
+        error?: string;
+      }>;
+    };
 
     return {
-      sessionId: result.sessionId || this.generateSessionId(),
+      sessionId: resultObj.sessionId || this.generateSessionId(),
       response: {
-        text: result.response?.text || 'I processed your request successfully.',
-        audioUrl: result.response?.audioUrl,
-        citations: result.response?.citations || [],
-        uiHints: result.response?.uiHints || {},
+        text: resultObj.response?.text || 'I processed your request successfully.',
+        audioUrl: resultObj.response?.audioUrl,
+        citations: resultObj.response?.citations || [],
+        uiHints: resultObj.response?.uiHints || {},
         metadata: {
           responseTime,
-          tokensUsed: result.response?.metadata?.tokensUsed || 0,
-          actionsTaken: result.actions?.length || 0,
-          language: result.response?.metadata?.language || this.config.defaultLocale,
-          intent: result.response?.metadata?.intent,
+          tokensUsed: resultObj.response?.metadata?.tokensUsed || 0,
+          actionsTaken: resultObj.actions?.length || 0,
+          language: resultObj.response?.metadata?.language || this.config.defaultLocale,
+          intent: resultObj.response?.metadata?.intent,
         },
       },
-      actions: result.actions,
+      actions: resultObj.actions,
     };
   }
 
@@ -469,7 +500,7 @@ export class UniversalAIAssistantService {
    */
   private buildErrorResponse(
     request: AssistantRequest,
-    error: any,
+    error: unknown,
     startTime: number
   ): AssistantResponse {
     const responseTime = Date.now() - startTime;
@@ -493,7 +524,7 @@ export class UniversalAIAssistantService {
   /**
    * Update service metrics
    */
-  private updateMetrics(success: boolean, responseTime: number, result?: any): void {
+  private updateMetrics(success: boolean, responseTime: number, result?: unknown): void {
     if (success) {
       this.metrics.successfulRequests++;
     } else {
@@ -506,8 +537,13 @@ export class UniversalAIAssistantService {
       (this.metrics.averageResponseTime * (totalProcessedRequests - 1) + responseTime) / totalProcessedRequests;
 
     if (result) {
-      this.metrics.totalTokensUsed += result.response?.metadata?.tokensUsed || 0;
-      this.metrics.totalActionsExecuted += result.actions?.length || 0;
+      const resultObj = result as {
+        response?: { metadata?: { tokensUsed?: number } };
+        actions?: unknown[];
+      };
+      
+      this.metrics.totalTokensUsed += resultObj.response?.metadata?.tokensUsed || 0;
+      this.metrics.totalActionsExecuted += resultObj.actions?.length || 0;
     }
   }
 

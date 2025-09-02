@@ -126,9 +126,9 @@ export async function checkDatabaseHealth(): Promise<{
  * Transaction helper with automatic rollback
  */
 export async function withTransaction<T>(
-  callback: (tx: typeof db) => Promise<T>
+  callback: Parameters<typeof db.transaction>[0]
 ): Promise<T> {
-  return await db.transaction(callback);
+  return await db.transaction(callback) as Promise<T>;
 }
 
 /**
@@ -170,7 +170,7 @@ export const dbUtils = {
    */
   async raw<T = any>(query: string, params: any[] = []): Promise<T[]> {
     const result = await client.unsafe(query, params);
-    return result as T[];
+    return result as unknown as T[];
   },
 
   /**
@@ -181,7 +181,8 @@ export const dbUtils = {
     sizeBytes: number;
     indexCount: number;
   }> {
-    const [stats] = await client`
+    // Get table stats (not currently used but available for future metrics)
+    await client`
       SELECT 
         schemaname,
         tablename,
@@ -207,9 +208,9 @@ export const dbUtils = {
     `;
 
     return {
-      rowCount: parseInt(count.row_count),
-      sizeBytes: parseInt(size.size_bytes),
-      indexCount: indexes.length,
+      rowCount: parseInt(count?.['row_count'] || '0'),
+      sizeBytes: parseInt(size?.['size_bytes'] || '0'),
+      indexCount: indexes?.length || 0,
     };
   }
 };

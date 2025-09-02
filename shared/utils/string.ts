@@ -36,6 +36,9 @@ export function sanitizeFilename(filename: string): string {
 
 export function generateUsername(email: string): string {
   const localPart = email.split('@')[0];
+  if (!localPart) {
+    return slugify('user');
+  }
   return slugify(localPart);
 }
 
@@ -63,5 +66,5 @@ export function escapeHtml(text: string): string {
     "'": '&#039;'
   };
   
-  return text.replace(/[&<>"']/g, (m) => map[m]);
+  return text.replace(/[&<>"']/g, (m) => map[m] || m);
 }

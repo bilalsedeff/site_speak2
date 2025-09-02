@@ -1,35 +1,14 @@
 /**
  * Shared type definitions for SiteSpeak
+ * Re-exports all types from individual type modules and schemas
  */
 
-// Action System Types
-export interface SiteAction {
-  name: string;
-  type: 'navigation' | 'form' | 'button' | 'api' | 'custom';
-  selector: string;
-  description: string;
-  parameters: ActionParameter[];
-  confirmation: boolean;
-  sideEffecting: 'safe' | 'confirmation_required' | 'destructive';
-  riskLevel: 'low' | 'medium' | 'high';
-  category: 'read' | 'write' | 'delete' | 'payment' | 'communication';
-  metadata?: {
-    estimatedTime?: number;
-    requiresAuth?: boolean;
-    rateLimit?: { requests: number; window: number };
-  };
-}
+// Export all types from each module
+export * from './common.types';
+export * from './user.types';
+export * from './site.types';
+export * from './ai.types';
+export * from './voice.types';
 
-export interface ActionParameter {
-  name: string;
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
-  required: boolean;
-  description: string;
-  validation?: {
-    min?: number;
-    max?: number;
-    pattern?: string;
-    enum?: string[];
-  };
-  defaultValue?: any;
-}
+// Export schemas separately to avoid naming conflicts
+export * as schemas from '../schemas';

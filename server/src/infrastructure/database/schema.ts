@@ -16,8 +16,6 @@ import {
   boolean,
   json,
   index,
-  foreignKey,
-  primaryKey,
   unique
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';

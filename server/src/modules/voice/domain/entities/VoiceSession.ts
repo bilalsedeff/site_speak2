@@ -159,7 +159,7 @@ export class VoiceSession {
    * Get session duration in minutes
    */
   getDuration(): number | null {
-    if (!this.endedAt) return null;
+    if (!this.endedAt) {return null;}
     return Math.floor((this.endedAt.getTime() - this.createdAt.getTime()) / (1000 * 60));
   }
 

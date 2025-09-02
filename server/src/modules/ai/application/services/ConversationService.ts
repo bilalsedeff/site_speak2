@@ -1,16 +1,23 @@
 import OpenAI from 'openai';
-import { z } from 'zod';
 import { createLogger } from '@shared/utils';
 import { config } from '../../../../infrastructure/config';
 import type { 
-  Conversation, 
   ConversationMessage, 
   ToolCall,
-  CreateConversationInput,
-  AddMessageInput,
 } from '../../domain/entities/Conversation';
 
 const logger = createLogger({ service: 'conversation' });
+
+interface OpenAIToolCall {
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+}
+
+function hasValidToolFunction(toolCall: any): toolCall is OpenAIToolCall {
+  return toolCall && toolCall.function && (toolCall.function.name || toolCall.function.arguments);
+}
 
 export interface ChatCompletionRequest {
   conversationId: string;
@@ -111,14 +118,17 @@ export class ConversationService {
       // Extract tool calls if present
       let toolCalls: ToolCall[] | undefined;
       if (choice.message.tool_calls) {
-        toolCalls = choice.message.tool_calls.map(tc => ({
-          id: tc.id,
-          type: 'function' as const,
-          function: {
-            name: tc.function.name,
-            arguments: tc.function.arguments,
-          },
-        }));
+        toolCalls = choice.message.tool_calls.map(tc => {
+          const toolCall = tc as unknown as OpenAIToolCall;
+          return {
+            id: tc.id,
+            type: 'function' as const,
+            function: {
+              name: hasValidToolFunction(toolCall) ? toolCall.function?.name || '' : '',
+              arguments: hasValidToolFunction(toolCall) ? toolCall.function?.arguments || '{}' : '{}',
+            },
+          };
+        });
       }
 
       const responseMessage = choice.message.content || '';
@@ -133,7 +143,7 @@ export class ConversationService {
 
       return {
         message: responseMessage,
-        toolCalls,
+        toolCalls: toolCalls || [],
         usage: {
           promptTokens: completion.usage?.prompt_tokens || 0,
           completionTokens: completion.usage?.completion_tokens || 0,
@@ -193,7 +203,7 @@ export class ConversationService {
 
       for await (const chunk of stream) {
         const choice = chunk.choices[0];
-        if (!choice) continue;
+        if (!choice) {continue;}
 
         const delta = choice.delta;
 
@@ -217,10 +227,10 @@ export class ConversationService {
                   },
                 };
               } else {
-                if (toolCall.function?.name) {
+                if (toolCall.function?.name && accumulatedToolCalls[toolCall.index]) {
                   accumulatedToolCalls[toolCall.index].function.name += toolCall.function.name;
                 }
-                if (toolCall.function?.arguments) {
+                if (toolCall.function?.arguments && accumulatedToolCalls[toolCall.index]) {
                   accumulatedToolCalls[toolCall.index].function.arguments += toolCall.function.arguments;
                 }
               }
@@ -238,8 +248,8 @@ export class ConversationService {
           });
 
           yield {
-            content: undefined,
-            toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+            content: accumulatedContent.length > 0 ? accumulatedContent : undefined,
+            toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : [],
             done: true,
           };
           break;
