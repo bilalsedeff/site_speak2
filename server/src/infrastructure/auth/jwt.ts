@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
 import { config } from '../config';
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../shared/utils.js';
 
 const logger = createLogger({ service: 'jwt' });
 
@@ -60,11 +60,13 @@ export class JWTService {
         aud: options?.audience || this.defaultAudience,
       };
 
-      return jwt.sign(tokenPayload, this.accessTokenSecret, {
-        expiresIn: (options?.expiresIn || config.JWT_ACCESS_EXPIRES_IN) as string | number,
+      const expiresIn = options?.expiresIn || config.JWT_ACCESS_EXPIRES_IN;
+      const signOptions: jwt.SignOptions = {
+        expiresIn: expiresIn as string | number,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
-      });
+      };
+      return jwt.sign(tokenPayload, this.accessTokenSecret, signOptions);
     } catch (error) {
       logger.error('Failed to generate access token', { error, userId: payload.userId });
       throw new Error('Token generation failed');
@@ -82,11 +84,13 @@ export class JWTService {
         aud: options?.audience || this.defaultAudience,
       };
 
-      return jwt.sign(tokenPayload, this.refreshTokenSecret, {
-        expiresIn: (options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN) as string | number,
+      const expiresIn = options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN;
+      const signOptions: jwt.SignOptions = {
+        expiresIn: expiresIn as string | number,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
-      });
+      };
+      return jwt.sign(tokenPayload, this.refreshTokenSecret, signOptions);
     } catch (error) {
       logger.error('Failed to generate refresh token', { error, userId: payload.userId });
       throw new Error('Token generation failed');
@@ -228,7 +232,7 @@ export class JWTService {
     if (!authHeader) {return null;}
     
     const match = authHeader.match(/^Bearer\s+(.+)$/);
-    return match ? match[1] : null;
+    return match ? (match[1] ?? null) : null;
   }
 }
 

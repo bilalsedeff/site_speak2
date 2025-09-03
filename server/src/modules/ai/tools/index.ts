@@ -5,7 +5,7 @@
  * Provides a clean interface for tool registration and execution.
  */
 
-import { createLogger } from '../../../../../shared/utils/index.js';
+import { createLogger } from '../../../../../shared/utils.js';
 import { aiToolsRegistry, getOpenAIToolsForSite, executeTool, getToolMetrics } from './registry';
 import { navigationTools } from './navigation';
 import { searchTools } from './search';

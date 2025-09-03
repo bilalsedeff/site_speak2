@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../../shared/utils.js';
 import { config } from '../../../../infrastructure/config';
 import type { 
   ConversationMessage, 

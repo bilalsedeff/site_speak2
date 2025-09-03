@@ -483,3 +483,6 @@ export const rateLimiters = {
 
 // Types already exported as interfaces above
 export { rateLimitService as rateLimit };
+
+// Export aliases for backward compatibility
+export const rateLimitMiddleware = createRateLimiter;

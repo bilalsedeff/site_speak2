@@ -5,6 +5,10 @@ import { LanguageDetectorService, languageDetectorService } from './LanguageDete
 import { KnowledgeBaseService } from './services/KnowledgeBaseService';
 import type { SiteAction, ActionParameter } from '../../../shared/types';
 import { v4 as uuidv4 } from 'uuid';
+import { createUniversalAgentGraph, UniversalAgentGraph } from '../orchestrator/graphs/UniversalAgent.graph';
+import { FunctionCallingService } from '../orchestrator/executors/FunctionCallingService';
+import { conversationFlowManager } from '../orchestrator/planners/ConversationFlowManager';
+import { hybridSearchService } from '../infrastructure/retrieval/HybridSearchService';
 
 const logger = createLogger({ service: 'ai-orchestration' });
 
@@ -65,6 +69,7 @@ export interface ConversationResponse {
  */
 export class AIOrchestrationService {
   private orchestrators: Map<string, LangGraphOrchestrator> = new Map();
+  private universalAgentGraphs: Map<string, UniversalAgentGraph> = new Map();
   private activeSessions: Map<string, { siteId: string; lastActivity: Date }> = new Map();
 
   constructor(
@@ -97,6 +102,38 @@ export class AIOrchestrationService {
   }
 
   /**
+   * Detect if the input requires complex multi-step processing
+   */
+  private isComplexTask(input: string): boolean {
+    const complexKeywords = [
+      'find and add', 'search and book', 'find then', 'look for and',
+      'by the sea', 'near me', 'this summer', 'next month', 'tonight',
+      'concerts', 'tickets', 'events', 'booking', 'reservation',
+      'compare', 'filter by', 'sort by', 'show me events',
+      'cart', 'checkout', 'purchase', 'buy tickets'
+    ];
+    
+    const lowerInput = input.toLowerCase();
+    const complexIndicators = complexKeywords.filter(keyword => lowerInput.includes(keyword));
+    
+    // Complex if contains multiple steps or temporal/spatial/booking patterns
+    const hasMultipleSteps = lowerInput.includes(' and ') && (
+      lowerInput.includes('find') || lowerInput.includes('search') ||
+      lowerInput.includes('add') || lowerInput.includes('book')
+    );
+    
+    const hasTemporalSpatial = complexIndicators.some(indicator => 
+      ['by the sea', 'near me', 'this summer', 'next month', 'tonight'].includes(indicator)
+    );
+    
+    const hasBookingCommerce = complexIndicators.some(indicator => 
+      ['tickets', 'booking', 'cart', 'checkout', 'purchase', 'buy'].includes(indicator)
+    );
+
+    return hasMultipleSteps || hasTemporalSpatial || hasBookingCommerce || complexIndicators.length >= 2;
+  }
+
+  /**
    * Process a conversation input and return a complete response
    */
   async processConversation(request: ConversationRequest): Promise<ConversationResponse> {
@@ -111,33 +148,76 @@ export class AIOrchestrationService {
     });
 
     try {
-      // Get or create orchestrator for this site
-      const orchestrator = await this.getOrchestrator(request.siteId);
-      
       // Update session tracking
       this.activeSessions.set(sessionId, {
         siteId: request.siteId,
         lastActivity: new Date(),
       });
 
-      // Process through LangGraph
-      const result = await orchestrator.processConversation({
-        userInput: request.input,
+      // Determine if this is a complex task requiring Universal Agent
+      const isComplex = this.isComplexTask(request.input);
+      
+      logger.info('Task complexity determined', {
         sessionId,
-        siteId: request.siteId,
+        isComplex,
+        inputPreview: request.input.substring(0, 100)
       });
 
-      // Build response
-      const response = this.buildResponse(sessionId, result, startTime);
+      if (isComplex) {
+        // Use Universal Agent Graph for complex multi-step tasks
+        const universalAgent = await this.getUniversalAgentGraph(request.siteId);
+        const result = await universalAgent.processConversation({
+          userInput: request.input,
+          sessionId,
+          siteId: request.siteId,
+          tenantId: 'default-tenant', // TODO: Get from request context
+          userId: request.userId || null,
+          conversationContext: {
+            sessionId,
+            siteId: request.siteId,
+            tenantId: 'default-tenant',
+            conversationHistory: [],
+            speculativeActions: [],
+            userPreferences: {
+              language: request.browserLanguage || 'en-US',
+            },
+            conversationId: sessionId
+          }
+        });
 
-      logger.info('Conversation processed successfully', {
-        sessionId,
-        responseTime: response.response.metadata.responseTime,
-        actionCount: result.toolResults?.length || 0,
-        hasAudio: !!response.response.audioUrl
-      });
+        // Convert Universal Agent result to standard format
+        const response = this.buildUniversalAgentResponse(sessionId, result, startTime);
 
-      return response;
+        logger.info('Complex conversation processed successfully', {
+          sessionId,
+          responseTime: response.response.metadata.responseTime,
+          slotFrameIntent: result.slotFrame?.intent,
+          toolsExecuted: result.executedTools?.length || 0
+        });
+
+        return response;
+
+      } else {
+        // Use standard LangGraph orchestrator for simple tasks
+        const orchestrator = await this.getOrchestrator(request.siteId);
+        const result = await orchestrator.processConversation({
+          userInput: request.input,
+          sessionId,
+          siteId: request.siteId,
+        });
+
+        // Build standard response
+        const response = this.buildResponse(sessionId, result, startTime);
+
+        logger.info('Standard conversation processed successfully', {
+          sessionId,
+          responseTime: response.response.metadata.responseTime,
+          actionCount: result.toolResults?.length || 0,
+          hasAudio: !!response.response.audioUrl
+        });
+
+        return response;
+      }
     } catch (error) {
       logger.error('Conversation processing failed', {
         sessionId,
@@ -390,7 +470,7 @@ export class AIOrchestrationService {
       actionPlan: state.actionPlan,
       kbResults: state.kbResults?.map(result => ({
         url: result.url,
-        title: result.metadata.title || '',
+        title: result.metadata['title'] || '',
         snippet: result.content.substring(0, 200) + '...',
       })),
     };
@@ -430,6 +510,96 @@ export class AIOrchestrationService {
       activeOrchestrators: this.orchestrators.size,
       activeSessions: this.activeSessions.size,
       totalActionsExecuted: actionExecutorService.getExecutionHistory().length,
+    };
+  }
+
+  /**
+   * Get or create Universal Agent Graph for complex tasks
+   */
+  private async getUniversalAgentGraph(siteId: string): Promise<UniversalAgentGraph> {
+    if (!this.universalAgentGraphs.has(siteId)) {
+      // Create function calling service instance
+      const functionCallingService = new FunctionCallingService({
+        actionDispatchService: actionExecutorService,
+        retryConfig: { maxRetries: 3, baseDelay: 1000 }
+      });
+
+      // Create Universal Agent Graph with all dependencies
+      const universalAgentGraph = createUniversalAgentGraph(siteId, {
+        conversationFlowManager,
+        functionCallingService,
+        hybridSearchService,
+        availableActions: [] // TODO: Load from site action registry
+      });
+
+      this.universalAgentGraphs.set(siteId, universalAgentGraph);
+      
+      logger.info('Created Universal Agent Graph for site', { siteId });
+    }
+
+    return this.universalAgentGraphs.get(siteId)!;
+  }
+
+  /**
+   * Build response from Universal Agent result
+   */
+  private buildUniversalAgentResponse(
+    sessionId: string, 
+    result: any, 
+    startTime: number
+  ): ConversationResponse {
+    const responseTime = Date.now() - startTime;
+    
+    // Extract response text from Universal Agent result
+    const responseText = result.finalResponse || 
+      result.clarificationQuestion || 
+      "I'm working on your request...";
+
+    // Extract citations from search results
+    const citations = (result.searchResults || []).slice(0, 3).map((item: any) => ({
+      url: item.url,
+      title: item.title || item.metadata?.title || 'Untitled',
+      snippet: item.relevantSnippet || item.content?.substring(0, 200) + '...' || ''
+    }));
+
+    // Build UI hints from slot frame and tool results
+    const uiHints: any = {
+      highlightElements: [],
+      scrollToElement: undefined,
+      showModal: false,
+      confirmationRequired: result.needsConfirmation || false
+    };
+
+    // Add navigation hints from executed tools
+    if (result.executedTools) {
+      const navTool = result.executedTools.find((tool: any) => 
+        tool.toolName.includes('navigate') || tool.toolName.includes('scroll')
+      );
+      if (navTool) {
+        uiHints.scrollToElement = navTool.parameters?.selector;
+      }
+    }
+
+    return {
+      sessionId,
+      response: {
+        text: responseText,
+        citations,
+        uiHints,
+        metadata: {
+          responseTime,
+          tokensUsed: result.performanceMetrics?.tokensUsed || 0,
+          actionsTaken: result.executedTools?.length || 0,
+          language: result.conversationContext?.userPreferences?.language || 'en-US',
+          intent: result.slotFrame?.intent,
+        },
+      },
+      actions: result.executedTools?.map((tool: any) => ({
+        name: tool.toolName,
+        parameters: tool.parameters,
+        success: tool.success,
+        executionTime: tool.executionTime
+      })) || []
     };
   }
 }

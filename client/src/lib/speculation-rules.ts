@@ -2,6 +2,7 @@
  * Speculation Rules API implementation for instant navigations
  * Following Web Platform specification and performance best practices
  */
+import { useEffect } from 'react'
 
 interface SpeculationRule {
   source: 'list' | 'document'
@@ -210,7 +211,7 @@ export const speculationRules = new SpeculationRulesManager()
  * React hook for managing speculation rules
  */
 export function useSpeculationRules(currentPath: string) {
-  React.useEffect(() => {
+  useEffect(() => {
     speculationRules.autoConfigureRules(currentPath)
     
     return () => {

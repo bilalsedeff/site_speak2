@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { createLogger } from '../../../../shared/utils';
+import { createLogger } from '../../../../shared/utils.js';
 import { 
   RegistryToolDefinition,
   ToolContext,

@@ -15,19 +15,20 @@ export { sessionManager } from './session';
 
 // Placeholder auth middleware - implement when needed
 export function optionalAuth() {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (_req: Request, _res: Response, next: NextFunction) => {
     // Skip authentication for now
     next();
   };
 }
 
 export function authErrorHandler() {
-  return (error: Error, req: Request, res: Response, next: NextFunction) => {
+  return (error: Error, _req: Request, res: Response, next: NextFunction): void => {
     if (error.name === 'AuthenticationError') {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'Authentication required',
         code: 'UNAUTHORIZED',
       });
+      return;
     }
     next(error);
   };

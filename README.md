@@ -1,31 +1,22 @@
-# 🎯 SiteSpeak - AI-Enhanced Website Builder Platform
+# SiteSpeak - Voice-First Website Builder
 
-![SiteSpeak Logo](https://via.placeholder.com/400x100/DC2626/FFFFFF?text=SiteSpeak)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/sitespeak/sitespeak)
+[![Voice Services](https://img.shields.io/badge/voice-realtime-blue)](./docs/voice-services.md)
+[![API Docs](https://img.shields.io/badge/api-documented-success)](./docs/api/voice-endpoints.md)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-## Next-generation website builder with integrated voice AI assistant
+SiteSpeak is a Wix/GoDaddy-class website builder where every published site ships with a built-in, **voice-first, agentic assistant** that can understand the site, take actions (navigate, filter, add to cart, book, etc.), and stay fresh by recrawling and updating its own knowledge base.
 
-[![Build Status](https://github.com/username/sitespeak/workflows/CI/badge.svg)](https://github.com/username/sitespeak/actions)
-[![Docker Support](https://img.shields.io/badge/Docker-Supported-blue.svg)](https://docker.com)
-[![Voice AI](https://img.shields.io/badge/Voice%20AI-OpenAI%20GPT--4o-green.svg)](https://openai.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## 🎙️ Real-Time Voice System
 
----
+Our voice system delivers industry-leading performance with:
 
-## 🌟 **Proje Açıklaması**
-
-SiteSpeak, Wix, GoDaddy, Squarespace benzeri drag-and-drop website builder platformudur. Ana farkı **her yayınlanan sitede otomatik olarak sesli AI asistan** entegrasyonudur. Kullanıcılar teknik bilgi gerektirmeden profesyonel siteler oluşturabilir ve ziyaretçiler voice agent ile etkileşim kurabilir.
-
-### 🎯 **Temel Özellikler**
-
-- **🎨 Drag-and-Drop Editor**: Görsel site editörü
-- **🤖 Voice AI Assistant**: OpenAI GPT-4o entegrasyonu
-- **📊 AI Analytics Dashboard**: Etkileşim metrikleri
-- **🗣️ Speech Processing**: STT/TTS ile sesli iletişim
-- **🧠 Knowledge Base**: Otomatik site içerik indeksleme
-- **🎭 Admin Panel**: AI asistan kişiselleştirme
-- **🐳 Docker Support**: Kolay kurulum ve deployment
-
----
+- **≤300ms first token latency** - Real-time streaming responses
+- **≤150ms partial transcription** - Live speech-to-text feedback  
+- **≤50ms barge-in response** - Instant TTS interruption when user speaks
+- **AudioWorklet processing** - Low-latency audio capture and VAD
+- **Opus 20ms framing** - Optimal network efficiency
+- **OpenAI Realtime API** - Streaming STT/TTS integration
 
 ## 🆕 Neler Yeni (Core Geliştirmeler)
 

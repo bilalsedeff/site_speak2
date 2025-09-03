@@ -2,8 +2,8 @@ import { createLogger } from '../../../shared/utils.js';
 import { LangGraphOrchestrator, SessionStateType } from '../domain/LangGraphOrchestrator';
 import { AIOrchestrationService } from './AIOrchestrationService';
 import { VoiceWebSocketHandler } from '../../voice/infrastructure/websocket/VoiceWebSocketHandler';
-import { ActionExecutorService } from './services/ActionExecutorService';
-import { LanguageDetectorService } from './services/LanguageDetectorService';
+import { ActionExecutorService } from './ActionExecutorService';
+import { LanguageDetectorService } from './LanguageDetectorService';
 import { KnowledgeBaseService } from './services/KnowledgeBaseService';
 import { SiteAction } from '../../../shared/types';
 

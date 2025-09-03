@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import fs from 'fs/promises';
 import { ReadStream } from 'fs';
 import path from 'path';
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../../shared/utils.js';
 import { config } from '../../../../infrastructure/config';
 
 const logger = createLogger({ service: 'voice-processing' });

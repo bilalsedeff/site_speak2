@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../shared/utils.js';
 
 const logger = createLogger({ service: 'session' });
 

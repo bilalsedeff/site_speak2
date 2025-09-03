@@ -1,20 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'wouter'
 import {
-  BarChart3,
   TrendingUp,
   Users,
   Eye,
   Mic,
   MessageCircle,
-  Calendar,
   Download,
-  Filter,
-  RefreshCw,
-  Globe,
-  Clock,
-  Zap
+  RefreshCw
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
@@ -214,7 +208,7 @@ export function Analytics() {
               Top Pages
             </h3>
             <div className="space-y-3">
-              {ANALYTICS_DATA.topPages.map((page, index) => (
+              {ANALYTICS_DATA.topPages.map((page) => (
                 <div key={page.path} className="flex items-center justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="font-medium truncate max-heading-width">
@@ -321,7 +315,7 @@ interface MetricCardProps {
   title: string
   value: string
   change: number
-  icon: React.ComponentType<{ className?: string }>
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   color: 'blue' | 'green' | 'purple'
 }
 

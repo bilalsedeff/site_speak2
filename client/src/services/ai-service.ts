@@ -16,7 +16,7 @@ export interface AIRequest {
     }
   }
   sessionId?: string
-  language?: string
+  language: string
 }
 
 export interface AIResponse {
@@ -439,10 +439,18 @@ export class AIService {
     onVoiceResponse?: (response: string, audioUrl?: string) => void
     onVoiceError?: (error: Error) => void
   }): void {
-    this.onStreamingResponse = handlers.onStreamingResponse
-    this.onVoiceTranscript = handlers.onVoiceTranscript
-    this.onVoiceResponse = handlers.onVoiceResponse
-    this.onVoiceError = handlers.onVoiceError
+    if (handlers.onStreamingResponse !== undefined) {
+      this.onStreamingResponse = handlers.onStreamingResponse
+    }
+    if (handlers.onVoiceTranscript !== undefined) {
+      this.onVoiceTranscript = handlers.onVoiceTranscript
+    }
+    if (handlers.onVoiceResponse !== undefined) {
+      this.onVoiceResponse = handlers.onVoiceResponse
+    }
+    if (handlers.onVoiceError !== undefined) {
+      this.onVoiceError = handlers.onVoiceError
+    }
   }
 
   /**

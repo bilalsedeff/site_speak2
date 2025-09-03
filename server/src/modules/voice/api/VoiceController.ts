@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../shared/utils.js';
 import { voiceProcessingService } from '../application/services/VoiceProcessingService';
 
 const logger = createLogger({ service: 'voice-controller' });

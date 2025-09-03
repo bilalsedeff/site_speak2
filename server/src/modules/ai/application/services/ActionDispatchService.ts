@@ -3,6 +3,7 @@ import { ActionExecutorService, ActionExecutionRequest, ActionExecutionResult } 
 import { ActionManifestGenerator, SiteManifest } from './ActionManifestGenerator.js';
 import { WidgetActionBridge, BridgeConfig } from './WidgetActionBridge.js';
 import type { SiteAction } from '../../../../shared/types.js';
+import { analyticsHelpers } from '../../../../services/_shared/analytics/index.js';
 
 const logger = createLogger({ service: 'action-dispatch' });
 
@@ -216,6 +217,39 @@ export class ActionDispatchService {
         sideEffectsCount: executionResult.sideEffects.length
       });
 
+      // Track analytics for tool execution
+      try {
+        // Determine tool category from action name
+        let category = 'siteops'; // Default category
+        if (request.actionName.includes('navigation') || request.actionName.includes('goto')) {
+          category = 'navigation';
+        } else if (request.actionName.includes('search')) {
+          category = 'search';  
+        } else if (request.actionName.includes('form') || request.actionName.includes('field')) {
+          category = 'forms';
+        } else if (request.actionName.includes('commerce') || request.actionName.includes('cart')) {
+          category = 'commerce';
+        } else if (request.actionName.includes('booking') || request.actionName.includes('slot')) {
+          category = 'booking';
+        }
+
+        await analyticsHelpers.trackToolExecution(
+          request.tenantId,
+          request.siteId,
+          request.actionName,
+          category,
+          totalTime,
+          executionResult.success,
+          request.sessionId
+        );
+      } catch (error) {
+        logger.warn('Failed to track tool execution analytics', { 
+          error, 
+          actionName: request.actionName,
+          siteId: request.siteId 
+        });
+      }
+
       return {
         success: executionResult.success,
         result: executionResult.result,
@@ -236,6 +270,38 @@ export class ActionDispatchService {
         error: errorMessage,
         totalTime
       });
+
+      // Track analytics for failed tool execution
+      try {
+        let category = 'siteops'; // Default category
+        if (request.actionName.includes('navigation') || request.actionName.includes('goto')) {
+          category = 'navigation';
+        } else if (request.actionName.includes('search')) {
+          category = 'search';  
+        } else if (request.actionName.includes('form') || request.actionName.includes('field')) {
+          category = 'forms';
+        } else if (request.actionName.includes('commerce') || request.actionName.includes('cart')) {
+          category = 'commerce';
+        } else if (request.actionName.includes('booking') || request.actionName.includes('slot')) {
+          category = 'booking';
+        }
+
+        await analyticsHelpers.trackToolExecution(
+          request.tenantId,
+          request.siteId,
+          request.actionName,
+          category,
+          totalTime,
+          false, // success = false for errors
+          request.sessionId
+        );
+      } catch (analyticsError) {
+        logger.warn('Failed to track failed tool execution analytics', { 
+          analyticsError, 
+          actionName: request.actionName,
+          siteId: request.siteId 
+        });
+      }
 
       return {
         success: false,
@@ -577,10 +643,10 @@ export class ActionDispatchService {
 // Export singleton instance with default dependencies
 let defaultDispatchService: ActionDispatchService | undefined;
 
-export function getActionDispatchService(): ActionDispatchService {
+export async function getActionDispatchService(): Promise<ActionDispatchService> {
   if (!defaultDispatchService) {
     // Import here to avoid circular dependencies
-    const { actionExecutorService } = require('../ActionExecutorService.js');
+    const { actionExecutorService } = await import('../ActionExecutorService.js');
     const manifestGenerator = new ActionManifestGenerator();
     const widgetBridge = new WidgetActionBridge();
     

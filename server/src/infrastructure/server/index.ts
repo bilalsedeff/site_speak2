@@ -9,7 +9,7 @@ import crypto from 'crypto';
 
 import { config, getCorsOrigins } from '../config';
 import { initializeDatabase } from '../database';
-import { createLogger } from '../../shared/utils.js';
+import { createLogger } from '../../../../shared/utils/index.js';
 import { metricsService } from '../monitoring';
 import { authErrorHandler } from '../auth';
 
@@ -45,6 +45,12 @@ export class SiteSeakServer {
       logger.info('Initializing database...');
       await initializeDatabase();
       logger.info('Database initialized successfully');
+
+      // Initialize analytics service
+      logger.info('Initializing analytics service...');
+      const { initializeAnalytics } = await import('../../services/_shared/analytics/index.js');
+      await initializeAnalytics();
+      logger.info('Analytics service initialized successfully');
 
       // Setup middleware
       logger.info('Setting up middleware...');
@@ -174,38 +180,41 @@ export class SiteSeakServer {
 
   private async setupRoutes(): Promise<void> {
     // Health check and monitoring endpoints (before authentication)
-    this.setupHealthRoutes();
     const { monitoringRoutes } = await import('../monitoring');
     this.app.use('/', monitoringRoutes);
 
-    // Import and register all API routes
-    const { authRoutes } = await import('../../modules/auth/api/routes');
-    const { aiRoutes } = await import('../../modules/ai/api/routes');
-    const { voiceRoutes } = await import('../../modules/voice/api/routes');
-    const { siteContractRoutes } = await import('../../modules/sites/api/routes');
-
-    // Register API routes
-    this.app.use('/api/auth', authRoutes);
-    this.app.use('/api/ai', aiRoutes);
-    this.app.use('/api/voice', voiceRoutes);
-    this.app.use('/api/sites', siteContractRoutes);
-
-    // API v1 info endpoint
-    this.app.use('/api/v1', (req, res) => {
-      res.json({ 
-        message: 'SiteSpeak API v1',
-        version: '1.0.0',
-        timestamp: new Date().toISOString(),
-        endpoints: {
-          auth: '/api/auth',
-          ai: '/api/ai',
-          voice: '/api/voice',
-          sites: '/api/sites',
-          health: '/health',
-          metrics: '/metrics',
+    // Setup API Gateway with comprehensive middleware stack
+    logger.info('Setting up API Gateway...');
+    try {
+      const { setupAPIGatewayIntegration } = await import('../../services/api-gateway/integration');
+      
+      await setupAPIGatewayIntegration(this.app, {
+        enableAuth: true,
+        enableRateLimit: true,
+        enableCors: true,
+        enableLegacyRoutes: true, // Maintain backward compatibility
+        corsOrigins: getCorsOrigins(),
+        openAPIConfig: {
+          baseUrl: config.NODE_ENV === 'production' 
+            ? 'https://api.sitespeak.ai' 
+            : `http://localhost:${config.PORT}`,
+          title: 'SiteSpeak API Gateway',
+          description: 'Comprehensive API for SiteSpeak voice-first website builder with AI assistant capabilities',
+          version: process.env['npm_package_version'] || '1.0.0'
         },
+        healthChecks: {
+          includeDetailedHealth: true,
+          includeLegacyHealth: true
+        }
       });
-    });
+      
+      logger.info('API Gateway setup completed successfully');
+    } catch (error) {
+      logger.error('Failed to setup API Gateway', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      throw error;
+    }
 
     // Serve static files (for published sites)
     if (config.NODE_ENV === 'production') {
@@ -223,92 +232,6 @@ export class SiteSeakServer {
     });
   }
 
-  private setupHealthRoutes(): void {
-    // Basic health check - always returns 200
-    this.app.get('/health', (req: Request, res: Response) => {
-      res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        version: process.env['npm_package_version'] || '1.0.0',
-      });
-    });
-
-    // Kubernetes liveness probe - process is alive
-    this.app.get('/health/live', (req: Request, res: Response) => {
-      if (this.isShuttingDown) {
-        return res.status(503).json({
-          status: 'shutting-down',
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      res.json({
-        status: 'alive',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-      });
-    });
-
-    // Kubernetes readiness probe - ready to serve requests
-    this.app.get('/health/ready', async (req: Request, res: Response) => {
-      if (this.isShuttingDown) {
-        return res.status(503).json({
-          status: 'shutting-down',
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      try {
-        // Check critical dependencies
-        const checks = await this.performHealthChecks();
-        const allHealthy = Object.values(checks).every(check => check.healthy);
-
-        res.status(allHealthy ? 200 : 503).json({
-          status: allHealthy ? 'ready' : 'not-ready',
-          timestamp: new Date().toISOString(),
-          checks,
-        });
-      } catch (error) {
-        logger.error('Health check failed', { error });
-        res.status(503).json({
-          status: 'error',
-          timestamp: new Date().toISOString(),
-          error: 'Health check failed',
-        });
-      }
-    });
-  }
-
-  private async performHealthChecks(): Promise<Record<string, any>> {
-    const checks: Record<string, any> = {};
-
-    // Database health check
-    try {
-      const { checkDatabaseHealth } = await import('../database');
-      checks['database'] = await checkDatabaseHealth();
-    } catch (error) {
-      checks['database'] = {
-        healthy: false,
-        error: error instanceof Error ? error.message : 'Database check failed',
-      };
-    }
-
-    // Redis health check (when implemented)
-    // Redis health check (when implemented)
-    checks['redis'] = { healthy: true, note: 'Not implemented yet' };
-
-    // Memory check
-    const memUsage = process.memoryUsage();
-    checks['memory'] = {
-      healthy: memUsage.heapUsed < 1000 * 1024 * 1024, // 1GB limit
-      heapUsed: memUsage.heapUsed,
-      heapTotal: memUsage.heapTotal,
-      external: memUsage.external,
-      rss: memUsage.rss,
-    };
-
-    return checks;
-  }
 
   private async setupWebSocket(): Promise<void> {
     // Setup voice WebSocket handler
@@ -406,45 +329,84 @@ export class SiteSeakServer {
   private setupGracefulShutdown(): void {
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, starting graceful shutdown`);
+      
+      // CRITICAL: Set drain mode immediately so readiness probes return 503
+      // This removes the pod from load balancer service endpoints
       this.isShuttingDown = true;
+      metricsService.setDraining(true);
+      
+      logger.info('Drain mode enabled - readiness probes will return 503');
 
       try {
+        // Give a small delay for load balancer to receive 503 responses
+        // and stop sending new traffic to this instance
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
         // Cleanup AI assistant
         const aiAssistant = (this as any).aiAssistant;
         if (aiAssistant) {
+          logger.info('Cleaning up AI assistant...');
           await aiAssistant.cleanup();
         }
 
         // End all voice sessions gracefully
         const voiceHandler = (this as any).voiceHandler;
         if (voiceHandler) {
+          logger.info('Ending voice sessions...');
           await voiceHandler.endAllSessions();
         }
 
-        // Stop accepting new connections
+        // Stop accepting new connections but allow existing ones to finish
+        const gracefulTimeout = 30000; // 30 seconds for in-flight requests
+        
+        logger.info(`Stopping HTTP server with ${gracefulTimeout}ms grace period...`);
         this.httpServer.close(() => {
           logger.info('HTTP server closed');
         });
 
-        // Close WebSocket connections
+        // Close WebSocket connections gracefully
+        logger.info('Closing WebSocket connections...');
         this.io.close(() => {
           logger.info('WebSocket server closed');
         });
 
+        // Wait for in-flight requests to complete or timeout
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            logger.warn('Graceful shutdown timeout reached, forcing exit');
+            resolve(void 0);
+          }, gracefulTimeout);
+
+          // Clear timeout if server closes naturally
+          this.httpServer.on('close', () => {
+            clearTimeout(timeout);
+            resolve(void 0);
+          });
+        });
+
         // Close database connections
+        logger.info('Closing database connections...');
         const { closeDatabase } = await import('../database');
         await closeDatabase();
 
-        logger.info('Graceful shutdown completed');
+        // Cleanup metrics service
+        logger.info('Cleaning up metrics service...');
+        metricsService.cleanup();
+
+        logger.info('Graceful shutdown completed successfully');
         process.exit(0);
       } catch (error) {
-        logger.error('Error during shutdown', { error });
+        logger.error('Error during graceful shutdown', { error });
         process.exit(1);
       }
     };
 
+    // Handle termination signals
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
+    
+    // Handle uncaught exceptions during shutdown
+    process.on('SIGQUIT', () => shutdown('SIGQUIT'));
   }
 
   async start(): Promise<void> {

@@ -14,7 +14,7 @@ export default defineConfig({
   },
 
   server: {
-    port: parseInt(process.env.VITE_PORT || '3000'),
+    port: parseInt(process.env['VITE_PORT'] || '3000'),
     host: true,
     proxy: {
       '/api': {
@@ -50,8 +50,8 @@ export default defineConfig({
 
   define: {
     // Define environment variables
-    __DEV__: JSON.stringify(process.env.NODE_ENV === 'development'),
-    __VOICE_ENABLED__: JSON.stringify(process.env.VITE_VOICE_ENABLED !== 'false'),
+    __DEV__: JSON.stringify(process.env['NODE_ENV'] === 'development'),
+    __VOICE_ENABLED__: JSON.stringify(process.env['VITE_VOICE_ENABLED'] !== 'false'),
   },
 
   optimizeDeps: {

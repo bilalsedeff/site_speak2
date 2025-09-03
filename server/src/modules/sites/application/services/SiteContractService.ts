@@ -1,4 +1,4 @@
-import { createLogger } from '../../../../shared/utils';
+import { createLogger } from '../../../../shared/utils.js';
 import type { 
   Site,
 } from '../../../../shared/types';

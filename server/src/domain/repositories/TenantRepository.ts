@@ -107,7 +107,7 @@ export interface TenantRepository {
   /**
    * Get tenants approaching limits
    */
-  findApproachingLimits(threshold: number = 0.8): Promise<{
+  findApproachingLimits(threshold?: number): Promise<{
     tenant: Tenant;
     approaching: string[];
   }[]>;

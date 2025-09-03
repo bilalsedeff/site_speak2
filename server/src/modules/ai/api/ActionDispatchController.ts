@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { createLogger } from '../../../shared/utils.js';
-import { getActionDispatchService, ActionDispatchRequest, DispatchConfiguration } from '../application/services/ActionDispatchService.js';
-import { authenticateRequest, requireTenantAccess } from '../../../shared/middleware/auth.js';
+import { getActionDispatchService } from '../application/services/ActionDispatchService.js';
 
 const logger = createLogger({ service: 'action-dispatch-controller' });
 
@@ -49,7 +48,9 @@ const IframeOptionsSchema = z.object({
 });
 
 export class ActionDispatchController {
-  private dispatchService = getActionDispatchService();
+  private async getDispatchService() {
+    return await getActionDispatchService();
+  }
 
   /**
    * Initialize action dispatch for a site
@@ -65,7 +66,8 @@ export class ActionDispatchController {
         allowedOrigins: configData.allowedOrigins.length
       });
 
-      const configuration = await this.dispatchService.initializeDispatch(configData);
+      const dispatchService = await this.getDispatchService();
+      const configuration = await dispatchService.initializeDispatch(configData);
 
       res.status(200).json({
         success: true,
@@ -113,7 +115,10 @@ export class ActionDispatchController {
       
       // Extract origin from request headers if not provided in body
       if (!requestData.origin) {
-        requestData.origin = req.headers.origin || req.headers.referer;
+        const headerOrigin = req.headers.origin || req.headers.referer;
+        if (headerOrigin) {
+          requestData.origin = headerOrigin;
+        }
       }
 
       // Generate request ID if not provided
@@ -128,7 +133,20 @@ export class ActionDispatchController {
         requestId: requestData.requestId
       });
 
-      const result = await this.dispatchService.dispatchAction(requestData);
+      // Create clean request object for exactOptionalPropertyTypes
+      const cleanRequestData = {
+        siteId: requestData.siteId,
+        tenantId: requestData.tenantId,
+        actionName: requestData.actionName,
+        parameters: requestData.parameters,
+        ...(requestData.sessionId && { sessionId: requestData.sessionId }),
+        ...(requestData.userId && { userId: requestData.userId }),
+        ...(requestData.origin && { origin: requestData.origin }),
+        ...(requestData.requestId && { requestId: requestData.requestId }),
+      };
+
+      const dispatchService = await this.getDispatchService();
+      const result = await dispatchService.dispatchAction(cleanRequestData);
 
       // Set appropriate status code based on result
       const statusCode = result.success ? 200 : 400;
@@ -187,7 +205,8 @@ export class ActionDispatchController {
 
       logger.info('Getting available actions', { siteId, tenantId });
 
-      const actions = await this.dispatchService.getAvailableActions(siteId, tenantId);
+      const dispatchService = await this.getDispatchService();
+      const actions = await dispatchService.getAvailableActions(siteId, tenantId);
 
       res.status(200).json({
         success: true,
@@ -222,18 +241,28 @@ export class ActionDispatchController {
   generateEmbedScript = async (req: Request, res: Response): Promise<void> => {
     try {
       const configData = DispatchConfigSchema.parse(req.body.config);
-      const embedOptions = EmbedOptionsSchema.parse(req.body.options || {});
+      const parsedEmbedOptions = EmbedOptionsSchema.parse(req.body.options || {});
+      
+      // Create clean options object for exactOptionalPropertyTypes
+      const embedOptions = {
+        theme: parsedEmbedOptions.theme,
+        position: parsedEmbedOptions.position,
+        ...(parsedEmbedOptions.widgetId && { widgetId: parsedEmbedOptions.widgetId }),
+        ...(parsedEmbedOptions.customStyles && { customStyles: parsedEmbedOptions.customStyles }),
+      };
 
       logger.info('Generating embed script', {
         siteId: configData.siteId,
         tenantId: configData.tenantId
       });
 
+      const dispatchService = await this.getDispatchService();
+      
       // Initialize dispatch configuration
-      const configuration = await this.dispatchService.initializeDispatch(configData);
+      const configuration = await dispatchService.initializeDispatch(configData);
 
       // Generate embed script
-      const embedScript = this.dispatchService.generateEmbedScript(configuration, embedOptions);
+      const embedScript = await dispatchService.generateEmbedScript(configuration, embedOptions);
 
       res.status(200).json({
         success: true,
@@ -276,18 +305,28 @@ export class ActionDispatchController {
   generateIframeEmbed = async (req: Request, res: Response): Promise<void> => {
     try {
       const configData = DispatchConfigSchema.parse(req.body.config);
-      const iframeOptions = IframeOptionsSchema.parse(req.body.options || {});
+      const parsedIframeOptions = IframeOptionsSchema.parse(req.body.options || {});
+      
+      // Create clean options object for exactOptionalPropertyTypes
+      const iframeOptions = {
+        width: parsedIframeOptions.width,
+        height: parsedIframeOptions.height,
+        sandbox: parsedIframeOptions.sandbox,
+        ...(parsedIframeOptions.customStyles && { customStyles: parsedIframeOptions.customStyles }),
+      };
 
       logger.info('Generating iframe embed', {
         siteId: configData.siteId,
         tenantId: configData.tenantId
       });
 
+      const dispatchService = await this.getDispatchService();
+      
       // Initialize dispatch configuration
-      const configuration = await this.dispatchService.initializeDispatch(configData);
+      const configuration = await dispatchService.initializeDispatch(configData);
 
       // Generate iframe embed
-      const iframeEmbed = this.dispatchService.generateIframeEmbed(configuration, iframeOptions);
+      const iframeEmbed = await dispatchService.generateIframeEmbed(configuration, iframeOptions);
 
       res.status(200).json({
         success: true,
@@ -327,9 +366,10 @@ export class ActionDispatchController {
    * Get dispatch service statistics
    * GET /api/ai/actions/dispatch/stats
    */
-  getStats = async (req: Request, res: Response): Promise<void> => {
+  getStats = async (_req: Request, res: Response): Promise<void> => {
     try {
-      const stats = this.dispatchService.getCacheStats();
+      const dispatchService = await this.getDispatchService();
+      const stats = await dispatchService.getCacheStats();
 
       res.status(200).json({
         success: true,
@@ -357,7 +397,8 @@ export class ActionDispatchController {
    */
   clearCaches = async (req: Request, res: Response): Promise<void> => {
     try {
-      this.dispatchService.clearCaches();
+      const dispatchService = await this.getDispatchService();
+      await dispatchService.clearCaches();
 
       logger.info('Dispatch caches cleared', {
         adminUser: req.user?.id,
@@ -387,16 +428,16 @@ export class ActionDispatchController {
    * Health check endpoint
    * GET /api/ai/actions/dispatch/health
    */
-  healthCheck = async (req: Request, res: Response): Promise<void> => {
+  healthCheck = async (_req: Request, res: Response): Promise<void> => {
     try {
-      const stats = this.dispatchService.getCacheStats();
+      // Simple health check - just verify service is available
+      await this.getDispatchService();
       
       res.status(200).json({
         success: true,
         data: {
           status: 'healthy',
           uptime: process.uptime(),
-          cacheStats: stats,
           timestamp: new Date().toISOString()
         },
         message: 'Action dispatch service is healthy'

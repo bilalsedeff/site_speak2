@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from '../ui/Card'
 import { EmptyState } from '../ui/EmptyState'
 import { useAI, useConversationHistory } from '../../hooks/useAI'
 import { cn } from '@/lib/utils'
+import { AIAction } from '../../services/ai-service'
 
 interface AIChatProps {
   className?: string
@@ -39,14 +40,15 @@ export function AIChat({
   showHistory = true,
 }: AIChatProps) {
   const [input, setInput] = useState('')
-  const [localMessages, setLocalMessages] = useState<Array<{
+  interface ChatMessage {
     role: 'user' | 'assistant'
     content: string
     timestamp: string
-    actions?: any[]
+    actions?: AIAction[]
     streaming?: boolean
-  }>>([])
+  }
 
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -70,7 +72,13 @@ export function AIChat({
   } = useConversationHistory(sessionId)
 
   // Combine history and local messages
-  const allMessages = showHistory ? [...historyMessages, ...localMessages] : localMessages
+  const allMessages: ChatMessage[] = showHistory 
+    ? [...historyMessages.map(msg => ({ 
+        role: msg.role, 
+        content: msg.content, 
+        timestamp: msg.timestamp 
+      } as ChatMessage)), ...localMessages] 
+    : localMessages
 
   // Auto-scroll to bottom with smooth behavior
   useEffect(() => {
@@ -126,11 +134,11 @@ export function AIChat({
   // Handle traditional response
   useEffect(() => {
     if (lastResponse && !isStreaming) {
-      const newMessage = {
+      const newMessage: ChatMessage = {
         role: 'assistant' as const,
         content: lastResponse.response,
         timestamp: new Date().toISOString(),
-        actions: lastResponse.actions,
+        ...(lastResponse.actions && { actions: lastResponse.actions }),
       }
       
       setLocalMessages(prev => [...prev, newMessage])
@@ -150,7 +158,7 @@ export function AIChat({
       return
     }
 
-    const userMessage = {
+    const userMessage: ChatMessage = {
       role: 'user' as const,
       content: input.trim(),
       timestamp: new Date().toISOString(),
@@ -167,8 +175,8 @@ export function AIChat({
       // Start streaming for better UX
       await startStreaming({
         query: currentInput,
-        context,
-        sessionId,
+        context: context || {},
+        ...(sessionId && { sessionId }),
         language: 'en',
       })
     } catch (error) {
@@ -178,8 +186,8 @@ export function AIChat({
       try {
         await query({
           query: currentInput,
-          context,
-          sessionId,
+          context: context || {},
+          ...(sessionId && { sessionId }),
           language: 'en',
         })
       } catch (fallbackError) {
@@ -331,7 +339,7 @@ export function AIChat({
                       : "bg-muted"
                   )}>
                     <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                    {message.streaming && (
+                    {message.streaming === true && (
                       <div className="flex items-center mt-2">
                         <Loader2 className="h-3 w-3 animate-spin mr-2" />
                         <span className="text-xs opacity-70">Thinking...</span>
@@ -342,7 +350,7 @@ export function AIChat({
                   {/* Action Buttons */}
                   {message.actions && message.actions.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {message.actions.slice(0, 3).map((action, actionIndex) => (
+                      {message.actions.slice(0, 3).map((action: AIAction, actionIndex: number) => (
                         <Button
                           key={actionIndex}
                           onClick={() => handleActionClick(action)}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings, Mic, Volume2 } from 'lucide-react'
+import { Settings, Mic, Volume2, X } from 'lucide-react'
 
 import { useVoice } from '@/providers/VoiceProvider'
 import { Button } from '@/components/ui/Button'
@@ -49,6 +49,14 @@ export function VoiceSettings({ onClose }: VoiceSettingsProps) {
           <Settings className="h-4 w-4 mr-2" />
           Voice Settings
         </h4>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          className="h-6 w-6 p-0"
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
 
       <div className="space-y-4">

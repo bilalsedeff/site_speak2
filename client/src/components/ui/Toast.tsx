@@ -63,6 +63,8 @@ const ToastComponent: React.FC<ToastProps> = ({
       
       return () => clearTimeout(timer)
     }
+    
+    return () => {} // Return empty cleanup function for else case
   }, [id, duration, onClose])
 
   const handleClose = () => {

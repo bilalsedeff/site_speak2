@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
 
-import { jwtService, JWTPayload } from './jwt';
-import { createLogger } from '../../../../shared/utils';
+import { jwtService } from './jwt';
+import { createLogger } from '../../shared/utils.js';
 import type { UserRole } from '../../../../shared/types';
 
 const logger = createLogger({ service: 'auth-middleware' });
@@ -54,7 +53,7 @@ export class AuthorizationError extends Error {
  * Extract and validate JWT token from request
  */
 export function authenticate() {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const authHeader = req.headers.authorization;
       const token = jwtService.extractTokenFromHeader(authHeader);
@@ -83,13 +82,13 @@ export function authenticate() {
         role: payload.role,
         email: payload.email,
         permissions: payload.permissions || [],
-        sessionId: payload.sessionId,
+        ...(payload.sessionId && { sessionId: payload.sessionId }),
       };
 
       logger.debug('User authenticated successfully', {
-        userId: req.user.id || 'unknown',
-        tenantId: req.user.tenantId || 'unknown',
-        role: req.user.role || 'unknown',
+        userId: req.user?.id || 'unknown',
+        tenantId: req.user?.tenantId || 'unknown',
+        role: req.user?.role || 'unknown',
         correlationId: req.correlationId,
       });
 
@@ -129,7 +128,7 @@ export function authenticate() {
  * Optional authentication - sets user if valid token provided
  */
 export function optionalAuth() {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     try {
       const authHeader = req.headers.authorization;
       const token = jwtService.extractTokenFromHeader(authHeader);
@@ -143,7 +142,7 @@ export function optionalAuth() {
             role: payload.role,
             email: payload.email,
             permissions: payload.permissions || [],
-            sessionId: payload.sessionId,
+            ...(payload.sessionId && { sessionId: payload.sessionId }),
           };
         } catch (error) {
           // Ignore token errors for optional auth
@@ -343,3 +342,7 @@ export function authErrorHandler() {
     next(error);
   };
 }
+
+// Export aliases for backward compatibility
+export const authenticateRequest = authenticate;
+export const requireAdminAccess = () => requireRole('admin');

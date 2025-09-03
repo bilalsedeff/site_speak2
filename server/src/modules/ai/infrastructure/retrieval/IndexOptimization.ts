@@ -346,7 +346,7 @@ export class IVFFlatManager {
     const result = await this.sql`
       SELECT COUNT(*) as count FROM ${this.sql(tableName)}
     `;
-    return parseInt(result[0]?.count || '0');
+    return parseInt(result[0]?.['count'] || '0');
   }
 
   /**
@@ -469,7 +469,7 @@ export class IndexOptimization {
 
       // Get optimal configurations
       const hnswConfig = this.hnsw.estimateOptimalParams(rowCount, dimensions, targetRecall);
-      const ivfflatConfig = this.ivfflat.getPresets().balanced(rowCount);
+      const ivfflatConfig = this.ivfflat.getPresets()['balanced'](rowCount);
 
       // Decision logic
       let recommended: 'hnsw' | 'ivfflat';
@@ -536,7 +536,7 @@ export class IndexOptimization {
         newIndexName = await this.hnsw.createIndex(tableName, 'embedding', config, options);
       } else {
         const rowCount = await this.getRowCount(tableName);
-        const config = this.ivfflat.getPresets().balanced(rowCount);
+        const config = this.ivfflat.getPresets()['balanced'](rowCount);
         newIndexName = await this.ivfflat.createIndex(tableName, 'embedding', config, options);
       }
 
@@ -561,7 +561,7 @@ export class IndexOptimization {
     const result = await this.sql`
       SELECT COUNT(*) as count FROM ${this.sql(tableName)}
     `;
-    return parseInt(result[0]?.count || '0');
+    return parseInt(result[0]?.['count'] || '0');
   }
 
   /**

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../shared/utils.js';
 import { jwtService, sessionManager } from '../../../infrastructure/auth';
 import { config } from '../../../infrastructure/config';
 import type { 
@@ -440,7 +440,7 @@ export class AuthController {
       logger.error('Delete session failed', {
         error,
         userId: req.user?.id,
-        sessionId: req.params.sessionId,
+        sessionId: req.params['sessionId'],
         correlationId: req.correlationId,
       });
       next(error);

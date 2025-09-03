@@ -2,6 +2,7 @@
   "include": [
     "client/src/**/*",
     "client/types/**/*.d.ts",
+    "client/vite-env.d.ts",
     "client/vite.config.ts",
     "shared/**/*",
     "server/src/**/*",

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useParams } from 'wouter'
 import { DndProvider } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
@@ -36,7 +36,7 @@ const ComponentPalette = () => (
   </div>
 )
 
-const EditorCanvas = ({ className, showGrid, onInstanceSelect, onInstanceUpdate }: any) => (
+const EditorCanvas = ({ className, showGrid }: any) => (
   <div className={className} style={{ 
     backgroundColor: '#f8f9fa',
     backgroundImage: showGrid ? 'linear-gradient(to right, #e9ecef 1px, transparent 1px), linear-gradient(to bottom, #e9ecef 1px, transparent 1px)' : undefined,

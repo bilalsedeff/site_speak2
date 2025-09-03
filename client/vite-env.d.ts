@@ -11,6 +11,12 @@ interface ImportMetaEnv {
   readonly VITE_POSTHOG_KEY?: string;
   readonly VITE_POSTHOG_HOST?: string;
   readonly VITE_ENVIRONMENT: string;
+  // Vite built-in environment variables
+  readonly DEV: boolean;
+  readonly PROD: boolean;
+  readonly MODE: string;
+  readonly BASE_URL: string;
+  readonly SSR: boolean;
 }
 
 interface ImportMeta {

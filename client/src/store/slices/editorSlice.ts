@@ -4,16 +4,15 @@ import { nanoid } from 'nanoid'
 
 // Editor component types
 
-export interface EditorComponent 
-{
-      id: string
-      type: string
-      props: Record<string, any>
-      children?: EditorComponent[]
-      parentId?: string
-      position: { x: number; y: number }
-      size: { width: number; height: number }
-      zIndex: number
+export interface EditorComponent {
+  id: string
+  type: string
+  props: Record<string, any>
+  children?: EditorComponent[]
+  parentId?: string
+  position: { x: number; y: number }
+  size: { width: number; height: number }
+  zIndex: number
 }
 
 export interface EditorHistory {
@@ -177,7 +176,7 @@ const editorSlice = createSlice({
       const { id, updates } = action.payload
       const index = state.components.findIndex(c => c.id === id)
       
-      if (index !== -1) {
+      if (index !== -1 && state.components[index]) {
         // Only save to history for significant changes (not position/size during drag)
         const shouldSaveHistory = !updates.position && !updates.size
         
@@ -186,10 +185,7 @@ const editorSlice = createSlice({
           state.history.future = []
         }
         
-        state.components[index] = {
-          ...state.components[index],
-          ...updates,
-        }
+        Object.assign(state.components[index], updates)
         
         if (shouldSaveHistory) {
           state.canUndo = state.history.past.length > 0
@@ -366,15 +362,19 @@ const editorSlice = createSlice({
         state.history.past.push([...state.components])
         state.history.future = []
         
-        const pastedComponents = state.clipboard.map((component, index) => ({
-          ...component,
-          id: nanoid(),
-          position: {
-            x: action.payload.x + (index * 20),
-            y: action.payload.y + (index * 20),
-          },
-          parentId: undefined, // Remove parent relationships
-        }))
+        const pastedComponents = state.clipboard.map((component, index) => {
+          const newComponent = {
+            ...component,
+            id: nanoid(),
+            position: {
+              x: action.payload.x + (index * 20),
+              y: action.payload.y + (index * 20),
+            },
+          }
+          // Remove parentId if it exists to avoid parent relationships
+          delete (newComponent as any).parentId
+          return newComponent
+        })
         
         state.components.push(...pastedComponents)
         state.selectedComponentIds = pastedComponents.map(c => c.id)

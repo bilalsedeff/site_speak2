@@ -1,7 +1,8 @@
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../../shared/utils/index.js';
 import { config } from '../config';
 import os from 'os';
 import fs from 'fs';
+import { monitorEventLoopDelay } from 'perf_hooks';
 
 const logger = createLogger({ service: 'metrics' });
 
@@ -79,8 +80,26 @@ export class MetricsService {
   private responseTimes: number[] = [];
   private errorCounts = new Map<string, number>();
   private startTime = Date.now();
+  private eventLoopMonitor: ReturnType<typeof monitorEventLoopDelay>;
+  private isDraining = false;
+  
+  // Caching for readiness checks (fast path optimization)
+  private healthCheckCache: {
+    result: HealthCheck[] | null;
+    timestamp: number;
+  } = { result: null, timestamp: 0 };
+  private readonly CACHE_TTL_MS = 150; // 150ms cache TTL per source-of-truth
+
+  // Probe metrics tracking per source-of-truth requirements
+  private probeSuccessCounts = new Map<string, number>();
+  private probeFailureCounts = new Map<string, number>();
+  private probeDurations: Array<{ probe: string; duration: number; success: boolean; timestamp: number }> = [];
 
   constructor() {
+    // Initialize event loop lag monitoring
+    this.eventLoopMonitor = monitorEventLoopDelay({ resolution: 20 });
+    this.eventLoopMonitor.enable();
+    
     // Start metrics collection
     this.startMetricsCollection();
   }
@@ -181,45 +200,102 @@ export class MetricsService {
   }
 
   /**
-   * Perform comprehensive health checks
+   * Perform comprehensive health checks with parallel execution, timeouts, and caching
    */
   async performHealthChecks(): Promise<HealthCheck[]> {
-    const checks: HealthCheck[] = [];
+    const now = Date.now();
 
-    // Database health check
-    checks.push(await this.checkDatabase());
+    // Fast path: return cached result if still valid
+    if (
+      this.healthCheckCache.result && 
+      (now - this.healthCheckCache.timestamp) < this.CACHE_TTL_MS
+    ) {
+      logger.debug('Returning cached health check result', {
+        age: now - this.healthCheckCache.timestamp,
+        ttl: this.CACHE_TTL_MS
+      });
+      return this.healthCheckCache.result;
+    }
 
-    // Redis health check
-    checks.push(await this.checkRedis());
+    const startTime = now;
 
-    // OpenAI API health check
-    checks.push(await this.checkOpenAI());
+    // Execute all checks in parallel for better performance
+    const checkPromises = [
+      this.checkDatabase(),
+      this.checkRedis(), 
+      this.checkOpenAI(),
+      this.checkDiskSpace(),
+      this.checkMemory(),
+    ];
 
-    // Disk space health check
-    checks.push(await this.checkDiskSpace());
+    // Wait for all checks with a total timeout of 200ms
+    const checks = await Promise.allSettled(checkPromises.map(promise => 
+      this.withTimeout(promise, 200, 'Health check timeout')
+    ));
 
-    // Memory health check
-    checks.push(await this.checkMemory());
+    const results: HealthCheck[] = [];
+    const checkNames = ['database', 'redis', 'openai', 'disk', 'memory'];
 
-    return checks;
+    for (let i = 0; i < checks.length; i++) {
+      const check = checks[i];
+      if (check.status === 'fulfilled') {
+        results.push(check.value);
+      } else {
+        // Create error health check for failed/timeout checks
+        results.push({
+          service: checkNames[i] || 'unknown',
+          status: 'unhealthy',
+          timestamp: new Date(),
+          message: 'Health check failed or timed out',
+          details: { error: check.reason instanceof Error ? check.reason.message : 'Unknown error' },
+        });
+      }
+    }
+
+    // Cache the results for fast subsequent calls
+    this.healthCheckCache = {
+      result: results,
+      timestamp: now
+    };
+
+    const totalTime = Date.now() - startTime;
+    logger.debug('Health checks completed and cached', { totalTime, checksCount: results.length });
+
+    return results;
+  }
+
+  /**
+   * Helper to add timeout to any promise
+   */
+  private async withTimeout<T>(
+    promise: Promise<T>, 
+    timeoutMs: number, 
+    timeoutMessage: string
+  ): Promise<T> {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]);
   }
 
   /**
    * Check database connectivity and performance
+   * Timeout: 75ms per source-of-truth
    */
   private async checkDatabase(): Promise<HealthCheck> {
     const start = Date.now();
+    const timeoutMs = 75;
     
     try {
-      // TODO: Implement actual database ping
-      // const { checkDatabaseHealth } = await import('../database');
-      // await checkDatabaseHealth();
+      // Use timeout wrapper for database check
+      await this.withTimeout(this.performDatabasePing(), timeoutMs, 'Database ping timeout');
       
       const latency = Date.now() - start;
       
       return {
         service: 'database',
-        status: latency < 100 ? 'healthy' : latency < 500 ? 'degraded' : 'unhealthy',
+        status: latency < 50 ? 'healthy' : latency < 75 ? 'degraded' : 'unhealthy',
         timestamp: new Date(),
         latency,
         message: `Database responding in ${latency}ms`,
@@ -237,21 +313,36 @@ export class MetricsService {
   }
 
   /**
-   * Check Redis connectivity
+   * Perform actual database ping - placeholder for now
+   */
+  private async performDatabasePing(): Promise<void> {
+    // TODO: Implement actual database ping with SELECT 1
+    // For now, simulate a fast database check
+    return new Promise((resolve) => {
+      setTimeout(resolve, Math.random() * 20 + 5); // 5-25ms simulation
+    });
+  }
+
+  /**
+   * Check Redis connectivity  
+   * Timeout: 50ms per source-of-truth
    */
   private async checkRedis(): Promise<HealthCheck> {
     const start = Date.now();
+    const timeoutMs = 50;
     
     try {
-      // TODO: Implement Redis ping
+      // Use timeout wrapper for Redis check
+      await this.withTimeout(this.performRedisPing(), timeoutMs, 'Redis ping timeout');
+      
       const latency = Date.now() - start;
       
       return {
         service: 'redis',
-        status: 'healthy',
+        status: latency < 25 ? 'healthy' : latency < 50 ? 'degraded' : 'unhealthy',
         timestamp: new Date(),
         latency,
-        message: 'Redis connection healthy',
+        message: `Redis responding in ${latency}ms`,
       };
     } catch (error) {
       return {
@@ -266,28 +357,45 @@ export class MetricsService {
   }
 
   /**
+   * Perform actual Redis ping - placeholder for now
+   */
+  private async performRedisPing(): Promise<void> {
+    // TODO: Implement actual Redis PING command
+    // For now, simulate a fast Redis check
+    return new Promise((resolve) => {
+      setTimeout(resolve, Math.random() * 15 + 5); // 5-20ms simulation
+    });
+  }
+
+  /**
    * Check OpenAI API connectivity
+   * Timeout: 100ms for readiness probe efficiency
    */
   private async checkOpenAI(): Promise<HealthCheck> {
     const start = Date.now();
+    const timeoutMs = 100;
     
     try {
-      // Simple API test - get models list
-      const response = await fetch('https://api.openai.com/v1/models', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${config.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        signal: AbortSignal.timeout(5000), // 5 second timeout
-      });
+      // Use timeout wrapper for OpenAI API check
+      const response = await this.withTimeout(
+        fetch('https://api.openai.com/v1/models', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${config.OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(timeoutMs),
+        }),
+        timeoutMs,
+        'OpenAI API timeout'
+      );
 
       const latency = Date.now() - start;
 
       if (response.ok) {
         return {
           service: 'openai',
-          status: latency < 1000 ? 'healthy' : 'degraded',
+          status: latency < 50 ? 'healthy' : latency < 100 ? 'degraded' : 'unhealthy',
           timestamp: new Date(),
           latency,
           message: `OpenAI API responding in ${latency}ms`,
@@ -308,7 +416,7 @@ export class MetricsService {
         status: 'unhealthy',
         timestamp: new Date(),
         latency: Date.now() - start,
-        message: 'OpenAI API connection failed',
+        message: 'OpenAI API connection failed or timed out',
         details: { error: error instanceof Error ? error.message : 'Unknown error' },
       };
     }
@@ -450,11 +558,138 @@ export class MetricsService {
   }
 
   /**
-   * Export metrics in Prometheus format
+   * Get current event loop lag in milliseconds
+   */
+  getEventLoopLag(): number {
+    return this.eventLoopMonitor.mean / 1e6; // Convert nanoseconds to milliseconds
+  }
+
+  /**
+   * Check if event loop is healthy (lag below threshold)
+   */
+  isEventLoopHealthy(thresholdMs: number = 200): boolean {
+    return this.getEventLoopLag() < thresholdMs;
+  }
+
+  /**
+   * Set draining mode (used during graceful shutdown)
+   */
+  setDraining(draining: boolean): void {
+    this.isDraining = draining;
+    logger.info('Drain mode changed', { draining });
+  }
+
+  /**
+   * Check if service is in draining mode
+   */
+  isDrainingMode(): boolean {
+    return this.isDraining;
+  }
+
+  /**
+   * Get process uptime in seconds
+   */
+  getUptimeSeconds(): number {
+    return Math.floor(process.uptime());
+  }
+
+  /**
+   * Record probe execution metrics per source-of-truth requirements
+   */
+  recordProbeExecution(probe: 'live' | 'ready' | 'health', success: boolean, duration: number): void {
+    const probeKey = `${probe}`;
+    
+    if (success) {
+      this.probeSuccessCounts.set(probeKey, (this.probeSuccessCounts.get(probeKey) || 0) + 1);
+    } else {
+      this.probeFailureCounts.set(probeKey, (this.probeFailureCounts.get(probeKey) || 0) + 1);
+    }
+
+    // Store duration for histogram calculation
+    this.probeDurations.push({
+      probe: probeKey,
+      duration,
+      success,
+      timestamp: Date.now(),
+    });
+
+    // Keep only last 1000 probe durations for memory efficiency
+    if (this.probeDurations.length > 1000) {
+      this.probeDurations = this.probeDurations.slice(-1000);
+    }
+
+    logger.debug('Probe execution recorded', { probe, success, duration });
+  }
+
+  /**
+   * Get probe metrics for observability
+   */
+  getProbeMetrics(): {
+    successCounts: Map<string, number>;
+    failureCounts: Map<string, number>;
+    durations: Array<{ probe: string; duration: number; success: boolean; timestamp: number }>;
+  } {
+    return {
+      successCounts: new Map(this.probeSuccessCounts),
+      failureCounts: new Map(this.probeFailureCounts),
+      durations: [...this.probeDurations],
+    };
+  }
+
+  /**
+   * Cleanup resources (called during shutdown)
+   */
+  cleanup(): void {
+    this.eventLoopMonitor.disable();
+    logger.info('Metrics service cleaned up');
+  }
+
+  /**
+   * Export metrics in Prometheus format per source-of-truth requirements
    */
   exportPrometheusMetrics(): string {
     const metrics: string[] = [];
     
+    // Probe success metrics (required by source-of-truth)
+    for (const [probe, count] of this.probeSuccessCounts.entries()) {
+      metrics.push(`probe_${probe}_success_total ${count}`);
+    }
+
+    // Probe failure metrics  
+    for (const [probe, count] of this.probeFailureCounts.entries()) {
+      metrics.push(`probe_${probe}_failure_total ${count}`);
+    }
+
+    // Probe duration histogram (required by source-of-truth)
+    const probeGroups = new Map<string, number[]>();
+    for (const entry of this.probeDurations) {
+      if (!probeGroups.has(entry.probe)) {
+        probeGroups.set(entry.probe, []);
+      }
+      probeGroups.get(entry.probe)!.push(entry.duration);
+    }
+
+    for (const [probe, durations] of probeGroups.entries()) {
+      if (durations.length > 0) {
+        // Calculate histogram buckets (standard Prometheus buckets for duration in seconds)
+        const buckets = [0.001, 0.01, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0];
+        const durationSeconds = durations.map(d => d / 1000);
+        
+        for (const bucket of buckets) {
+          const count = durationSeconds.filter(d => d <= bucket).length;
+          metrics.push(`probe_duration_seconds_bucket{probe="${probe}",le="${bucket}"} ${count}`);
+        }
+        
+        // Add +Inf bucket
+        metrics.push(`probe_duration_seconds_bucket{probe="${probe}",le="+Inf"} ${durations.length}`);
+        
+        // Sum and count
+        const sum = durationSeconds.reduce((a, b) => a + b, 0);
+        metrics.push(`probe_duration_seconds_sum{probe="${probe}"} ${sum.toFixed(6)}`);
+        metrics.push(`probe_duration_seconds_count{probe="${probe}"} ${durations.length}`);
+      }
+    }
+
     // HTTP requests total
     for (const [key, count] of this.requestCounts.entries()) {
       const [method, path] = key.split(':');
@@ -469,12 +704,18 @@ export class MetricsService {
     // System uptime
     metrics.push(`system_uptime_seconds ${process.uptime()}`);
 
+    // Event loop lag (Node.js specific)
+    metrics.push(`nodejs_eventloop_lag_seconds ${this.getEventLoopLag() / 1000}`);
+
     // Memory usage
     const memUsage = process.memoryUsage();
-    metrics.push(`memory_heap_used_bytes ${memUsage.heapUsed}`);
-    metrics.push(`memory_heap_total_bytes ${memUsage.heapTotal}`);
-    metrics.push(`memory_external_bytes ${memUsage.external}`);
-    metrics.push(`memory_rss_bytes ${memUsage.rss}`);
+    metrics.push(`nodejs_memory_heap_used_bytes ${memUsage.heapUsed}`);
+    metrics.push(`nodejs_memory_heap_total_bytes ${memUsage.heapTotal}`);
+    metrics.push(`nodejs_memory_external_bytes ${memUsage.external}`);
+    metrics.push(`nodejs_memory_rss_bytes ${memUsage.rss}`);
+
+    // Drain mode status
+    metrics.push(`nodejs_draining ${this.isDraining ? 1 : 0}`);
 
     return metrics.join('\n') + '\n';
   }

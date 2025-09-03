@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../../../shared/utils/index.js';
 import { metricsService } from './MetricsService';
 import { config } from '../config';
 
@@ -10,127 +10,206 @@ const logger = createLogger({ service: 'health' });
  */
 export class HealthController {
   /**
-   * Basic health check - always returns 200 if server is running
+   * Aggregate health check - always returns 200 OK per source-of-truth
+   * Combines liveness and readiness status for external monitoring
    */
   async basicHealth(req: Request, res: Response, next: NextFunction) {
+    const startTime = Date.now();
+    let success = true;
+
     try {
-      res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        version: process.env['npm_package_version'] || '1.0.0',
-        environment: config.NODE_ENV,
-        uptime: process.uptime(),
-        pid: process.pid,
+      // Get liveness status
+      const lagMs = metricsService.getEventLoopLag();
+      const uptimeSec = metricsService.getUptimeSeconds();
+      const liveOk = metricsService.isEventLoopHealthy(200);
+
+      // Get readiness status
+      const draining = metricsService.isDrainingMode();
+      let readyOk = !draining;
+      const failed: string[] = [];
+
+      if (!draining) {
+        // Quick health check for readiness
+        const healthChecks = await metricsService.performHealthChecks();
+        const criticalServices = ['database', 'openai'];
+        
+        for (const check of healthChecks) {
+          if (check.status === 'unhealthy' && criticalServices.includes(check.service)) {
+            readyOk = false;
+            failed.push(check.service);
+          }
+        }
+      }
+
+      // Determine overall status - degraded if liveness OR readiness issues
+      const degraded = !liveOk || !readyOk || draining;
+      const status = degraded ? 'degraded' : 'ok';
+      
+      // Health endpoint is considered successful even if degraded (per source-of-truth)
+      success = true;
+
+      // Always return 200 OK per source-of-truth (never 5xx for soft issues)
+      res.status(200).json({
+        status,
+        degraded,
+        live: {
+          ok: liveOk,
+          lagMs: Math.round(lagMs * 100) / 100,
+        },
+        ready: {
+          ok: readyOk,
+          failed,
+        },
+        version: process.env['GIT_COMMIT'] || process.env['npm_package_version'] || '1.0.0',
+        uptimeSec,
       });
     } catch (error) {
-      logger.error('Basic health check failed', { error });
-      res.status(500).json({
-        status: 'error',
-        timestamp: new Date().toISOString(),
-        error: 'Health check failed',
+      logger.error('Health check failed', { error });
+      
+      // Even on error, return 200 OK with degraded status per source-of-truth
+      res.status(200).json({
+        status: 'degraded',
+        degraded: true,
+        live: {
+          ok: false,
+          lagMs: 0,
+        },
+        ready: {
+          ok: false,
+          failed: ['internal_error'],
+        },
+        version: process.env['GIT_COMMIT'] || process.env['npm_package_version'] || '1.0.0',
+        uptimeSec: metricsService.getUptimeSeconds(),
       });
+    } finally {
+      // Record probe execution metrics per source-of-truth requirements
+      const duration = Date.now() - startTime;
+      metricsService.recordProbeExecution('health', success, duration);
     }
   }
 
   /**
    * Kubernetes liveness probe - indicates if the process is alive
+   * Returns 200 OK if alive, 500 if unhealthy (triggering restart)
    */
   async liveness(req: Request, res: Response, next: NextFunction) {
-    try {
-      // Check if the process is in a good state
-      const memUsage = process.memoryUsage();
-      const isMemoryOk = memUsage.heapUsed < 1000 * 1024 * 1024; // Less than 1GB
+    const startTime = Date.now();
+    let success = false;
 
-      if (!isMemoryOk) {
-        logger.warn('Liveness check failed - high memory usage', {
-          heapUsed: memUsage.heapUsed,
-          heapTotal: memUsage.heapTotal,
+    try {
+      const lagMs = metricsService.getEventLoopLag();
+      const uptimeSec = metricsService.getUptimeSeconds();
+      const lagThresholdMs = 200; // 200ms threshold as per source-of-truth
+
+      // Check event loop health (primary liveness indicator)
+      const isEventLoopHealthy = metricsService.isEventLoopHealthy(lagThresholdMs);
+
+      if (!isEventLoopHealthy) {
+        logger.warn('Liveness check failed - event loop lag too high', {
+          lagMs,
+          threshold: lagThresholdMs,
         });
 
-        return res.status(503).json({
+        return res.status(500).json({
           status: 'unhealthy',
-          timestamp: new Date().toISOString(),
-          reason: 'high_memory_usage',
-          details: {
-            heapUsed: memUsage.heapUsed,
-            heapTotal: memUsage.heapTotal,
-          },
+          lagMs,
+          uptimeSec,
         });
       }
 
-      res.json({
-        status: 'alive',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        memory: memUsage,
-        pid: process.pid,
+      // Success - record metrics and return response
+      success = true;
+      res.status(200).json({
+        status: 'live',
+        lagMs: Math.round(lagMs * 100) / 100, // Round to 2 decimal places
+        uptimeSec,
       });
     } catch (error) {
       logger.error('Liveness probe failed', { error });
-      res.status(503).json({
+      res.status(500).json({
         status: 'unhealthy',
-        timestamp: new Date().toISOString(),
-        error: 'Liveness check failed',
+        lagMs: 0,
+        uptimeSec: metricsService.getUptimeSeconds(),
       });
+    } finally {
+      // Record probe execution metrics per source-of-truth requirements
+      const duration = Date.now() - startTime;
+      metricsService.recordProbeExecution('live', success, duration);
     }
   }
 
   /**
    * Kubernetes readiness probe - indicates if the service is ready to serve requests
+   * Returns 200 OK if ready, 503 Service Unavailable if not (for traffic gating)
    */
   async readiness(req: Request, res: Response, next: NextFunction) {
+    const startTime = Date.now();
+    let success = false;
+
     try {
       logger.debug('Performing readiness checks');
 
-      // Perform all health checks
+      // Check drain mode first - immediate 503 if draining
+      const draining = metricsService.isDrainingMode();
+      if (draining) {
+        logger.info('Readiness check failed - service is draining');
+        return res.status(503).json({
+          status: 'not-ready',
+          deps: {},
+          draining: true,
+        });
+      }
+
+      // Perform all health checks with parallel execution
       const healthChecks = await metricsService.performHealthChecks();
       
-      // Determine overall readiness
-      const criticalServices = ['database', 'openai'];
-      const criticalChecks = healthChecks.filter(check => criticalServices.includes(check.service));
-      const allCriticalHealthy = criticalChecks.every(check => check.status === 'healthy');
+      // Build dependency status map
+      const deps: Record<string, string> = {};
+      const failed: string[] = [];
       
-      // Allow degraded state for readiness, but not unhealthy
-      const anyUnhealthy = healthChecks.some(check => check.status === 'unhealthy');
+      for (const check of healthChecks) {
+        if (check.status === 'healthy') {
+          deps[check.service] = 'ok';
+        } else if (check.status === 'degraded') {
+          deps[check.service] = 'degraded';
+        } else {
+          deps[check.service] = 'fail';
+          failed.push(check.service);
+        }
+      }
 
-      const isReady = allCriticalHealthy && !anyUnhealthy;
-      const status = isReady ? 'ready' : 'not-ready';
+      // Determine readiness - fail if any critical dependencies are unhealthy
+      const criticalServices = ['database', 'openai'];
+      const criticalFailures = failed.filter(service => criticalServices.includes(service));
+      const isReady = criticalFailures.length === 0;
+      
       const httpStatus = isReady ? 200 : 503;
+      const status = isReady ? 'ready' : 'not-ready';
+      success = isReady;
 
       logger.info('Readiness check completed', {
         status,
         checksCount: healthChecks.length,
-        criticalHealthy: allCriticalHealthy,
-        anyUnhealthy,
+        criticalFailures: criticalFailures.length,
+        draining,
       });
 
       res.status(httpStatus).json({
         status,
-        timestamp: new Date().toISOString(),
-        checks: healthChecks.reduce((acc, check) => {
-          acc[check.service] = {
-            status: check.status,
-            latency: check.latency,
-            message: check.message,
-            details: check.details,
-          };
-          return acc;
-        }, {} as Record<string, any>),
-        summary: {
-          total: healthChecks.length,
-          healthy: healthChecks.filter(c => c.status === 'healthy').length,
-          degraded: healthChecks.filter(c => c.status === 'degraded').length,
-          unhealthy: healthChecks.filter(c => c.status === 'unhealthy').length,
-        },
+        deps,
+        draining,
       });
     } catch (error) {
       logger.error('Readiness probe failed', { error });
       res.status(503).json({
-        status: 'error',
-        timestamp: new Date().toISOString(),
-        error: 'Readiness check failed',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        status: 'not-ready',
+        deps: {},
+        draining: metricsService.isDrainingMode(),
       });
+    } finally {
+      // Record probe execution metrics per source-of-truth requirements
+      const duration = Date.now() - startTime;
+      metricsService.recordProbeExecution('ready', success, duration);
     }
   }
 
@@ -274,38 +353,45 @@ export class HealthController {
 
   /**
    * Startup probe for Kubernetes - indicates if the application has started
+   * Uses same format as liveness probe per source-of-truth recommendation
    */
   async startup(req: Request, res: Response, next: NextFunction) {
     try {
-      // Check if application is fully initialized
-      const isStarted = process.uptime() > 10; // App should be started after 10 seconds
-      const memUsage = process.memoryUsage();
+      const lagMs = metricsService.getEventLoopLag();
+      const uptimeSec = metricsService.getUptimeSeconds();
+      const minStartupTime = 10; // 10 seconds minimum startup time
 
-      if (!isStarted) {
+      // Check if application is fully initialized
+      const isStarted = uptimeSec > minStartupTime;
+      const isEventLoopHealthy = metricsService.isEventLoopHealthy(200);
+
+      if (!isStarted || !isEventLoopHealthy) {
+        logger.debug('Startup check - not ready yet', {
+          uptimeSec,
+          minStartupTime,
+          isEventLoopHealthy,
+          lagMs,
+        });
+
         return res.status(503).json({
           status: 'starting',
-          timestamp: new Date().toISOString(),
-          uptime: process.uptime(),
-          message: 'Application is still starting up',
+          lagMs: Math.round(lagMs * 100) / 100,
+          uptimeSec,
         });
       }
 
-      res.json({
-        status: 'started',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        memory: {
-          heapUsed: memUsage.heapUsed,
-          heapTotal: memUsage.heapTotal,
-        },
-        message: 'Application started successfully',
+      // Application started successfully - use same format as liveness
+      res.status(200).json({
+        status: 'live',
+        lagMs: Math.round(lagMs * 100) / 100,
+        uptimeSec,
       });
     } catch (error) {
       logger.error('Startup probe failed', { error });
       res.status(503).json({
-        status: 'error',
-        timestamp: new Date().toISOString(),
-        error: 'Startup check failed',
+        status: 'starting',
+        lagMs: 0,
+        uptimeSec: metricsService.getUptimeSeconds(),
       });
     }
   }

@@ -1,9 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import type { Site } from '../../../../shared/types'
-import { CreateSiteRequestSchema, UpdateSiteRequestSchema } from '../../../../shared/schemas/site.schemas';
-type CreateSiteRequest = typeof CreateSiteRequestSchema._type;
-type UpdateSiteRequest = typeof UpdateSiteRequestSchema._type;
-import { sitesApi } from '@/services/api'
+import { sitesApi, type Site, type CreateSiteRequest, type UpdateSiteRequest } from '@/services/api/sites'
 
 interface SitesState {
   sites: Site[]
@@ -123,11 +119,11 @@ const sitesSlice = createSlice({
     // Optimistic updates for real-time editing
     updateSiteLocally: (state, action: PayloadAction<Partial<Site> & { id: string }>) => {
       const index = state.sites.findIndex(site => site.id === action.payload.id)
-      if (index !== -1) {
-        state.sites[index] = { ...state.sites[index], ...action.payload }
+      if (index !== -1 && state.sites[index]) {
+        Object.assign(state.sites[index], action.payload)
       }
-      if (state.currentSite?.id === action.payload.id) {
-        state.currentSite = { ...state.currentSite, ...action.payload }
+      if (state.currentSite?.id === action.payload.id && state.currentSite) {
+        Object.assign(state.currentSite, action.payload)
       }
     },
   },
@@ -223,21 +219,19 @@ const sitesSlice = createSlice({
       .addCase(publishSite.fulfilled, (state, action) => {
         state.isLoading = false
         const index = state.sites.findIndex(site => site.id === action.payload.siteId)
-        if (index !== -1) {
-          state.sites[index] = { 
-            ...state.sites[index], 
-            status: 'published',
-            publishedAt: new Date().toISOString(),
-            publishedUrl: action.payload.publishedUrl 
-          }
-        }
-        if (state.currentSite?.id === action.payload.siteId) {
-          state.currentSite = {
-            ...state.currentSite,
+        if (index !== -1 && state.sites[index]) {
+          Object.assign(state.sites[index], {
             status: 'published',
             publishedAt: new Date().toISOString(),
             publishedUrl: action.payload.publishedUrl
-          }
+          })
+        }
+        if (state.currentSite?.id === action.payload.siteId && state.currentSite) {
+          Object.assign(state.currentSite, {
+            status: 'published',
+            publishedAt: new Date().toISOString(),
+            publishedUrl: action.payload.publishedUrl
+          })
         }
       })
       .addCase(publishSite.rejected, (state, action) => {

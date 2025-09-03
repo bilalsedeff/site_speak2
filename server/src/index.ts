@@ -1,3 +1,4 @@
+console.log('📁 Loading server/src/index.ts...');
 import { createLogger } from './shared/utils.js';
 
 const logger = createLogger({ service: 'main' });
@@ -14,9 +15,10 @@ const logger = createLogger({ service: 'main' });
  * - Multi-tenant isolation
  */
 async function startServer() {
+  console.log('🚀 Starting SiteSpeak server...');
   try {
     logger.info('Loading configuration...');
-    const { config } = await import('./infrastructure/config');
+    const { config } = await import('./infrastructure/config/index.ts');
     logger.info('Configuration loaded successfully');
     
     logger.info('Starting SiteSpeak server...', {
@@ -26,7 +28,7 @@ async function startServer() {
     });
 
     // Create and initialize server
-    const { SiteSeakServer } = await import('./infrastructure/server');
+    const { SiteSeakServer } = await import('./infrastructure/server/index.ts');
     const server = new SiteSeakServer();
     logger.info('Initializing server...');
     await server.initialize();
@@ -108,9 +110,13 @@ process.on('uncaughtException', (error) => {
 });
 
 // Start the server
-if (import.meta.url === `file://${process.argv[1]}`) {
-  startServer().catch((error) => {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  });
-}
+console.log('🔍 Checking if should start server...');
+console.log('import.meta.url:', import.meta.url);
+console.log('process.argv[1]:', process.argv[1]);
+
+// Always start the server when this module is loaded
+console.log('✅ Starting server...');
+startServer().catch((error) => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
+});

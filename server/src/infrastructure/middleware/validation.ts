@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z, ZodSchema } from 'zod';
-import { createLogger } from '@shared/utils';
+import { createLogger } from '../../shared/utils.js';
 
 const logger = createLogger({ service: 'validation' });
 

@@ -129,6 +129,35 @@ CDN_ENABLED=false
 CACHE_TTL=86400
 STATIC_CACHE_TTL=604800
 
+# ==== PUBLISHING INFRASTRUCTURE ====
+# Artifact Store Provider (aws-s3, cloudflare-r2, minio)
+ARTIFACT_STORE_PROVIDER=cloudflare-r2
+ARTIFACT_BUCKET=sitespeak-artifacts
+ARTIFACT_ACCESS_KEY_ID=your_artifact_access_key
+ARTIFACT_SECRET_KEY=your_artifact_secret_key
+ARTIFACT_REGION=auto
+ARTIFACT_PUBLIC_URL=https://pub-artifacts-xxxx.r2.dev
+
+# CDN Provider for purging (cloudflare, fastly, generic)
+CDN_PROVIDER=cloudflare
+CDN_PURGE_TIMEOUT=30000
+
+# Fastly CDN (alternative to Cloudflare)
+FASTLY_API_KEY=your_fastly_api_key
+FASTLY_SERVICE_ID=your_fastly_service_id
+
+# Generic CDN (for custom providers)
+CDN_PURGE_ENDPOINT=https://your-cdn.com/api/purge
+CDN_PURGE_HEADERS={"Authorization":"Bearer your-token"}
+
+# MinIO (self-hosted S3-compatible storage)
+MINIO_ENDPOINT=http://localhost:9000
+MINIO_ACCESS_KEY=your_minio_access_key
+MINIO_SECRET_KEY=your_minio_secret_key
+MINIO_BUCKET=sitespeak-artifacts
+MINIO_REGION=us-east-1
+MINIO_PUBLIC_URL=http://localhost:9000
+
 # ==== DOMAIN & SSL ====
 # Main domain for the platform
 MAIN_DOMAIN=sitespeak.com

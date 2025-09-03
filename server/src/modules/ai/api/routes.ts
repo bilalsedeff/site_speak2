@@ -379,4 +379,7 @@ dispatchRoutes.get(
 // Mount dispatch routes under /actions/dispatch
 router.use('/actions/dispatch', dispatchRoutes);
 
+// KB routes are handled by the API gateway at /api/v1/kb
+// No duplication needed - use existing kbRoutes in api-gateway
+
 export { router as aiRoutes };
