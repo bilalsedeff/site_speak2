@@ -68,7 +68,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonComponentProps>(
   ({ className, variant, size, asChild = false, loading, disabled, children, ...props }, ref) => {
     // Validate ARIA compliance
     const ariaValidation = validateAriaCompliance('Button', props)
-    if (!ariaValidation.isCompliant && process.env.NODE_ENV === 'development') {
+    if (!ariaValidation.isCompliant && process.env['NODE_ENV'] === 'development') {
       console.warn(`Button ARIA violations:`, ariaValidation.violations)
     }
 

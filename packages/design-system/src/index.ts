@@ -1,35 +1,28 @@
-// Component exports
-export * from './components/Button'
-export * from './components/Card' 
-export * from './components/Input'
-export * from './components/Label'
-export * from './components/Select'
-export * from './components/Switch'
-export * from './components/Toast'
-export * from './components/Modal'
-export * from './components/Sheet'
-export * from './components/Tabs'
-export * from './components/Breadcrumbs'
-export * from './components/EmptyState'
-export * from './components/LoadingSpinner'
-export * from './components/VoiceWidget'
+// Component exports (only implemented components)
+// Note: Using explicit exports to avoid type conflicts between component and schema Props
+export { Button, buttonVariants } from './components/Button'
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent, cardVariants } from './components/Card'
+export { VoiceWidget, VoiceWidgetMetadata } from './components/VoiceWidget'
 
-// Utility exports
+// Utility exports (verified to exist)
 export * from './utils/cn'
 export * from './utils/component-metadata'
 
-// Token exports  
-export * from './tokens/colors'
-export * from './tokens/typography'
-export * from './tokens/spacing'
-export * from './tokens/motion'
-
-// Hook exports
-export * from './hooks/use-theme'
-export * from './hooks/use-media-query'
-
-// Schema exports
+// Schema exports (verified to exist and used by consumers)
 export * from './schemas/component-schemas'
 export * from './schemas/aria-schemas'
 export * from './schemas/jsonld-schemas'
 export * from './schemas/action-schemas'
+
+// Type re-exports for convenience (using schema versions as canonical)
+export type { ButtonProps, CardProps, VoiceWidgetProps } from './schemas/component-schemas'
+
+// TODO: Implement missing components when needed
+// - Input, Label, Select, Switch, Toast, Modal, Sheet, Tabs
+// - Breadcrumbs, EmptyState, LoadingSpinner
+
+// TODO: Implement missing tokens when needed  
+// - colors, typography, spacing, motion
+
+// TODO: Implement missing hooks when needed
+// - use-theme, use-media-query

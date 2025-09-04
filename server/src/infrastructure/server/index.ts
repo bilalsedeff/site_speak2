@@ -440,13 +440,4 @@ export class SiteSeakServer {
   }
 }
 
-// Extend Express Request interface
-declare global {
-  namespace Express {
-    interface Request {
-      correlationId: string;
-      user?: any; // Will be properly typed when auth is implemented
-      rawBody?: Buffer;
-    }
-  }
-}
+// Express Request interface extensions moved to server/src/types/express.d.ts

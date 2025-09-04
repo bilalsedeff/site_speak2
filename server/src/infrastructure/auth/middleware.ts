@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import '../../types/express'; // Import Express Request extensions
 
 import { jwtService } from './jwt';
 import { createLogger } from '../../shared/utils.js';
@@ -7,13 +8,7 @@ import type { UserRole } from '../../../../shared/types';
 const logger = createLogger({ service: 'auth-middleware' });
 
 // Extend Express Request to include user context
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthenticatedUser;
-    }
-  }
-}
+// Express Request interface extensions moved to server/src/types/express.d.ts
 
 export interface AuthenticatedUser {
   id: string;

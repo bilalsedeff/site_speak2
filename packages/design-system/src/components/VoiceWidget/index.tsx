@@ -11,6 +11,24 @@ import { VoiceWidgetPropsSchema, type VoiceWidgetProps } from '../../schemas/com
 import { VoiceWidgetAriaRequirements, validateAriaCompliance } from '../../schemas/aria-schemas'
 import { ComponentMetadata, generateAriaAttributes, generateActionAttributes } from '../../utils/component-metadata'
 
+// Web Audio API type definitions
+declare global {
+  interface AudioWorkletProcessor {
+    readonly port: MessagePort
+    process(
+      inputs: Float32Array[][],
+      outputs: Float32Array[][],
+      parameters: Record<string, Float32Array>
+    ): boolean
+  }
+  
+  interface AudioWorkletProcessorConstructor {
+    new (): AudioWorkletProcessor
+  }
+  
+  var AudioWorkletProcessor: AudioWorkletProcessorConstructor
+}
+
 // Voice widget metadata
 export const VoiceWidgetMetadata: ComponentMetadata = {
   name: 'VoiceWidget',
@@ -61,17 +79,19 @@ class AudioProcessor extends AudioWorkletProcessor {
     if (input && input.length > 0) {
       // Calculate RMS for audio level
       const samples = input[0]
-      let sum = 0
-      for (let i = 0; i < samples.length; i++) {
-        sum += samples[i] * samples[i]
+      if (samples && samples.length > 0) {
+        let sum = 0
+        for (let i = 0; i < samples.length; i++) {
+          sum += samples[i]! * samples[i]!
+        }
+        const rms = Math.sqrt(sum / samples.length)
+        
+        // Send audio level to main thread
+        this.port.postMessage({ type: 'audioLevel', level: rms })
+        
+        // Send audio data for processing (simplified for demo)
+        this.port.postMessage({ type: 'audioData', data: samples })
       }
-      const rms = Math.sqrt(sum / samples.length)
-      
-      // Send audio level to main thread
-      this.port.postMessage({ type: 'audioLevel', level: rms })
-      
-      // Send audio data for processing (simplified for demo)
-      this.port.postMessage({ type: 'audioData', data: samples })
     }
     
     return true
@@ -159,7 +179,7 @@ export const VoiceWidget = React.forwardRef<HTMLDivElement, VoiceWidgetProps>(
   (props, ref) => {
     // Validate props
     const validationResult = VoiceWidgetPropsSchema.safeParse(props)
-    if (!validationResult.success && process.env.NODE_ENV === 'development') {
+    if (!validationResult.success && process.env['NODE_ENV'] === 'development') {
       console.error('VoiceWidget props validation failed:', validationResult.error)
     }
 
@@ -212,7 +232,7 @@ export const VoiceWidget = React.forwardRef<HTMLDivElement, VoiceWidgetProps>(
 
     // ARIA validation
     const ariaValidation = validateAriaCompliance('VoiceWidget', restProps)
-    if (!ariaValidation.isCompliant && process.env.NODE_ENV === 'development') {
+    if (!ariaValidation.isCompliant && process.env['NODE_ENV'] === 'development') {
       console.warn(`VoiceWidget ARIA violations:`, ariaValidation.violations)
     }
 
@@ -391,12 +411,14 @@ export const VoiceWidget = React.forwardRef<HTMLDivElement, VoiceWidgetProps>(
                   const input = inputs[0]
                   if (input && input.length > 0) {
                     const samples = input[0]
-                    let sum = 0
-                    for (let i = 0; i < samples.length; i++) {
-                      sum += samples[i] * samples[i]
+                    if (samples && samples.length > 0) {
+                      let sum = 0
+                      for (let i = 0; i < samples.length; i++) {
+                        sum += samples[i]! * samples[i]!
+                      }
+                      const rms = Math.sqrt(sum / samples.length)
+                      this.port.postMessage({ type: 'audioLevel', level: rms })
                     }
-                    const rms = Math.sqrt(sum / samples.length)
-                    this.port.postMessage({ type: 'audioLevel', level: rms })
                   }
                   return true
                 }

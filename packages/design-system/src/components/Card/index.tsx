@@ -61,7 +61,7 @@ const Card = React.forwardRef<HTMLDivElement, CardComponentProps>(
   ({ className, variant, padding, itemType, itemProp, itemScope, children, ...props }, ref) => {
     // Validate ARIA compliance
     const ariaValidation = validateAriaCompliance('Card', props)
-    if (!ariaValidation.isCompliant && process.env.NODE_ENV === 'development') {
+    if (!ariaValidation.isCompliant && process.env['NODE_ENV'] === 'development') {
       console.warn(`Card ARIA violations:`, ariaValidation.violations)
     }
 
@@ -70,9 +70,9 @@ const Card = React.forwardRef<HTMLDivElement, CardComponentProps>(
 
     // Structured data attributes
     const structuredDataAttributes: Record<string, any> = {}
-    if (itemType) structuredDataAttributes.itemType = itemType
-    if (itemProp) structuredDataAttributes.itemProp = itemProp
-    if (itemScope) structuredDataAttributes.itemScope = itemScope
+    if (itemType) structuredDataAttributes['itemType'] = itemType
+    if (itemProp) structuredDataAttributes['itemProp'] = itemProp
+    if (itemScope) structuredDataAttributes['itemScope'] = itemScope
 
     return (
       <div

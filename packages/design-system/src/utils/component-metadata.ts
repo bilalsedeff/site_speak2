@@ -3,6 +3,9 @@ import { getAriaRequirements, ComponentAria } from '../schemas/aria-schemas'
 import { generateJsonLd } from '../schemas/jsonld-schemas'
 import { getComponentActions, ComponentAction } from '../schemas/action-schemas'
 
+// Re-export types for convenient access
+export type { ComponentMetadata, StructuredDataComponent } from '../schemas/component-schemas'
+
 /**
  * Registry to store component metadata for the site contract system
  */
@@ -127,11 +130,12 @@ class ComponentMetadataRegistry {
     
     this.getAll().forEach(component => {
       const ariaReqs = getAriaRequirements(component.name)
-      if (ariaReqs?.landmarkRole) {
-        if (!landmarks[ariaReqs.landmarkRole]) {
-          landmarks[ariaReqs.landmarkRole] = []
+      if (ariaReqs && ariaReqs.landmarkRole) {
+        const landmarkRole = ariaReqs.landmarkRole
+        if (!landmarks[landmarkRole]) {
+          landmarks[landmarkRole] = []
         }
-        landmarks[ariaReqs.landmarkRole].push(component.name)
+        landmarks[landmarkRole].push(component.name)
       }
     })
     
@@ -251,12 +255,12 @@ export function generateAriaAttributes(
 
   // Add required role
   if (requirements.role) {
-    attrs.role = requirements.role
+    attrs['role'] = requirements.role
   }
 
   // Add landmark role
   if (requirements.landmarkRole) {
-    attrs.role = requirements.landmarkRole
+    attrs['role'] = requirements.landmarkRole
   }
 
   // Add live region if specified
@@ -265,8 +269,8 @@ export function generateAriaAttributes(
   }
 
   // Ensure focusable elements have proper tabIndex
-  if (requirements.focusable && !attrs.tabIndex && attrs.tabIndex !== 0) {
-    attrs.tabIndex = 0
+  if (requirements.focusable && !attrs['tabIndex'] && attrs['tabIndex'] !== 0) {
+    attrs['tabIndex'] = 0
   }
 
   return attrs

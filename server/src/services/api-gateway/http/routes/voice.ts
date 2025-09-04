@@ -8,7 +8,8 @@
  * - Enhanced health and status endpoints
  */
 
-import * as express from 'express';
+import express from 'express';
+import '../../../../types/express'; // Import Express Request extensions
 import { z } from 'zod';
 import { createLogger } from '../../../_shared/telemetry/logger';
 import { authenticate, optionalAuth } from '../../../../infrastructure/auth/middleware';
@@ -62,7 +63,7 @@ router.post('/session',
   authenticate(),
   enforceTenancy(),
   validateRequest({ body: VoiceSessionSchema }),
-  async (req: express.Request, res: express.Response) => {
+  async (req, res) => {
     try {
       const sessionData = req.body;
       const tenantId = req.user!.tenantId;
@@ -168,12 +169,12 @@ router.get('/stream',
     keyGenerator: (req) => req.user?.tenantId || req.ip || 'unknown'
   }),
   optionalAuth(), // Allow widget access
-  async (req: express.Request, res: express.Response) => {
+  async (req, res) => {
     try {
-      const sessionId = req.query['sessionId'] as string;
-      const format = req.query['format'] as string;
-
-      if (!sessionId) {
+      const sessionId = req.query['sessionId'];
+      const format = req.query['format'];
+      
+      if (!sessionId || typeof sessionId !== 'string') {
         return res.problemDetail({
           title: 'Missing Session ID',
           status: 400,
@@ -181,7 +182,7 @@ router.get('/stream',
         });
       }
 
-      if (format !== 'sse') {
+      if (!format || typeof format !== 'string' || format !== 'sse') {
         return res.problemDetail({
           title: 'Invalid Format',
           status: 400,
@@ -284,7 +285,7 @@ router.post('/stream',
   }),
   optionalAuth(), // Allow widget access
   validateRequest({ body: VoiceStreamSchema }),
-  async (req: express.Request, res: express.Response) => {
+  async (req, res) => {
     try {
       const { sessionId, input, audioData, inputType, enablePartialResults, context } = req.body;
 
@@ -422,9 +423,17 @@ router.get('/session/:sessionId',
   }),
   authenticate(),
   enforceTenancy(),
-  async (req: express.Request, res: express.Response) => {
+  async (req, res) => {
     try {
       const { sessionId } = req.params;
+      if (!sessionId) {
+        return res.problemDetail({
+          title: 'Missing Session ID',
+          status: 400,
+          detail: 'sessionId parameter is required'
+        });
+      }
+      
       const tenantId = req.user!.tenantId;
 
       const { voiceOrchestrator } = await import('../../../../services/voice');
@@ -518,9 +527,17 @@ router.delete('/session/:sessionId',
   }),
   authenticate(),
   enforceTenancy(),
-  async (req: express.Request, res: express.Response) => {
+  async (req, res) => {
     try {
       const { sessionId } = req.params;
+      if (!sessionId) {
+        return res.problemDetail({
+          title: 'Missing Session ID',
+          status: 400,
+          detail: 'sessionId parameter is required'
+        });
+      }
+      
       const tenantId = req.user!.tenantId;
 
       const { voiceOrchestrator } = await import('../../../../services/voice');
@@ -589,7 +606,7 @@ router.get('/health',
     max: 120,
     keyGenerator: (req) => req.ip || 'unknown'
   }),
-  async (req: express.Request, res: express.Response) => {
+  async (req, res) => {
     try {
       // Import voice orchestrator for health check
       const { voiceOrchestrator } = await import('../../../../services/voice');

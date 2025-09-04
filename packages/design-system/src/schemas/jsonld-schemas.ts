@@ -320,7 +320,7 @@ export function generateJsonLd(
   function replaceVariables(obj: any): any {
     if (typeof obj === 'string') {
       return obj.replace(/\{\{(\w+)\}\}/g, (match, propKey) => {
-        const mappedProp = template.propMapping[propKey] || propKey
+        const mappedProp = template?.propMapping?.[propKey] || propKey
         return props[mappedProp] || match
       })
     } else if (Array.isArray(obj)) {

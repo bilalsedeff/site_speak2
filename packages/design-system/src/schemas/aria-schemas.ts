@@ -75,6 +75,7 @@ export const ButtonAriaRequirements: ComponentAria = {
 export const InputAriaRequirements: ComponentAria = {
   focusable: true,
   hasVisibleLabel: true,
+  keyboardNavigable: true,
   requiredAttributes: ['aria-label'],
   recommendedAttributes: ['aria-describedby', 'aria-invalid', 'aria-required'],
 }
@@ -84,6 +85,9 @@ export const InputAriaRequirements: ComponentAria = {
  */
 export const CardAriaRequirements: ComponentAria = {
   role: 'article',
+  focusable: false,
+  hasVisibleLabel: true,
+  keyboardNavigable: false,
   recommendedAttributes: ['aria-labelledby', 'aria-describedby'],
 }
 
@@ -94,6 +98,8 @@ export const NavigationAriaRequirements: ComponentAria = {
   landmarkRole: 'navigation',
   role: 'navigation',
   requiredAttributes: ['aria-label'],
+  focusable: false,
+  hasVisibleLabel: true,
   keyboardNavigable: true,
   keyboardShortcuts: [
     { key: 'Tab', description: 'Navigate to next item' },
@@ -108,6 +114,9 @@ export const NavigationAriaRequirements: ComponentAria = {
 export const MainContentAriaRequirements: ComponentAria = {
   landmarkRole: 'main',
   role: 'main',
+  focusable: false,
+  hasVisibleLabel: true,
+  keyboardNavigable: false,
 }
 
 /**
@@ -117,6 +126,9 @@ export const FormAriaRequirements: ComponentAria = {
   landmarkRole: 'form',
   role: 'form',
   recommendedAttributes: ['aria-labelledby', 'aria-describedby'],
+  focusable: false,
+  hasVisibleLabel: true,
+  keyboardNavigable: false,
 }
 
 /**
@@ -145,6 +157,8 @@ export const ToastAriaRequirements: ComponentAria = {
   liveRegion: 'assertive',
   requiredAttributes: ['aria-label'],
   focusable: false, // Toasts should not steal focus
+  hasVisibleLabel: true,
+  keyboardNavigable: false,
 }
 
 /**
@@ -153,6 +167,8 @@ export const ToastAriaRequirements: ComponentAria = {
 export const ModalAriaRequirements: ComponentAria = {
   role: 'dialog',
   focusable: true,
+  hasVisibleLabel: true,
+  keyboardNavigable: true,
   requiredAttributes: ['aria-labelledby', 'aria-modal'],
   recommendedAttributes: ['aria-describedby'],
   keyboardShortcuts: [
@@ -169,6 +185,9 @@ export const LoadingAriaRequirements: ComponentAria = {
   liveRegion: 'polite',
   requiredAttributes: ['aria-label'],
   recommendedAttributes: ['aria-valuenow', 'aria-valuemin', 'aria-valuemax'],
+  focusable: false,
+  hasVisibleLabel: true,
+  keyboardNavigable: false,
 }
 
 /**
@@ -178,6 +197,8 @@ export const SearchAriaRequirements: ComponentAria = {
   landmarkRole: 'search',
   role: 'search',
   requiredAttributes: ['aria-label'],
+  focusable: false,
+  hasVisibleLabel: true,
   keyboardNavigable: true,
 }
 
@@ -226,10 +247,10 @@ export function validateAriaCompliance(
   }
   
   // Check focus requirements
-  if (requirements.focusable && !props.tabIndex && props.tabIndex !== 0) {
+  if (requirements.focusable && !props['tabIndex'] && props['tabIndex'] !== 0) {
     // Check if element is naturally focusable or has tabIndex
     const naturallyFocusable = ['button', 'input', 'select', 'textarea', 'a'].includes(
-      props.as || componentName.toLowerCase()
+      props['as'] || componentName.toLowerCase()
     )
     if (!naturallyFocusable) {
       violations.push('Focusable element missing tabIndex')

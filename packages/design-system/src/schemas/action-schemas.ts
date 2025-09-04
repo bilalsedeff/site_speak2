@@ -91,6 +91,8 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'navigation',
       selector: '[data-action="product.view"]',
       selectorType: 'attribute',
+      event: 'click',
+      requiresConfirmation: false,
       parameters: [
         { name: 'productId', type: 'string', required: true, description: 'Product identifier' }
       ],
@@ -101,6 +103,7 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'commerce',
       selector: '[data-action="cart.add"]',
       selectorType: 'attribute',
+      event: 'click',
       requiresConfirmation: false,
       parameters: [
         { name: 'productId', type: 'string', required: true, description: 'Product identifier' },
@@ -116,6 +119,8 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'commerce',
       selector: '[data-action="wishlist.add"]',
       selectorType: 'attribute',
+      event: 'click',
+      requiresConfirmation: false,
       parameters: [
         { name: 'productId', type: 'string', required: true, description: 'Product identifier' }
       ],
@@ -129,6 +134,8 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       description: 'View event details',
       category: 'navigation',
       selector: '[data-action="event.view"]',
+      event: 'click',
+      requiresConfirmation: false,
       selectorType: 'attribute',
       parameters: [
         { name: 'eventId', type: 'string', required: true, description: 'Event identifier' }
@@ -140,6 +147,7 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'form',
       selector: '[data-action="event.register"]',
       selectorType: 'attribute',
+      event: 'click',
       requiresConfirmation: true,
       confirmationMessage: 'Are you sure you want to register for this event?',
       parameters: [
@@ -155,6 +163,8 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'content',
       selector: '[data-action="calendar.add"]',
       selectorType: 'attribute',
+      event: 'click',
+      requiresConfirmation: false,
       parameters: [
         { name: 'eventId', type: 'string', required: true, description: 'Event identifier' }
       ],
@@ -169,6 +179,7 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       selector: '[data-action="contact.submit"]',
       selectorType: 'attribute',
       event: 'submit',
+      requiresConfirmation: false,
       parameters: [
         { name: 'name', type: 'string', required: true, description: 'Contact name' },
         { name: 'email', type: 'string', required: true, description: 'Contact email' },
@@ -189,6 +200,7 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       selector: '[data-action="search.submit"]',
       selectorType: 'attribute',
       event: 'submit',
+      requiresConfirmation: false,
       parameters: [
         { name: 'query', type: 'string', required: true, description: 'Search query' },
         { name: 'category', type: 'string', required: false, description: 'Search category filter' },
@@ -204,6 +216,8 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'navigation',
       selector: '[data-action="navigation.goto"]',
       selectorType: 'attribute',
+      event: 'click',
+      requiresConfirmation: false,
       parameters: [
         { name: 'url', type: 'string', required: true, description: 'Target URL' },
         { name: 'openInNewTab', type: 'boolean', required: false, defaultValue: false, description: 'Open in new tab' }
@@ -215,6 +229,8 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'navigation',
       selector: '[data-action="navigation.back"]',
       selectorType: 'attribute',
+      event: 'click',
+      requiresConfirmation: false,
     },
     {
       name: 'navigation.home',
@@ -222,6 +238,8 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'navigation',
       selector: '[data-action="navigation.home"]',
       selectorType: 'attribute',
+      event: 'click',
+      requiresConfirmation: false,
     }
   ],
   
@@ -252,6 +270,7 @@ export const COMMON_ACTIONS: Record<string, ComponentAction[]> = {
       category: 'form',
       selector: '[data-action="booking.cancel"]',
       selectorType: 'attribute',
+      event: 'click',
       requiresConfirmation: true,
       confirmationMessage: 'Are you sure you want to cancel this booking?',
       parameters: [
