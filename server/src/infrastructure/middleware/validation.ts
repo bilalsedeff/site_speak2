@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { ParsedQs } from 'qs';
 import { z, ZodSchema } from 'zod';
 import { createLogger } from '../../shared/utils.js';
 
@@ -113,6 +114,7 @@ export function validateRequest(schemas: ValidationSchemas) {
       }
 
       next();
+      return;
     } catch (error) {
       logger.error('Validation middleware error', {
         error,
@@ -124,6 +126,7 @@ export function validateRequest(schemas: ValidationSchemas) {
         code: 'VALIDATION_INTERNAL_ERROR',
         correlationId: req.correlationId,
       });
+      return;
     }
   };
 }
@@ -132,7 +135,7 @@ export function validateRequest(schemas: ValidationSchemas) {
  * Sanitize request data to prevent XSS and other attacks
  */
 export function sanitizeRequest() {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
     try {
       // Recursively sanitize strings in objects
       const sanitizeValue = (value: unknown): unknown => {
@@ -165,7 +168,9 @@ export function sanitizeRequest() {
       }
 
       if (req.query) {
-        req.query = sanitizeValue(req.query) as Record<string, unknown>;
+        const sanitizedQuery = sanitizeValue(req.query);
+        // Type-safe assignment to ParsedQs - ensure the sanitized value conforms
+        req.query = sanitizedQuery as ParsedQs;
       }
 
       next();

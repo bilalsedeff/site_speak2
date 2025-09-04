@@ -13,7 +13,7 @@ export class HealthController {
    * Aggregate health check - always returns 200 OK per source-of-truth
    * Combines liveness and readiness status for external monitoring
    */
-  async basicHealth(req: Request, res: Response, next: NextFunction) {
+  async basicHealth(_req: Request, res: Response, _next: NextFunction) {
     const startTime = Date.now();
     let success = true;
 
@@ -63,6 +63,7 @@ export class HealthController {
         version: process.env['GIT_COMMIT'] || process.env['npm_package_version'] || '1.0.0',
         uptimeSec,
       });
+      return;
     } catch (error) {
       logger.error('Health check failed', { error });
       
@@ -81,6 +82,7 @@ export class HealthController {
         version: process.env['GIT_COMMIT'] || process.env['npm_package_version'] || '1.0.0',
         uptimeSec: metricsService.getUptimeSeconds(),
       });
+      return;
     } finally {
       // Record probe execution metrics per source-of-truth requirements
       const duration = Date.now() - startTime;
@@ -92,7 +94,7 @@ export class HealthController {
    * Kubernetes liveness probe - indicates if the process is alive
    * Returns 200 OK if alive, 500 if unhealthy (triggering restart)
    */
-  async liveness(req: Request, res: Response, next: NextFunction) {
+  async liveness(_req: Request, res: Response, _next: NextFunction) {
     const startTime = Date.now();
     let success = false;
 
@@ -124,6 +126,7 @@ export class HealthController {
         lagMs: Math.round(lagMs * 100) / 100, // Round to 2 decimal places
         uptimeSec,
       });
+      return;
     } catch (error) {
       logger.error('Liveness probe failed', { error });
       res.status(500).json({
@@ -131,6 +134,7 @@ export class HealthController {
         lagMs: 0,
         uptimeSec: metricsService.getUptimeSeconds(),
       });
+      return;
     } finally {
       // Record probe execution metrics per source-of-truth requirements
       const duration = Date.now() - startTime;
@@ -142,7 +146,7 @@ export class HealthController {
    * Kubernetes readiness probe - indicates if the service is ready to serve requests
    * Returns 200 OK if ready, 503 Service Unavailable if not (for traffic gating)
    */
-  async readiness(req: Request, res: Response, next: NextFunction) {
+  async readiness(_req: Request, res: Response, _next: NextFunction) {
     const startTime = Date.now();
     let success = false;
 
@@ -199,6 +203,7 @@ export class HealthController {
         deps,
         draining,
       });
+      return;
     } catch (error) {
       logger.error('Readiness probe failed', { error });
       res.status(503).json({
@@ -206,6 +211,7 @@ export class HealthController {
         deps: {},
         draining: metricsService.isDrainingMode(),
       });
+      return;
     } finally {
       // Record probe execution metrics per source-of-truth requirements
       const duration = Date.now() - startTime;
@@ -216,7 +222,7 @@ export class HealthController {
   /**
    * Detailed health check with comprehensive system information
    */
-  async detailedHealth(req: Request, res: Response, next: NextFunction) {
+  async detailedHealth(_req: Request, res: Response, _next: NextFunction) {
     try {
       logger.info('Performing detailed health check');
 
@@ -248,6 +254,7 @@ export class HealthController {
           },
         },
       });
+      return;
     } catch (error) {
       logger.error('Detailed health check failed', { error });
       res.status(500).json({
@@ -256,13 +263,14 @@ export class HealthController {
         error: 'Detailed health check failed',
         details: error instanceof Error ? error.message : 'Unknown error',
       });
+      return;
     }
   }
 
   /**
    * System metrics endpoint
    */
-  async metrics(req: Request, res: Response, next: NextFunction) {
+  async metrics(_req: Request, res: Response, _next: NextFunction) {
     try {
       const metrics = await metricsService.getSystemMetrics();
       
@@ -273,14 +281,14 @@ export class HealthController {
       });
     } catch (error) {
       logger.error('Metrics endpoint failed', { error });
-      next(error);
+      _next(error);
     }
   }
 
   /**
    * Prometheus metrics endpoint
    */
-  async prometheusMetrics(req: Request, res: Response, next: NextFunction) {
+  async prometheusMetrics(_req: Request, res: Response, _next: NextFunction) {
     try {
       const prometheusMetrics = metricsService.exportPrometheusMetrics();
       
@@ -295,7 +303,7 @@ export class HealthController {
   /**
    * Service dependencies status
    */
-  async dependencies(req: Request, res: Response, next: NextFunction) {
+  async dependencies(_req: Request, res: Response, _next: NextFunction) {
     try {
       const healthChecks = await metricsService.performHealthChecks();
       
@@ -324,14 +332,14 @@ export class HealthController {
       });
     } catch (error) {
       logger.error('Dependencies check failed', { error });
-      next(error);
+      _next(error);
     }
   }
 
   /**
    * Application version and build information
    */
-  async version(req: Request, res: Response, next: NextFunction) {
+  async version(_req: Request, res: Response, _next: NextFunction) {
     try {
       res.json({
         version: process.env['npm_package_version'] || '1.0.0',
@@ -347,7 +355,7 @@ export class HealthController {
       });
     } catch (error) {
       logger.error('Version endpoint failed', { error });
-      next(error);
+      _next(error);
     }
   }
 
@@ -355,7 +363,7 @@ export class HealthController {
    * Startup probe for Kubernetes - indicates if the application has started
    * Uses same format as liveness probe per source-of-truth recommendation
    */
-  async startup(req: Request, res: Response, next: NextFunction) {
+  async startup(_req: Request, res: Response, _next: NextFunction) {
     try {
       const lagMs = metricsService.getEventLoopLag();
       const uptimeSec = metricsService.getUptimeSeconds();
@@ -386,6 +394,7 @@ export class HealthController {
         lagMs: Math.round(lagMs * 100) / 100,
         uptimeSec,
       });
+      return;
     } catch (error) {
       logger.error('Startup probe failed', { error });
       res.status(503).json({
@@ -393,6 +402,7 @@ export class HealthController {
         lagMs: 0,
         uptimeSec: metricsService.getUptimeSeconds(),
       });
+      return;
     }
   }
 

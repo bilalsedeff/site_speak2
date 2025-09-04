@@ -34,6 +34,22 @@ export interface TokenOptions {
 }
 
 /**
+ * Parse expiration time string (e.g., "15m", "7d") to seconds
+ */
+function parseExpirationTime(timeStr: string): number {
+  const unit = timeStr.slice(-1);
+  const value = parseInt(timeStr.slice(0, -1));
+
+  switch (unit) {
+    case 's': return value;
+    case 'm': return value * 60;
+    case 'h': return value * 60 * 60;
+    case 'd': return value * 24 * 60 * 60;
+    default: throw new Error(`Invalid time unit: ${unit}`);
+  }
+}
+
+/**
  * JWT Service for authentication token management
  */
 export class JWTService {
@@ -62,7 +78,7 @@ export class JWTService {
 
       const expiresIn = options?.expiresIn || config.JWT_ACCESS_EXPIRES_IN;
       const signOptions: jwt.SignOptions = {
-        expiresIn: expiresIn as string | number,
+        expiresIn: typeof expiresIn === 'string' ? parseExpirationTime(expiresIn) : expiresIn,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
       };
@@ -86,7 +102,7 @@ export class JWTService {
 
       const expiresIn = options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN;
       const signOptions: jwt.SignOptions = {
-        expiresIn: expiresIn as string | number,
+        expiresIn: typeof expiresIn === 'string' ? parseExpirationTime(expiresIn) : expiresIn,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
       };

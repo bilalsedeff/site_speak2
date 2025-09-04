@@ -9,10 +9,13 @@ export * from './MetricsService';
 export * from './HealthController';
 export * from './routes';
 
+// Import singletons for internal use
+import { metricsService } from './MetricsService';
+import { healthController } from './HealthController';
+import { monitoringRoutes } from './routes';
+
 // Re-export commonly used items
-export { metricsService } from './MetricsService';
-export { healthController } from './HealthController';
-export { monitoringRoutes } from './routes';
+export { metricsService, healthController, monitoringRoutes };
 
 export type { SystemMetrics, HealthCheck } from './MetricsService';
 

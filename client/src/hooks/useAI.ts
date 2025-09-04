@@ -390,7 +390,6 @@ export function useVoice() {
  */
 export function useConversationHistory(sessionId?: string) {
   const [messages, setMessages] = useState<Array<{
-    [x: string]: boolean
     role: 'user' | 'assistant'
     content: string
     timestamp: string

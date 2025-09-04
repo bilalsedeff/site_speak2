@@ -23,9 +23,9 @@ export class SiteSeakServer {
   private app: Express;
   private httpServer: HTTPServer;
   private io: SocketIOServer;
-  private isShuttingDown = false;
+  private _isShuttingDown = false;
 
-  constructor(private dependencies: ServerDependencies = {}) {
+  constructor(private _dependencies: ServerDependencies = {}) {
     this.app = express();
     this.httpServer = new HTTPServer(this.app);
     this.io = new SocketIOServer(this.httpServer, {
@@ -126,7 +126,7 @@ export class SiteSeakServer {
     // Body parsing
     this.app.use(express.json({ 
       limit: '10mb',
-      verify: (req, res, buf) => {
+      verify: (req, _res, buf) => {
         // Store raw body for webhook verification
         (req as any).rawBody = buf;
       },
@@ -303,7 +303,7 @@ export class SiteSeakServer {
     this.app.use(authErrorHandler());
 
     // Express error handler (must be last middleware)
-    this.app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
+    this.app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
       logger.error('Express error handler', { 
         error,
         correlationId: req.correlationId,
@@ -332,7 +332,7 @@ export class SiteSeakServer {
       
       // CRITICAL: Set drain mode immediately so readiness probes return 503
       // This removes the pod from load balancer service endpoints
-      this.isShuttingDown = true;
+      this._isShuttingDown = true;
       metricsService.setDraining(true);
       
       logger.info('Drain mode enabled - readiness probes will return 503');
@@ -371,7 +371,7 @@ export class SiteSeakServer {
         });
 
         // Wait for in-flight requests to complete or timeout
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve, _reject) => {
           const timeout = setTimeout(() => {
             logger.warn('Graceful shutdown timeout reached, forcing exit');
             resolve(void 0);

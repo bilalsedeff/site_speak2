@@ -6,10 +6,11 @@
  */
 
 import * as cheerio from 'cheerio';
+import { Element } from 'domhandler';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createLogger } from '../../../../shared/utils.js';
-import type { SiteAction, ActionParameter } from '../../../../shared/types.js';
+import type { ActionParameter } from '../../../../shared/types.js';
 
 const logger = createLogger({ service: 'action-manifest-generator' });
 
@@ -30,15 +31,23 @@ export interface SiteManifest {
 /**
  * Enhanced action interface with security and validation
  */
-export interface EnhancedSiteAction extends SiteAction {
+export interface EnhancedSiteAction {
+  // Base SiteAction properties
+  name: string;
+  type: 'navigation' | 'form' | 'button' | 'api' | 'custom';
+  description: string;
+  parameters: ActionParameter[];
+  selector?: string;
+  confirmation?: boolean;
+  sideEffecting?: 'safe' | 'read' | 'write';
+  riskLevel?: 'low' | 'medium' | 'high';
+  category?: string;
+  metadata?: Record<string, any>;
+  
+  // Enhanced properties
   id: string;
-  selector: string;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   endpoint?: string;
-  confirmation: boolean;
-  sideEffecting: 'safe' | 'confirmation_required' | 'destructive';
-  riskLevel: 'low' | 'medium' | 'high';
-  category: 'read' | 'write' | 'delete' | 'payment' | 'communication';
   requiresAuth: boolean;
   jsonSchema?: Record<string, any>; // JSON Schema 2020-12 for OpenAI
   validationSchema?: z.ZodSchema;   // Runtime validation
@@ -172,7 +181,7 @@ export class ActionManifestGenerator {
           .filter(([, value]) => value)
           .map(([key]) => key.replace('has', '').toLowerCase()),
         metadata: capabilities,
-        privacy,
+        ...(privacy !== undefined && { privacy }),
         security,
       };
 
@@ -206,14 +215,18 @@ export class ActionManifestGenerator {
         const $field = $(field);
         const type = $field.attr('type') || $field.prop('tagName')?.toLowerCase() || 'text';
         
+        const placeholder = $field.attr('placeholder');
+        const validation = this.extractFieldValidation($field, type);
+        const options = type === 'select' ? this.extractSelectOptions($, $field) : undefined;
+        
         formFields.push({
           name: $field.attr('name') || $field.attr('id') || '',
           type,
           label: this.extractFieldLabel($, $field),
-          required: $field.prop('required') || $field.attr('required') !== undefined,
-          placeholder: $field.attr('placeholder'),
-          validation: this.extractFieldValidation($field, type),
-          options: type === 'select' ? this.extractSelectOptions($field) : undefined,
+          required: Boolean($field.prop('required')) || $field.attr('required') !== undefined,
+          ...(placeholder !== undefined && { placeholder }),
+          ...(validation !== undefined && { validation }),
+          ...(options !== undefined && { options }),
         });
       });
       
@@ -232,7 +245,7 @@ export class ActionManifestGenerator {
       buttons.push({
         text,
         selector: this.generateSelector($, $btn),
-        action,
+        ...(action !== undefined && { action }),
       });
     });
 
@@ -318,6 +331,7 @@ export class ActionManifestGenerator {
         type: 'navigation' as const,
         description: `Navigate to ${link.text}`,
         parameters: [],
+        id: `nav_${this.slugify(link.text)}_${Date.now()}`,
         selector: `a[href="${link.href}"]`,
         confirmation: false,
         sideEffecting: 'safe' as const,
@@ -345,15 +359,19 @@ export class ActionManifestGenerator {
       
       const parameters: ActionParameter[] = formFields
         .filter(field => field.name)
-        .map(field => ({
-          name: field.name,
-          type: this.mapFieldType(field.type),
-          required: field.required,
-          description: field.label || `${field.name} field`,
-          validation: field.validation,
-        }));
+        .map(field => {
+          const description = field.label || `${field.name} field`;
+          return {
+            name: field.name,
+            type: this.mapFieldType(field.type),
+            required: field.required,
+            ...(description !== undefined && { description }),
+            ...(field.validation !== undefined && { validation: field.validation }),
+          };
+        });
 
       actions.push({
+        id: `form_${this.slugify(formName)}_${Date.now()}`,
         name: `submit_${this.slugify(formName)}`,
         type: 'form' as const,
         description: `Submit ${formName}${isContactForm ? ' contact form' : ''}`,
@@ -362,7 +380,7 @@ export class ActionManifestGenerator {
         method: this.normalizeHttpMethod(formEl.attr('method')),
         endpoint: formEl.attr('action') || '#',
         confirmation: isPaymentForm,
-        sideEffecting: isPaymentForm ? 'destructive' : 'confirmation_required',
+        sideEffecting: isPaymentForm ? 'write' : 'write',
         riskLevel: isPaymentForm ? 'high' : (isContactForm ? 'medium' : 'low'),
         category: isPaymentForm ? 'payment' : 'communication',
         requiresAuth: isPaymentForm,
@@ -390,13 +408,14 @@ export class ActionManifestGenerator {
         const isBooking = /book|reserve|schedule/i.test(btn.text);
         
         return {
+          id: `btn_${this.slugify(btn.text)}_${Date.now()}`,
           name: `click_${this.slugify(btn.text)}`,
           type: 'button' as const,
           description: `Click ${btn.text} button`,
           parameters: [],
           selector: btn.selector,
           confirmation: isDestructive || isBooking,
-          sideEffecting: isDestructive ? 'destructive' : (isAddToCart || isBooking ? 'confirmation_required' : 'safe'),
+          sideEffecting: isDestructive ? 'write' : (isAddToCart || isBooking ? 'write' : 'safe'),
           riskLevel: isDestructive ? 'high' : (isAddToCart || isBooking ? 'medium' : 'low'),
           category: isDestructive ? 'delete' : (isAddToCart ? 'write' : 'read'),
           requiresAuth: isBooking || isDestructive,
@@ -422,6 +441,7 @@ export class ActionManifestGenerator {
     });
 
     return [{
+      id: `search_site_${Date.now()}`,
       name: 'search_site',
       type: 'custom' as const,
       description: 'Search the website content',
@@ -498,7 +518,7 @@ export class ActionManifestGenerator {
       '[data-exclude]',
     ];
 
-    const piiFields = [];
+    const piiFields: string[] = [];
     $('input').each((_, input) => {
       const name = $(input).attr('name') || '';
       const type = $(input).attr('type') || '';
@@ -607,7 +627,7 @@ export class ActionManifestGenerator {
   }
 
   // Helper methods for analysis
-  private extractFieldLabel($: cheerio.CheerioAPI, $field: cheerio.Cheerio<cheerio.Element>): string {
+  private extractFieldLabel($: cheerio.CheerioAPI, $field: cheerio.Cheerio<Element>): string {
     const id = $field.attr('id');
     if (id) {
       const label = $(`label[for="${id}"]`).text().trim();
@@ -620,8 +640,8 @@ export class ActionManifestGenerator {
     return $field.attr('name') || 'Field';
   }
 
-  private extractFieldValidation($field: cheerio.Cheerio<cheerio.Element>, type: string): Record<string, any> | undefined {
-    const validation: Record<string, any> = {};
+  private extractFieldValidation($field: cheerio.Cheerio<Element>, _type: string): { min?: number; max?: number; pattern?: string; options?: string[]; } | undefined {
+    const validation: { min?: number; max?: number; pattern?: string; options?: string[]; } = {};
     
     const min = $field.attr('min');
     const max = $field.attr('max');
@@ -629,16 +649,16 @@ export class ActionManifestGenerator {
     const minLength = $field.attr('minlength');
     const maxLength = $field.attr('maxlength');
     
-    if (min) {validation['min'] = parseFloat(min);}
-    if (max) {validation['max'] = parseFloat(max);}
-    if (pattern) {validation['pattern'] = pattern;}
-    if (minLength) {validation['min'] = parseInt(minLength);}
-    if (maxLength) {validation['max'] = parseInt(maxLength);}
+    if (min) {validation.min = parseFloat(min);}
+    if (max) {validation.max = parseFloat(max);}
+    if (pattern) {validation.pattern = pattern;}
+    if (minLength) {validation.min = parseInt(minLength);}
+    if (maxLength) {validation.max = parseInt(maxLength);}
     
     return Object.keys(validation).length > 0 ? validation : undefined;
   }
 
-  private extractSelectOptions($field: cheerio.Cheerio<cheerio.Element>): string[] | undefined {
+  private extractSelectOptions($: cheerio.CheerioAPI, $field: cheerio.Cheerio<Element>): string[] | undefined {
     const options: string[] = [];
     $field.find('option').each((_, option) => {
       const value = $(option).attr('value');
@@ -647,7 +667,7 @@ export class ActionManifestGenerator {
     return options.length > 0 ? options : undefined;
   }
 
-  private generateSelector($: cheerio.CheerioAPI, $element: cheerio.Cheerio<cheerio.Element>): string {
+  private generateSelector(_$: cheerio.CheerioAPI, $element: cheerio.Cheerio<Element>): string {
     // Prefer data-action attributes
     const dataAction = $element.attr('data-action');
     if (dataAction) {return `[data-action="${dataAction}"]`;}
@@ -776,13 +796,3 @@ export class ActionManifestGenerator {
  */
 export const actionManifestGenerator = new ActionManifestGenerator();
 
-/**
- * Export types for other modules
- */
-export type {
-  SiteManifest,
-  EnhancedSiteAction,
-  SiteCapabilities,
-  PrivacySettings,
-  SecuritySettings,
-};

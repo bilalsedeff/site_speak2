@@ -72,7 +72,7 @@ export class OpusFramer extends EventEmitter {
   // Frame timing
   private frameSize: number; // Samples per frame
   private frameTimeMs: number;
-  private lastFrameTime = 0; // Track frame timing
+  private _lastFrameTime = 0; // Track frame timing
 
   constructor(config: OpusConfig) {
     super();
@@ -110,7 +110,7 @@ export class OpusFramer extends EventEmitter {
 
     this.isActive = true;
     this.frameSequence = 0;
-    this.lastFrameTime = Date.now();
+    this._lastFrameTime = Date.now();
     
     logger.info('OpusFramer started');
   }
@@ -293,8 +293,11 @@ export class OpusFramer extends EventEmitter {
         let sum = 0;
         let count = 0;
         for (let j = 0; j < step && sourceIndex + j < pcmData.length; j++) {
-          sum += pcmData[sourceIndex + j];
-          count++;
+          const sample = pcmData[sourceIndex + j];
+          if (sample !== undefined) {
+            sum += sample;
+            count++;
+          }
         }
         if (outputView && count > 0) {
           outputView[i] = Math.floor(sum / count);

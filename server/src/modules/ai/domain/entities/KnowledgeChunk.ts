@@ -224,8 +224,17 @@ export const KnowledgeChunkSchema = z.object({
 /**
  * Factory function for creating chunks
  */
+type KnowledgeChunkData = {
+  knowledgeBaseId: string;
+  content: string;
+  embedding: number[];
+  metadata: ChunkMetadata;
+  hierarchy: ChunkHierarchy;
+  processing: ProcessingInfo;
+};
+
 export function createKnowledgeChunk(
-  data: Omit<ConstructorParameters<typeof KnowledgeChunk>[0], 'id' | 'createdAt' | 'updatedAt'>
+  data: KnowledgeChunkData
 ): KnowledgeChunk {
   const now = new Date();
   return new KnowledgeChunk(

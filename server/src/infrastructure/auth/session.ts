@@ -52,7 +52,7 @@ export class InMemorySessionStore implements SessionStore {
       ipAddress: data.ipAddress,
       userAgent: data.userAgent,
       isActive: true,
-      metadata: data.metadata,
+      ...(data.metadata !== undefined && { metadata: data.metadata }),
     };
 
     this.sessions.set(session.id, session);
@@ -186,31 +186,31 @@ export class InMemorySessionStore implements SessionStore {
  * TODO: Implement when Redis integration is added
  */
 export class RedisSessionStore implements SessionStore {
-  constructor(private redisClient: any) {
+  constructor(private _redisClient: any) {
     // TODO: Implement Redis session store
   }
 
-  async create(data: CreateSessionRequest): Promise<UserSession> {
+  async create(_data: CreateSessionRequest): Promise<UserSession> {
     throw new Error('RedisSessionStore not implemented yet');
   }
 
-  async get(sessionId: string): Promise<UserSession | null> {
+  async get(_sessionId: string): Promise<UserSession | null> {
     throw new Error('RedisSessionStore not implemented yet');
   }
 
-  async update(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | null> {
+  async update(_sessionId: string, _updates: Partial<UserSession>): Promise<UserSession | null> {
     throw new Error('RedisSessionStore not implemented yet');
   }
 
-  async delete(sessionId: string): Promise<boolean> {
+  async delete(_sessionId: string): Promise<boolean> {
     throw new Error('RedisSessionStore not implemented yet');
   }
 
-  async deleteByUserId(userId: string): Promise<number> {
+  async deleteByUserId(_userId: string): Promise<number> {
     throw new Error('RedisSessionStore not implemented yet');
   }
 
-  async updateActivity(sessionId: string): Promise<boolean> {
+  async updateActivity(_sessionId: string): Promise<boolean> {
     throw new Error('RedisSessionStore not implemented yet');
   }
 
@@ -218,7 +218,7 @@ export class RedisSessionStore implements SessionStore {
     throw new Error('RedisSessionStore not implemented yet');
   }
 
-  async getActiveSessions(userId: string): Promise<UserSession[]> {
+  async getActiveSessions(_userId: string): Promise<UserSession[]> {
     throw new Error('RedisSessionStore not implemented yet');
   }
 }

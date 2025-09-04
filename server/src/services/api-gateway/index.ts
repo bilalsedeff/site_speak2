@@ -17,8 +17,6 @@ import { createLogger } from '../_shared/telemetry/logger';
 import { localeDetect } from './http/middleware/locale-detect';
 import { problemDetailsHandler, addProblemDetailMethod } from './http/middleware/problem-details';
 import { rateLimiters, addRateLimitHeaders } from './http/middleware/rate-limit-headers';
-import { authenticate, optionalAuth } from '../_shared/security/auth';
-import { enforceTenancy } from '../_shared/security/tenancy';
 
 const logger = createLogger({ service: 'api-gateway' });
 
@@ -317,7 +315,7 @@ async function performHealthChecks(): Promise<{
 
   try {
     // Check database connectivity
-    const { checkDatabaseHealth } = await import('../infrastructure/database');
+    const { checkDatabaseHealth } = await import('../../infrastructure/database');
     checks['database'] = await checkDatabaseHealth();
   } catch (error) {
     checks['database'] = { healthy: false, error: 'Database connection failed' };

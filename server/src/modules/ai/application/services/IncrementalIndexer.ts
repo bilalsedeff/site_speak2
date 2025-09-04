@@ -194,7 +194,7 @@ export class IncrementalIndexer {
             tenantId: site.tenantId,
             knowledgeBaseId: site.knowledgeBaseId,
             baseUrl: site.baseUrl,
-            lastCrawlInfo: site.lastCrawlInfo
+            ...(site.lastCrawlInfo !== undefined && { lastCrawlInfo: site.lastCrawlInfo })
           });
 
           return {
@@ -221,7 +221,7 @@ export class IncrementalIndexer {
           results.push(result.value);
         } else {
           results.push({
-            siteId: batch[index].siteId,
+            siteId: batch[index]?.siteId || 'unknown',
             scheduled: false,
             error: result.reason?.message || 'Batch processing failed',
             nextCheck: new Date(Date.now() + checkInterval * 2)
@@ -273,6 +273,10 @@ export class IncrementalIndexer {
     }
 
     const extractedContent = crawlResult.extractedContent[0];
+    
+    if (!extractedContent) {
+      throw new Error('No content extracted from URL');
+    }
     
     // Process content into chunks
     const chunkResult = await this.processContentIntoChunks(
@@ -329,7 +333,7 @@ export class IncrementalIndexer {
     const chunks: KnowledgeChunk[] = [];
     
     // Clean and split text content
-    const cleanText = this.cleanTextContent(extractedContent.content);
+    const cleanText = this.cleanTextContent(extractedContent.content || '');
     const textSegments = this.splitTextIntoSegments(cleanText);
     
     for (let i = 0; i < textSegments.length; i++) {

@@ -79,7 +79,7 @@ export class MetricsService {
   private requestCounts = new Map<string, number>();
   private responseTimes: number[] = [];
   private errorCounts = new Map<string, number>();
-  private startTime = Date.now();
+  private _startTime = Date.now(); // Application start time for future use
   private eventLoopMonitor: ReturnType<typeof monitorEventLoopDelay>;
   private isDraining = false;
   
@@ -238,9 +238,9 @@ export class MetricsService {
 
     for (let i = 0; i < checks.length; i++) {
       const check = checks[i];
-      if (check.status === 'fulfilled') {
+      if (check?.status === 'fulfilled') {
         results.push(check.value);
-      } else {
+      } else if (check?.status === 'rejected') {
         // Create error health check for failed/timeout checks
         results.push({
           service: checkNames[i] || 'unknown',
@@ -512,7 +512,7 @@ export class MetricsService {
   private async getDiskUsage(): Promise<{ available: number; used: number; total: number }> {
     try {
       // Simple disk usage estimation - for production, use a proper disk usage library
-      const stats = await fs.promises.stat(process.cwd());
+      const _stats = await fs.promises.stat(process.cwd());
       
       // Return placeholder values for now - in production, use a library like 'node-disk-info'
       return { 

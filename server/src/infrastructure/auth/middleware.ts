@@ -60,11 +60,12 @@ export function authenticate() {
           method: req.method,
         });
         
-        return res.status(401).json({
+        res.status(401).json({
           error: 'Authentication required',
           code: 'MISSING_TOKEN',
           correlationId: req.correlationId,
         });
+        return;
       }
 
       // Verify and decode token
@@ -110,11 +111,12 @@ export function authenticate() {
         }
       }
 
-      return res.status(statusCode).json({
+      res.status(statusCode).json({
         error: message,
         code,
         correlationId: req.correlationId,
       });
+      return;
     }
   };
 }
@@ -167,11 +169,12 @@ export function requireRole(...allowedRoles: UserRole[]) {
         path: req.path,
       });
       
-      return res.status(401).json({
+      res.status(401).json({
         error: 'Authentication required',
         code: 'AUTHENTICATION_REQUIRED',
         correlationId: req.correlationId,
       });
+      return;
     }
 
     if (!allowedRoles.includes(req.user.role)) {
@@ -183,13 +186,14 @@ export function requireRole(...allowedRoles: UserRole[]) {
         path: req.path,
       });
       
-      return res.status(403).json({
+      res.status(403).json({
         error: 'Insufficient permissions',
         code: 'INSUFFICIENT_ROLE',
         required: allowedRoles,
         current: req.user.role,
         correlationId: req.correlationId,
       });
+      return;
     }
 
     logger.debug('Role authorization successful', {
@@ -208,11 +212,12 @@ export function requireRole(...allowedRoles: UserRole[]) {
 export function requirePermission(...requiredPermissions: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'Authentication required',
         code: 'AUTHENTICATION_REQUIRED',
         correlationId: req.correlationId,
       });
+      return;
     }
 
     const userPermissions = req.user.permissions || [];
@@ -230,12 +235,13 @@ export function requirePermission(...requiredPermissions: string[]) {
         path: req.path,
       });
       
-      return res.status(403).json({
+      res.status(403).json({
         error: 'Insufficient permissions',
         code: 'MISSING_PERMISSIONS',
         required: requiredPermissions,
         correlationId: req.correlationId,
       });
+      return;
     }
 
     next();
@@ -248,11 +254,12 @@ export function requirePermission(...requiredPermissions: string[]) {
 export function requireTenantAccess() {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'Authentication required',
         code: 'AUTHENTICATION_REQUIRED',
         correlationId: req.correlationId,
       });
+      return;
     }
 
     // Extract tenant ID from request (path param, query, or body)
@@ -271,11 +278,12 @@ export function requireTenantAccess() {
         path: req.path,
       });
       
-      return res.status(403).json({
+      res.status(403).json({
         error: 'Access denied to tenant resource',
         code: 'TENANT_ACCESS_DENIED',
         correlationId: req.correlationId,
       });
+      return;
     }
 
     next();
@@ -294,10 +302,11 @@ export function authenticateAndAuthorize(...roles: UserRole[]) {
  */
 export function userRateLimit() {
   // This would integrate with Redis-based rate limiting
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (_req: Request, _res: Response, next: NextFunction) => {
     // TODO: Implement user-specific rate limiting
     // For now, rely on IP-based rate limiting from server setup
     next();
+    return;
   };
 }
 
@@ -313,11 +322,12 @@ export function authErrorHandler() {
         correlationId: req.correlationId,
       });
       
-      return res.status(error.statusCode).json({
+      res.status(error.statusCode).json({
         error: error.message,
         code: error.code,
         correlationId: req.correlationId,
       });
+      return;
     }
 
     if (error instanceof AuthorizationError) {
@@ -327,14 +337,16 @@ export function authErrorHandler() {
         correlationId: req.correlationId,
       });
       
-      return res.status(error.statusCode).json({
+      res.status(error.statusCode).json({
         error: error.message,
         code: error.code,
         correlationId: req.correlationId,
       });
+      return;
     }
 
     next(error);
+    return;
   };
 }
 

@@ -128,19 +128,19 @@ export class TurnManager extends EventEmitter {
       // Stop media stream
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach(track => track.stop());
-        this.mediaStream = undefined;
+        delete this.mediaStream;
       }
 
       // Disconnect audio worklet
       if (this.audioWorkletNode) {
         this.audioWorkletNode.disconnect();
-        this.audioWorkletNode = undefined;
+        delete this.audioWorkletNode;
       }
 
       // Close audio context
       if (this.audioContext) {
         await this.audioContext.close();
-        this.audioContext = undefined;
+        delete this.audioContext;
       }
 
       // Clear timers
@@ -191,9 +191,9 @@ export class TurnManager extends EventEmitter {
   }
 
   /**
-   * Register event callback
+   * Register event callback with unsubscribe function
    */
-  override on(event: 'event', callback: (event: TurnEvent) => void): () => void {
+  subscribe(event: 'event', callback: (event: TurnEvent) => void): () => void {
     super.on(event, callback);
     return () => this.removeListener(event, callback);
   }

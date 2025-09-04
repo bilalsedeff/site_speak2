@@ -1,14 +1,12 @@
 import { createLogger } from '../../../shared/utils.js';
 import { LangGraphOrchestrator, SessionStateType } from '../domain/LangGraphOrchestrator';
-import { ActionExecutorService, actionExecutorService } from './ActionExecutorService';
-import { LanguageDetectorService, languageDetectorService } from './LanguageDetectorService';
+import { actionExecutorService } from './ActionExecutorService';
+import { languageDetectorService } from './LanguageDetectorService';
 import { KnowledgeBaseService } from './services/KnowledgeBaseService';
-import type { SiteAction, ActionParameter } from '../../../shared/types';
+import type { SiteAction } from '../../../shared/types';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniversalAgentGraph, UniversalAgentGraph } from '../orchestrator/graphs/UniversalAgent.graph';
 import { FunctionCallingService } from '../orchestrator/executors/FunctionCallingService';
-import { conversationFlowManager } from '../orchestrator/planners/ConversationFlowManager';
-import { hybridSearchService } from '../infrastructure/retrieval/HybridSearchService';
 
 const logger = createLogger({ service: 'ai-orchestration' });
 
@@ -171,18 +169,11 @@ export class AIOrchestrationService {
           sessionId,
           siteId: request.siteId,
           tenantId: 'default-tenant', // TODO: Get from request context
-          userId: request.userId || null,
-          conversationContext: {
-            sessionId,
-            siteId: request.siteId,
-            tenantId: 'default-tenant',
-            conversationHistory: [],
-            speculativeActions: [],
-            userPreferences: {
-              language: request.browserLanguage || 'en-US',
-            },
-            conversationId: sessionId
-          }
+          ...(request.userId !== undefined && { userId: request.userId }),
+          userPreferences: {
+            language: request.browserLanguage || 'en-US',
+            timezone: 'UTC', // TODO: Get from request context
+          },
         });
 
         // Convert Universal Agent result to standard format
@@ -354,22 +345,22 @@ export class AIOrchestrationService {
       siteId: request.siteId,
       actionName: request.actionName,
       parameters: request.parameters,
-      sessionId: request.sessionId,
-      userId: request.userId,
+      ...(request.sessionId !== undefined && { sessionId: request.sessionId }),
+      ...(request.userId !== undefined && { userId: request.userId }),
     });
 
     return {
       success: executionResult.success,
       result: executionResult.result,
       executionTime: executionResult.executionTime,
-      error: executionResult.error,
+      ...(executionResult.error !== undefined && { error: executionResult.error }),
     };
   }
 
   /**
    * Get conversation history for a session
    */
-  async getSessionHistory(sessionId: string): Promise<{
+  async getSessionHistory(_sessionId: string): Promise<{
     messages: Array<{
       type: 'user' | 'assistant' | 'system';
       content: string;
@@ -440,7 +431,7 @@ export class AIOrchestrationService {
           tokensUsed: result.finalResponse?.metadata.tokensUsed || 0,
           actionsTaken: result.toolResults?.length || 0,
           language: result.detectedLanguage || 'en-US',
-          intent: result.intent?.category,
+          ...(result.intent?.category !== undefined && { intent: result.intent.category }),
         },
       },
     };
@@ -452,7 +443,7 @@ export class AIOrchestrationService {
         parameters: toolResult.input,
         executed: toolResult.success,
         result: toolResult.output,
-        error: toolResult.error,
+        ...(toolResult.error !== undefined && { error: toolResult.error }),
       }));
     }
 
@@ -525,11 +516,12 @@ export class AIOrchestrationService {
       });
 
       // Create Universal Agent Graph with all dependencies
-      const universalAgentGraph = createUniversalAgentGraph(siteId, {
-        conversationFlowManager,
+      const universalAgentGraph = createUniversalAgentGraph({
         functionCallingService,
-        hybridSearchService,
-        availableActions: [] // TODO: Load from site action registry
+        availableActions: [], // TODO: Load from site action registry
+        voiceEnabled: true,
+        maxClarificationRounds: 3,
+        speculativeExecutionEnabled: true,
       });
 
       this.universalAgentGraphs.set(siteId, universalAgentGraph);
@@ -606,7 +598,29 @@ export class AIOrchestrationService {
 
 // Export singleton instance
 export const aiOrchestrationService = new AIOrchestrationService({
-  kbService: new KnowledgeBaseService(),
-  websocketService: null, // TODO: Inject WebSocket service
-  ttsService: null, // TODO: Inject TTS service
+  kbService: {
+    async semanticSearch(params: {
+      siteId: string;
+      query: string;
+      topK: number;
+      locale: string;
+    }) {
+      const kbService = new KnowledgeBaseService();
+      const searchResults = await kbService.search({
+        query: params.query,
+        knowledgeBaseId: params.siteId, // Using siteId as knowledgeBaseId
+        topK: params.topK,
+        threshold: 0.7, // Default threshold
+      });
+      
+      return searchResults.map(result => ({
+        id: result.chunk.id,
+        content: result.chunk.content,
+        url: result.chunk.metadata.url || '',
+        score: result.score,
+        metadata: result.chunk.metadata || {},
+      }));
+    }
+  },
+  // Optional services are omitted instead of passing null
 });

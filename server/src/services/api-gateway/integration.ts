@@ -281,7 +281,7 @@ async function performComprehensiveHealthCheck(): Promise<{
 
   // Database health
   try {
-    const { checkDatabaseHealth } = await import('../infrastructure/database');
+    const { checkDatabaseHealth } = await import('../../infrastructure/database');
     components['database'] = await checkDatabaseHealth();
     if (components['database'].healthy) healthyCount++;
     totalChecks++;
@@ -317,7 +317,7 @@ async function performComprehensiveHealthCheck(): Promise<{
 
   // AI services health
   try {
-    const { knowledgeBaseService } = await import('../modules/ai/application/services/KnowledgeBaseService');
+    const { knowledgeBaseService } = await import('../../modules/ai/application/services/KnowledgeBaseService');
     const kbHealth = await knowledgeBaseService.healthCheck();
     components['knowledgeBase'] = kbHealth;
     if (kbHealth.healthy) healthyCount++;

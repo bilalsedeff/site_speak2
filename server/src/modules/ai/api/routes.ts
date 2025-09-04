@@ -1,12 +1,23 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
+import '../../../types/express'; // Import Express Request extensions
 import { createLogger } from '../../../shared/utils.js';
 import { universalAIAssistantService } from '../application/UniversalAIAssistantService.js';
 import { authenticateRequest, requireTenantAccess, requireAdminAccess } from '../../../shared/middleware/auth.js';
-import { rateLimitMiddleware } from '../../../shared/middleware/rateLimit.js';
+import { createRateLimiter } from '../../../shared/middleware/rateLimit.js';
 import { actionDispatchController } from './ActionDispatchController.js';
 
 const logger = createLogger({ service: 'ai-routes' });
 const router = express.Router();
+
+/**
+ * Wrapper for rate limiting middleware that accepts policy name and simplified config
+ */
+function rateLimitMiddleware(_policyName: string, config: { requests: number; windowMs: number }) {
+  return createRateLimiter({
+    max: config.requests,
+    windowMs: config.windowMs,
+  });
+}
 
 /**
  * POST /api/ai/conversation
@@ -29,6 +40,8 @@ router.post('/conversation', async (req: Request, res: Response) => {
       inputLength: input.length,
       correlationId: req.correlationId
     });
+
+    
 
     // Extract tenantId from request context (will be properly implemented with auth middleware)
     const tenantId = req.headers['x-tenant-id'] as string || 'default-tenant';
@@ -54,6 +67,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
         duration: response.response.metadata.responseTime,
       },
     });
+    return;
   } catch (error) {
     logger.error('Conversation processing failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -64,6 +78,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
       success: false,
       error: { code: 'PROCESSING_FAILED', message: 'Failed to process conversation' },
     });
+    return;
   }
 });
 
@@ -91,12 +106,14 @@ router.post('/actions/register', async (req: Request, res: Response) => {
       success: true,
       data: { siteId, registeredActions: actions.length, timestamp: new Date().toISOString() },
     });
+    return;
   } catch (error) {
     logger.error('Action registration failed', { error, correlationId: req.correlationId });
     res.status(500).json({
       success: false,
       error: { code: 'REGISTRATION_FAILED', message: 'Failed to register actions' },
     });
+    return;
   }
 });
 
@@ -119,6 +136,7 @@ router.get('/actions/:siteId', async (req, res) => {
       success: false,
       error: { code: 'FETCH_FAILED', message: 'Failed to get site actions' },
     });
+    return;
   }
 });
 
@@ -170,6 +188,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
 
     res.write('data: [DONE]\n\n');
     res.end();
+    return;
   } catch (error) {
     logger.error('Conversation streaming failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -182,6 +201,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
       sessionId: req.body.sessionId || 'unknown',
     })}\n\n`);
     res.end();
+    return;
   }
 });
 
@@ -226,6 +246,7 @@ router.post('/actions/execute', async (req: Request, res: Response) => {
         requestId: req.correlationId,
       },
     });
+    return;
   } catch (error) {
     logger.error('Action execution failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -236,6 +257,7 @@ router.post('/actions/execute', async (req: Request, res: Response) => {
       success: false,
       error: { code: 'EXECUTION_FAILED', message: 'Failed to execute action' },
     });
+    return;
   }
 });
 
@@ -246,15 +268,24 @@ router.post('/actions/execute', async (req: Request, res: Response) => {
 router.get('/sessions/:sessionId/history', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_REQUEST', message: 'sessionId is required' },
+      });
+    }
+    
     const history = await universalAIAssistantService.getSessionHistory(sessionId);
 
     res.json({
       success: true,
       data: { sessionId, history },
     });
+    return;
   } catch (error) {
     logger.error('Failed to get session history', { 
-      sessionId: req.params.sessionId, 
+      sessionId: req.params['sessionId'], 
       error,
       correlationId: req.correlationId 
     });
@@ -263,6 +294,7 @@ router.get('/sessions/:sessionId/history', async (req: Request, res: Response) =
       success: false,
       error: { code: 'HISTORY_FETCH_FAILED', message: 'Failed to get session history' },
     });
+    return;
   }
 });
 
@@ -291,13 +323,14 @@ router.get('/metrics', async (req: Request, res: Response) => {
       success: false,
       error: { code: 'METRICS_FETCH_FAILED', message: 'Failed to get metrics' },
     });
+    return;
   }
 });
 
 /**
  * GET /api/ai/health
  */
-router.get('/health', (req: Request, res: Response) => {
+router.get('/health', (_req: Request, res: Response) => {
   res.json({
     success: true,
     data: { status: 'healthy', timestamp: new Date().toISOString(), service: 'universal-ai-assistant' },

@@ -68,7 +68,7 @@ export class ActionDispatchService {
 
   constructor(
     private actionExecutor: ActionExecutorService,
-    private manifestGenerator: ActionManifestGenerator,
+    private _manifestGenerator: ActionManifestGenerator,
     private widgetBridge: WidgetActionBridge
   ) {}
 
@@ -123,7 +123,7 @@ export class ActionDispatchService {
       }
 
       // Register actions with the executor
-      this.actionExecutor.registerActions(config.siteId, manifest.actions);
+      this.actionExecutor.registerActions(config.siteId, manifest.actions as SiteAction[]);
 
       const initializationTime = Date.now() - startTime;
       logger.info('Action dispatch initialized successfully', {
@@ -197,8 +197,8 @@ export class ActionDispatchService {
         siteId: request.siteId,
         actionName: request.actionName,
         parameters: request.parameters,
-        sessionId: request.sessionId,
-        userId: request.userId
+        ...(request.sessionId !== undefined && { sessionId: request.sessionId }),
+        ...(request.userId !== undefined && { userId: request.userId }),
       };
 
       const executionResult = await this.actionExecutor.execute(executionRequest);
@@ -255,9 +255,9 @@ export class ActionDispatchService {
         result: executionResult.result,
         executionTime: totalTime,
         sideEffects: executionResult.sideEffects,
-        bridgeInstructions,
-        error: executionResult.error,
-        requestId: request.requestId
+        ...(bridgeInstructions !== undefined && { bridgeInstructions }),
+        ...(executionResult.error !== undefined && { error: executionResult.error }),
+        ...(request.requestId !== undefined && { requestId: request.requestId }),
       };
 
     } catch (error) {
@@ -309,7 +309,7 @@ export class ActionDispatchService {
         executionTime: totalTime,
         sideEffects: [],
         error: errorMessage,
-        requestId: request.requestId
+        ...(request.requestId !== undefined && { requestId: request.requestId }),
       };
     }
   }
@@ -324,7 +324,7 @@ export class ActionDispatchService {
       const cachedManifest = this.manifestCache.get(cacheKey);
 
       if (cachedManifest && Date.now() - cachedManifest.timestamp < this.CACHE_TTL) {
-        return cachedManifest.manifest.actions;
+        return cachedManifest.manifest.actions as SiteAction[];
       }
 
       // Get from action executor registry
@@ -333,7 +333,7 @@ export class ActionDispatchService {
       if (actions.length === 0) {
         // Generate fresh manifest if no actions found
         const manifest = await this.generateSiteManifest(siteId, tenantId);
-        return manifest.actions;
+        return manifest.actions as SiteAction[];
       }
 
       return actions;
@@ -353,7 +353,7 @@ export class ActionDispatchService {
    */
   generateEmbedScript(
     config: DispatchConfiguration,
-    options: {
+    _options: {
       widgetId?: string;
       theme?: 'light' | 'dark' | 'auto';
       position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
@@ -373,10 +373,9 @@ export class ActionDispatchService {
   generateIframeEmbed(
     config: DispatchConfiguration,
     options: {
-      width?: string;
-      height?: string;
-      sandbox?: string;
-      customStyles?: Record<string, string>;
+      position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+      theme?: 'light' | 'dark' | 'auto';
+      size?: 'small' | 'medium' | 'large';
     } = {}
   ): string {
     if (!config.bridgeConfig) {
@@ -540,28 +539,26 @@ export class ActionDispatchService {
 
     return {
       siteId,
-      tenantId,
       version: '1.0.0',
-      lastUpdated: new Date(),
-      capabilities: {
-        hasNavigation: true,
-        hasForms: true,
-        hasEcommerce: false,
-        hasSearch: false,
-        hasChat: false,
-        requiresAuth: false,
-        supportsVoice: true
-      },
+      generatedAt: new Date().toISOString(),
+      capabilities: [
+        'navigation',
+        'forms',
+        'voice'
+      ],
       actions: [
         {
           name: 'navigate_home',
           type: 'navigation',
           description: 'Navigate to home page',
           parameters: [],
+          id: 'nav_home_001',
           selector: 'a[href="/"]',
+          confirmation: false,
           sideEffecting: 'safe',
           riskLevel: 'low',
-          category: 'navigation'
+          category: 'read',
+          requiresAuth: false
         },
         {
           name: 'contact_form',
@@ -587,29 +584,38 @@ export class ActionDispatchService {
               description: 'Contact message'
             }
           ],
+          id: 'contact_form_001',
           selector: 'form#contact-form',
           confirmation: true,
           sideEffecting: 'write',
           riskLevel: 'medium',
-          category: 'communication'
+          category: 'communication',
+          requiresAuth: false
         }
       ],
+      metadata: {
+        hasContactForm: true,
+        hasEcommerce: false,
+        hasBooking: false,
+        hasBlog: false,
+        hasGallery: false,
+        hasAuth: false,
+        hasSearch: false,
+        hasNavigation: true,
+        hasFilters: false,
+        hasComments: false,
+        hasNewsletter: false,
+        hasShoppingCart: false,
+        hasPayments: false,
+        hasUserProfiles: false,
+        hasFileUploads: false
+      },
       security: {
         allowedOrigins: ['*'],
-        riskAssessment: {
-          overallRisk: 'low',
-          riskFactors: [],
-          recommendations: []
-        },
         csrfProtection: true,
-        rateLimiting: {
-          enabled: true,
-          maxRequestsPerMinute: 30
-        }
-      },
-      schema: {
-        openaiCompatible: true,
-        functions: []
+        rateLimiting: true,
+        requiresHttps: false,
+        allowedMethods: ['GET', 'POST']
       }
     };
   }

@@ -84,7 +84,7 @@ export class EmbeddingService {
         
         for (let i = 0; i < request.texts.length; i++) {
           if (request.texts[i].trim().length > 0) {
-            const embedding = embeddings?.[validIndex];
+            const embedding = embeddings && embeddings[validIndex];
             if (embedding) {
               fullEmbeddings.push(embedding);
               validIndex++;

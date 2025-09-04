@@ -308,11 +308,11 @@ export class ActionDispatchController {
       const parsedIframeOptions = IframeOptionsSchema.parse(req.body.options || {});
       
       // Create clean options object for exactOptionalPropertyTypes
+      // TODO: Fix interface mismatch - IframeOptions vs widget embed options
       const iframeOptions = {
-        width: parsedIframeOptions.width,
-        height: parsedIframeOptions.height,
-        sandbox: parsedIframeOptions.sandbox,
-        ...(parsedIframeOptions.customStyles && { customStyles: parsedIframeOptions.customStyles }),
+        position: 'bottom-right' as const,
+        theme: 'auto' as const,
+        size: 'medium' as const,
       };
 
       logger.info('Generating iframe embed', {

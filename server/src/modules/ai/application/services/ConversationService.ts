@@ -228,10 +228,10 @@ export class ConversationService {
                 };
               } else {
                 if (toolCall.function?.name && accumulatedToolCalls[toolCall.index]) {
-                  accumulatedToolCalls[toolCall.index].function.name += toolCall.function.name;
+                  accumulatedToolCalls[toolCall.index]!.function.name += toolCall.function.name;
                 }
                 if (toolCall.function?.arguments && accumulatedToolCalls[toolCall.index]) {
-                  accumulatedToolCalls[toolCall.index].function.arguments += toolCall.function.arguments;
+                  accumulatedToolCalls[toolCall.index]!.function.arguments += toolCall.function.arguments;
                 }
               }
             }
@@ -247,9 +247,12 @@ export class ConversationService {
             toolCallsCount: accumulatedToolCalls.length,
           });
 
+          const content = accumulatedContent.length > 0 ? accumulatedContent : undefined;
+          const toolCalls = accumulatedToolCalls.length > 0 ? accumulatedToolCalls : [];
+          
           yield {
-            content: accumulatedContent.length > 0 ? accumulatedContent : undefined,
-            toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : [],
+            ...(content !== undefined && { content }),
+            toolCalls,
             done: true,
           };
           break;
@@ -364,9 +367,9 @@ Key guidelines:
   /**
    * Validate tool call arguments
    */
-  validateToolCall(toolCall: ToolCall, toolDefinition: ToolDefinition): { valid: boolean; error?: string } {
+  validateToolCall(toolCall: ToolCall, _toolDefinition: ToolDefinition): { valid: boolean; error?: string } {
     try {
-      const args = JSON.parse(toolCall.function.arguments);
+      const _args = JSON.parse(toolCall.function.arguments);
       
       // TODO: Implement proper JSON schema validation based on toolDefinition.function.parameters
       // For now, just check if arguments can be parsed

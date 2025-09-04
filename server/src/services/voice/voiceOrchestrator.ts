@@ -409,16 +409,18 @@ export class VoiceOrchestrator extends EventEmitter {
       const metrics = realtimeClient.getMetrics();
       if (metrics.firstTokenLatency.length > 0) {
         const latency = metrics.firstTokenLatency[metrics.firstTokenLatency.length - 1];
-        sessionState.metrics.performance.firstTokenLatencies.push(latency);
-        this.updatePerformanceMetrics();
-        
-        // Warn if performance target missed
-        if (latency > this.config.performance.targetFirstTokenMs) {
+        if (latency !== undefined) {
+          sessionState.metrics.performance.firstTokenLatencies.push(latency);
+          this.updatePerformanceMetrics();
+          
+          // Warn if performance target missed
+          if (latency > this.config.performance.targetFirstTokenMs) {
           logger.warn('First token latency exceeded target', {
             sessionId,
             latency,
             target: this.config.performance.targetFirstTokenMs,
           });
+          }
         }
       }
       
@@ -580,7 +582,7 @@ export class VoiceOrchestrator extends EventEmitter {
    */
   private handleOpusFrame(frame: any): void {
     // Send frame to all active sessions that are listening
-    for (const [sessionId, sessionState] of this.activeSessions.entries()) {
+    for (const [_sessionId, sessionState] of this.activeSessions.entries()) {
       if (sessionState.status === 'listening' && sessionState.realtimeClient) {
         // Convert Opus frame back to PCM for OpenAI (they expect PCM16)
         // In a real implementation, you'd decode the Opus frame

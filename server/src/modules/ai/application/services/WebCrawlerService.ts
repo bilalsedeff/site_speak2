@@ -70,9 +70,9 @@ export interface CrawlResult {
 
 export interface SitemapEntry {
   url: string;
-  lastmod?: string;
-  changefreq?: string;
-  priority?: number;
+  lastmod?: string | undefined;
+  changefreq?: string | undefined;
+  priority?: number | undefined;
 }
 
 export interface CrawlSession {
@@ -662,9 +662,10 @@ export class WebCrawlerService {
         {
           url: result.finalUrl,
           title: result.extracted.title || 'Untitled',
-          contentType: 'web_page',
+          contentType: 'html',
           section: 'main',
-          lastCrawled: new Date(),
+          lastModified: new Date(),
+          hash: this.contentHashService.computeContentHash(cleanedContent).hash,
           metadata: {
             status: result.status,
             loadMs: result.domMetrics.loadMs,
