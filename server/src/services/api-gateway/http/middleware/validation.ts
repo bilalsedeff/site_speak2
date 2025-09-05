@@ -6,9 +6,9 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { logger } from '../../../_shared/telemetry/logger.js';
+import { createLogger } from '../../../_shared/telemetry/logger.js';
 
-const validationLogger = logger.child({ service: 'api-validation' });
+const validationLogger = createLogger({ service: 'api-validation' });
 
 /**
  * Validate request content type
@@ -27,7 +27,7 @@ export function validateContentType(allowedTypes: string[]) {
     }
 
     // Extract base content type (ignore charset, boundary, etc.)
-    const baseContentType = contentType.split(';')[0].trim().toLowerCase();
+    const baseContentType = contentType.split(';')[0]?.trim().toLowerCase() || contentType.toLowerCase();
     
     if (!allowedTypes.includes(baseContentType)) {
       res.status(415).json({
@@ -293,7 +293,7 @@ export function addRateLimitHeaders(options: {
   reset: number;
   retryAfter?: number;
 }) {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (_req: Request, res: Response, next: NextFunction): void => {
     res.set({
       'X-RateLimit-Limit': options.limit.toString(),
       'X-RateLimit-Remaining': options.remaining.toString(),

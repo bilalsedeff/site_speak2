@@ -421,7 +421,7 @@ export class ActionExtractor {
   /**
    * Determine if action requires confirmation
    */
-  private requiresConfirmation(text: string, type: string): boolean {
+  private requiresConfirmation(text: string, _type: string): boolean {
     const lowText = text.toLowerCase();
     
     // Actions that typically require confirmation
@@ -586,15 +586,18 @@ export class ActionExtractor {
     
     const label = this.getFieldLabel(element);
     const required = element.hasAttribute('required');
+    const placeholder = element.getAttribute('placeholder');
+    const value = (element as HTMLInputElement).value;
+    const options = type === 'select' ? this.getSelectOptions(element as HTMLSelectElement) : undefined;
     
     return {
       name,
       type,
       label: label || name,
       required,
-      placeholder: element.getAttribute('placeholder') || undefined,
-      value: (element as HTMLInputElement).value || undefined,
-      options: type === 'select' ? this.getSelectOptions(element as HTMLSelectElement) : undefined
+      ...(placeholder && { placeholder }),
+      ...(value && { value }),
+      ...(options && { options })
     };
   }
 

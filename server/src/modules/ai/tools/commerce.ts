@@ -42,22 +42,8 @@ const AddToCartParametersSchema = z.object({
   idempotencyKey: IdempotencyKeySchema.describe('Unique key to prevent duplicate additions'),
 });
 
-const RemoveFromCartParametersSchema = z.object({
-  cartLineId: z.string().min(1).describe('Cart line item identifier'),
-  idempotencyKey: IdempotencyKeySchema.describe('Unique key for safe removal'),
-});
 
-const UpdateQuantityParametersSchema = z.object({
-  cartLineId: z.string().min(1).describe('Cart line item identifier'),
-  quantity: QuantitySchema.describe('New quantity (0 to remove)'),
-  idempotencyKey: IdempotencyKeySchema.describe('Unique key for safe updates'),
-});
 
-const ApplyCouponParametersSchema = z.object({
-  cartId: CartIdSchema.optional().describe('Cart identifier (auto-detected if not provided)'),
-  couponCode: CouponCodeSchema.describe('Coupon or discount code'),
-  validate: z.boolean().default(true).describe('Validate coupon before applying'),
-});
 
 const StartCheckoutParametersSchema = z.object({
   cartId: CartIdSchema.optional().describe('Cart identifier'),
@@ -198,13 +184,13 @@ async function executeAddToCart(
       actionName: cartAction.name,
       parameters: {
         productId: parameters.productId,
-        variantId: parameters.variantId,
+        ...(parameters.variantId && { variantId: parameters.variantId }),
         quantity: parameters.quantity,
-        notes: parameters.notes,
+        ...(parameters.notes && { notes: parameters.notes }),
         idempotencyKey: parameters.idempotencyKey,
       },
-      sessionId: context.sessionId,
-      userId: context.userId,
+      ...(context.sessionId && { sessionId: context.sessionId }),
+      ...(context.userId && { userId: context.userId }),
     });
 
     const executionTime = Date.now() - startTime;
@@ -268,13 +254,13 @@ async function executeStartCheckout(
       siteId: context.siteId,
       actionName: checkoutAction.name,
       parameters: {
-        cartId: parameters.cartId,
-        returnUrl: parameters.returnUrl,
-        paymentMethod: parameters.paymentMethod,
+        ...(parameters.cartId && { cartId: parameters.cartId }),
+        ...(parameters.returnUrl && { returnUrl: parameters.returnUrl }),
+        ...(parameters.paymentMethod && { paymentMethod: parameters.paymentMethod }),
         idempotencyKey: parameters.idempotencyKey,
       },
-      sessionId: context.sessionId,
-      userId: context.userId,
+      ...(context.sessionId && { sessionId: context.sessionId }),
+      ...(context.userId && { userId: context.userId }),
     });
 
     const executionTime = Date.now() - startTime;

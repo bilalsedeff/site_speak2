@@ -65,7 +65,10 @@ export const useEditorStore = create<EditorStore>()(
       set((state) => {
         const index = state.instances.findIndex((i) => i.id === id)
         if (index !== -1) {
-          Object.assign(state.instances[index], updates)
+          const instance = state.instances[index]
+          if (instance) {
+            Object.assign(instance, updates)
+          }
         }
       }),
 

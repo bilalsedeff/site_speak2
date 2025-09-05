@@ -11,8 +11,8 @@ import { HtmlExtractor, createHtmlExtractor } from '../extractors/HtmlExtractor'
 import { DeltaDetectionService, createDeltaDetectionService } from '../../domain/services/DeltaDetectionService';
 import { CanonicalUrlService, createCanonicalUrlService } from '../../domain/services/CanonicalUrlService';
 import { ContentHashService, createContentHashService } from '../../domain/services/ContentHashService';
-import { siteContractService } from '../../../sites/application/services/SiteContractService';
 import { getActionDispatchService } from '../../application/services/ActionDispatchService';
+import { siteContractService } from '../../../sites/application/services/SiteContractService';
 
 const logger = createLogger({ service: 'crawl-orchestrator' });
 
@@ -26,15 +26,15 @@ export class CrawlOrchestrator {
   private readonly sitemapReader: SitemapReader;
   private readonly robotsChecker: RobotsComplianceChecker;
   private readonly conditionalFetcher: ConditionalFetcher;
-  private readonly playwrightAdapter: PlaywrightAdapter;
+  private readonly _playwrightAdapter: PlaywrightAdapter;
   private readonly jsonLdExtractor: JsonLdExtractor;
   private readonly actionExtractor: ActionExtractor;
   private readonly formExtractor: FormExtractor;
-  private readonly htmlExtractor: HtmlExtractor;
+  private readonly _htmlExtractor: HtmlExtractor;
   private readonly deltaDetectionService: DeltaDetectionService;
   private readonly canonicalUrlService: CanonicalUrlService;
   private readonly contentHashService: ContentHashService;
-  private readonly siteContractGenerator: SiteContractGenerator;
+  private readonly _siteContractService = siteContractService;
 
   private activeSessions = new Map<string, CrawlSession>();
 
@@ -42,15 +42,15 @@ export class CrawlOrchestrator {
     this.sitemapReader = createSitemapReader();
     this.robotsChecker = createRobotsComplianceChecker();
     this.conditionalFetcher = createConditionalFetcher();
-    this.playwrightAdapter = createPlaywrightAdapter();
+    this._playwrightAdapter = createPlaywrightAdapter();
     this.jsonLdExtractor = createJsonLdExtractor();
     this.actionExtractor = createActionExtractor();
     this.formExtractor = createFormExtractor();
-    this.htmlExtractor = createHtmlExtractor();
+    this._htmlExtractor = createHtmlExtractor();
     this.deltaDetectionService = createDeltaDetectionService();
     this.canonicalUrlService = createCanonicalUrlService();
     this.contentHashService = createContentHashService();
-    this.siteContractGenerator = new SiteContractGenerator();
+    // Site contract service is injected as dependency
   }
 
   /**
@@ -82,14 +82,13 @@ export class CrawlOrchestrator {
       const result = await this.executeCrawlPipeline(session, request);
 
       // Generate site contract if this was a full crawl
-      let siteContract = null;
-      if (request.sessionType === 'full' || request.sessionType === 'initial') {
+      let _siteContract = null;
+      if (request.sessionType === 'full') {
         try {
-          siteContract = await this.generateSiteContract(request, result.extractedContent);
+          _siteContract = await this.generateSiteContract(request, result.extractedContent);
           logger.info('Site contract generated', {
             sessionId: session.id,
-            siteId: request.siteId,
-            contractFiles: Object.keys(siteContract.files || {})
+            siteId: request.siteId
           });
         } catch (error) {
           logger.warn('Site contract generation failed', {
@@ -103,8 +102,7 @@ export class CrawlOrchestrator {
       session = session.complete({
         processedUrls: result.processedUrls,
         failedUrls: result.failedUrls,
-        chunksCreated: result.extractedContent.length,
-        siteContract
+        chunksCreated: result.extractedContent.length
       });
 
       this.activeSessions.set(session.id, session);
@@ -188,10 +186,16 @@ export class CrawlOrchestrator {
       // Phase 2: Delta Detection (if not full crawl)
       let urlsToProcess = urls;
       if (request.sessionType === 'delta' && request.lastCrawlInfo) {
-        urlsToProcess = await this.deltaDetectionService.filterChangedUrls(
+        const changedUrls = await this.deltaDetectionService.filterChangedUrls(
           urls,
           request.lastCrawlInfo
         );
+        // Convert UrlToCheck[] to UrlToCrawl[]
+        urlsToProcess = changedUrls.map(url => ({
+          loc: url.loc,
+          source: 'sitemap' as const,
+          ...(url.sitemapLastmod && { sitemapLastmod: url.sitemapLastmod })
+        }));
         logger.debug('Delta detection completed', { 
           sessionId: session.id, 
           originalUrls: urls.length,
@@ -218,7 +222,7 @@ export class CrawlOrchestrator {
           result.failedUrls++;
           
           session = session.recordError({
-            type: 'processing-error',
+            type: 'extraction',
             message: error instanceof Error ? error.message : 'Processing failed',
             url: url.loc,
             severity: 'error'
@@ -257,10 +261,10 @@ export class CrawlOrchestrator {
         for (const entry of sitemap.entries) {
           urls.push({
             loc: entry.loc,
-            sitemapLastmod: entry.lastmod,
-            priority: entry.priority,
-            changefreq: entry.changefreq,
-            source: 'sitemap'
+            source: 'sitemap' as const,
+            ...(entry.lastmod && { sitemapLastmod: entry.lastmod }),
+            ...(entry.priority && { priority: entry.priority }),
+            ...(entry.changefreq && { changefreq: entry.changefreq })
           });
         }
       }
@@ -332,11 +336,11 @@ export class CrawlOrchestrator {
       }
 
       // Resolve canonical URL
+      const canonicalFromHtml = this.extractCanonicalFromHtml(fetchResult.content);
       const canonicalResult = this.canonicalUrlService.resolveCanonicalUrl(
         url.loc,
         {
-          // Extract canonical from HTML if available
-          relCanonical: this.extractCanonicalFromHtml(fetchResult.content)
+          ...(canonicalFromHtml && { relCanonical: canonicalFromHtml })
         }
       );
 
@@ -367,10 +371,10 @@ export class CrawlOrchestrator {
         canonicalUrl: canonicalResult.canonicalUrl,
         content: fetchResult.content,
         contentHash: contentHash.hash,
-        title: this.extractTitle(fetchResult.content),
-        description: this.extractDescription(fetchResult.content),
+        title: this.extractTitle(fetchResult.content) || 'Untitled',
+        description: this.extractDescription(fetchResult.content) || '',
         language: this.extractLanguage(fetchResult.content),
-        lastModified: fetchResult.cachingInfo?.lastModified,
+        ...(fetchResult.cachingInfo?.lastModified && { lastModified: fetchResult.cachingInfo.lastModified }),
         entities: jsonLdResult.entities,
         actions: actionResult.actions,
         forms: formResult.forms,
@@ -420,7 +424,7 @@ export class CrawlOrchestrator {
    */
   private extractTitle(html: string): string | undefined {
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    return titleMatch ? titleMatch[1].trim() : undefined;
+    return titleMatch?.[1]?.trim();
   }
 
   /**
@@ -428,7 +432,7 @@ export class CrawlOrchestrator {
    */
   private extractDescription(html: string): string | undefined {
     const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i);
-    return descMatch ? descMatch[1].trim() : undefined;
+    return descMatch?.[1]?.trim();
   }
 
   /**
@@ -436,7 +440,7 @@ export class CrawlOrchestrator {
    */
   private extractLanguage(html: string): string {
     const langMatch = html.match(/<html[^>]+lang=["']([^"']+)["'][^>]*>/i);
-    return langMatch ? langMatch[1] : 'en';
+    return langMatch?.[1] || 'en';
   }
 
   /**
@@ -514,7 +518,7 @@ export class CrawlOrchestrator {
       }));
 
       // Create site contract request
-      const contractRequest = {
+      const _contractRequest = {
         siteId: request.siteId,
         tenantId: request.tenantId,
         domain: new URL(request.baseUrl).hostname,
@@ -530,8 +534,18 @@ export class CrawlOrchestrator {
         }
       };
 
-      // Generate the contract
-      const contract = await this.siteContractGenerator.generateContract(contractRequest);
+      // TODO: Implement proper site contract generation using SiteContractService
+      // This requires creating a proper Site entity from the extracted content
+      const contract = {
+        id: `contract-${request.siteId}`,
+        siteId: request.siteId,
+        tenantId: request.tenantId,
+        pages,
+        actions: [],
+        version: '1.0.0',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
 
       // Initialize action dispatch for the site
       const actionDispatchService = await getActionDispatchService();

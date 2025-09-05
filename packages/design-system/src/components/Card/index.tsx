@@ -2,8 +2,8 @@ import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '../../utils/cn'
-import { CardPropsSchema, type CardProps } from '../../schemas/component-schemas'
-import { CardAriaRequirements, validateAriaCompliance } from '../../schemas/aria-schemas'
+import { CardPropsSchema } from '../../schemas/component-schemas'
+import { validateAriaCompliance } from '../../schemas/aria-schemas'
 import { ComponentMetadata, generateAriaAttributes } from '../../utils/component-metadata'
 
 const cardVariants = cva(

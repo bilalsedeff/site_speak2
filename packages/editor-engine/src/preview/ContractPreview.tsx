@@ -19,7 +19,7 @@ export function ContractPreview() {
   const [activeTab, setActiveTab] = useState<PreviewTab>('overview')
   const [isMinified, setIsMinified] = useState(false)
   
-  const { contractData, instances, validationErrors } = useEditorStore()
+  // Tab components access editor store directly
 
   const tabs = [
     { id: 'overview' as const, label: 'Overview', icon: FileText },

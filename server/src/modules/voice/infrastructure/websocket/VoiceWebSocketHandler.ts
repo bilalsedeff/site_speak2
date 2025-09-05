@@ -202,7 +202,7 @@ export class VoiceWebSocketHandler {
     });
 
     // Handle pong responses
-    socket.on('pong', (data) => {
+    socket.on('pong', (_data) => {
       session.lastActivity = new Date();
       logger.debug('Received pong', { sessionId: session.id });
     });
@@ -478,12 +478,12 @@ export class VoiceWebSocketHandler {
     if (!session.isActive) {return;}
 
     try {
-      const pingData = Buffer.from(JSON.stringify({
+      const pingData = {
         timestamp: Date.now(),
         sessionId: session.id,
-      }));
+      };
 
-      session.socket.ping(pingData);
+      session.socket.emit('ping', pingData);
       
       logger.debug('Sent ping', { sessionId: session.id });
     } catch (error) {
@@ -524,7 +524,7 @@ export class VoiceWebSocketHandler {
     const cutoffTime = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes ago
     let cleanedCount = 0;
 
-    for (const [sessionId, session] of this.sessions.entries()) {
+    for (const [_sessionId, session] of this.sessions.entries()) {
       if (session.lastActivity < cutoffTime || !session.isActive) {
         this.handleDisconnection(session, 'inactive');
         cleanedCount++;
@@ -591,5 +591,39 @@ export class VoiceWebSocketHandler {
    */
   public getSession(sessionId: string): VoiceSession | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  /**
+   * Notify that an action has been executed (required by VoiceNotificationHandler interface)
+   */
+  public async notifyActionExecuted(data: unknown): Promise<void> {
+    // TODO: Broadcast action execution to relevant voice sessions
+    logger.info('Action executed notification', { data });
+    
+    // For now, broadcast to all active sessions
+    for (const session of this.sessions.values()) {
+      if (session.isActive) {
+        this.sendEvent(session, {
+          type: 'agent_tool',
+          data: { type: 'action_executed', result: data }
+        });
+      }
+    }
+  }
+
+  /**
+   * Broadcast an event to all active sessions (required by VoiceNotificationHandler interface)
+   */
+  public async broadcast(event: string, data: unknown): Promise<void> {
+    logger.info('Broadcasting event to all sessions', { event, sessionCount: this.sessions.size });
+    
+    for (const session of this.sessions.values()) {
+      if (session.isActive) {
+        this.sendEvent(session, {
+          type: 'agent_delta',
+          data: { event, payload: data }
+        });
+      }
+    }
   }
 }

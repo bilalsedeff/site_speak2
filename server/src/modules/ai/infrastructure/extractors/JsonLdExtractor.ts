@@ -31,6 +31,10 @@ export class JsonLdExtractor {
 
       for (let i = 0; i < jsonLdScripts.length; i++) {
         const script = jsonLdScripts[i];
+        if (!script) {
+          continue;
+        }
+        
         try {
           const jsonContent = script.textContent?.trim();
           if (!jsonContent) {
@@ -111,7 +115,7 @@ export class JsonLdExtractor {
 
     // Handle array of objects
     if (Array.isArray(jsonLd)) {
-      jsonLd.forEach((item, index) => {
+      jsonLd.forEach((item) => {
         entities.push(...this.processJsonLdObject(item, url, scriptIndex));
       });
       return entities;

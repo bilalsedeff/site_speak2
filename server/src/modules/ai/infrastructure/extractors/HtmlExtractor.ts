@@ -122,9 +122,9 @@ export class HtmlExtractor {
       const result: HtmlExtractionResult = {
         url,
         title,
-        description,
-        canonicalUrl,
-        language,
+        ...(description && { description }),
+        ...(canonicalUrl && { canonicalUrl }),
+        ...(language && { language }),
         headings,
         paragraphs,
         tables,
@@ -132,7 +132,7 @@ export class HtmlExtractor {
         visibleText,
         cleanText,
         wordCount,
-        lastModified,
+        ...(lastModified && { lastModified }),
         extractedAt: new Date(),
         errors
       };
@@ -240,8 +240,7 @@ export class HtmlExtractor {
         headings.push({
           level,
           text,
-          id: id || undefined,
-          anchor: id ? `#${id}` : undefined
+          ...(id && { id, anchor: `#${id}` })
         });
       }
     });
@@ -321,8 +320,8 @@ export class HtmlExtractor {
           tables.push({
             headers,
             rows,
-            caption: caption || undefined,
-            summary: summary || undefined
+            ...(caption && { caption }),
+            ...(summary && { summary })
           });
         }
       } catch (error) {
@@ -375,7 +374,7 @@ export class HtmlExtractor {
 
           regions.push({
             role,
-            label: label || undefined,
+            ...(label && { label }),
             content: content.substring(0, 500), // Limit content length
             selector
           });

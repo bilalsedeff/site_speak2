@@ -119,7 +119,7 @@ export function createAPIGateway(config: APIGatewayConfig = {}): express.Router 
         swagger: `${apiPrefix}/v1/docs`
       },
       support: {
-        languages: req.localeContext.languages,
+        languages: req.localeContext?.languages || ['en'],
         formats: ['application/json', 'application/problem+json'],
         authentication: 'Bearer JWT tokens',
         rateLimit: 'IETF draft headers included'

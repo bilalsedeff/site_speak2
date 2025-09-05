@@ -1,14 +1,6 @@
 import { JSDOM } from 'jsdom'
 import { 
-  generateJsonLd,
-  OrganizationJsonLd,
-  ProductJsonLd,
-  EventJsonLd,
-  ArticleJsonLd,
-  BreadcrumbJsonLd,
-  WebSiteJsonLd,
-  LocalBusinessJsonLd,
-  FAQJsonLd
+  generateJsonLd
 } from '@sitespeak/design-system'
 import { 
   JsonLdReport,
@@ -226,7 +218,9 @@ export class JsonLdEmitter {
 
     const linkEl = element.querySelector('a')
     if (linkEl) {
-      props['url'] = linkEl.href
+      const href = linkEl.href
+      // Convert relative URLs to absolute using baseUrl
+      props['url'] = href.startsWith('http') ? href : new URL(href, this.baseUrl).href
     }
 
     // Extract microdata
@@ -275,7 +269,7 @@ export class JsonLdEmitter {
   private async generateJsonLdBlocks(
     pageUrl: string,
     entities: JsonLdEntity[],
-    document: Document
+    _document: Document
   ): Promise<JsonLdBlock[]> {
     const blocks: JsonLdBlock[] = []
 
@@ -568,11 +562,12 @@ export class JsonLdEmitter {
 
     // Check for unique identifiers
     if (!data['@id'] && ['Product', 'Event', 'Organization'].includes(type)) {
+      const severity = this.strict ? 'warning' : 'info'
       issues.push({
-        severity: 'info',
+        severity,
         property: '@id',
         description: `${type} should have a unique identifier`,
-        recommendation: 'Add @id with a unique URL for this entity',
+        recommendation: `Add @id with a unique URL for this entity (e.g., "${this.baseUrl}/entity-id")`,
         schemaReference: 'https://schema.org/',
       })
     }

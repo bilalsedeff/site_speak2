@@ -153,7 +153,7 @@ function zodErrorToProblemDetail(error: ZodError, req: Request): ProblemDetail {
     detail: `Request validation failed: ${issues.map(i => `${i.path}: ${i.message}`).join(', ')}`,
     instance: req.originalUrl,
     correlationId: req.correlationId,
-    tenantId: req.user?.tenantId,
+    ...(req.user?.tenantId && { tenantId: req.user.tenantId }),
     extensions: { 
       validationErrors: issues,
       path: req.path,
@@ -183,7 +183,7 @@ function errorToProblemDetail(error: Error, req: Request, status: number = 500):
       detail: error.message,
       instance: req.originalUrl,
       correlationId: req.correlationId,
-      tenantId: req.user?.tenantId,
+      ...(req.user?.tenantId && { tenantId: req.user.tenantId }),
       extensions: {
         path: req.path,
         method: req.method,
@@ -199,7 +199,7 @@ function errorToProblemDetail(error: Error, req: Request, status: number = 500):
     detail: process.env['NODE_ENV'] === 'development' ? error.message : 'An unexpected error occurred',
     instance: req.originalUrl,
     correlationId: req.correlationId,
-    tenantId: req.user?.tenantId,
+    ...(req.user?.tenantId && { tenantId: req.user.tenantId }),
     extensions: {
       path: req.path,
       method: req.method,
@@ -333,7 +333,7 @@ export function addProblemDetailMethod() {
         ...options,
         instance: options.instance || req.originalUrl,
         correlationId: req.correlationId,
-        tenantId: req.user?.tenantId
+        ...(req.user?.tenantId && { tenantId: req.user.tenantId })
       });
     };
     

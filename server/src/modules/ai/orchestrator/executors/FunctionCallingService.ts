@@ -13,9 +13,8 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
+import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createLogger } from '../../../../shared/utils.js';
 import { config } from '../../../../infrastructure/config';
 import { SiteAction } from '../../../../shared/types';
@@ -488,9 +487,13 @@ Return JSON in this exact format:
         const startTime = Date.now();
         
         // Execute via action dispatch service
+        const idParts = execution.id.split('_');
+        const siteId = idParts[0] || 'default_site';
+        const tenantId = idParts[1] || 'default_tenant';
+        
         const result = await this.actionDispatchService.dispatchAction({
-          siteId: execution.id.split('_')[0], // Extract from execution ID
-          tenantId: execution.id.split('_')[1], // Extract from execution ID  
+          siteId,
+          tenantId,
           actionName: execution.actionName,
           parameters: execution.parameters,
           sessionId: execution.id,
@@ -502,9 +505,13 @@ Return JSON in this exact format:
         execution.result = {
           success: result.success,
           data: result.result,
-          error: result.error,
+          ...(result.error && { error: result.error }),
           executionTime,
-          sideEffects: result.sideEffects || []
+          sideEffects: (result.sideEffects || []).map(effect => ({
+            type: effect.type || 'unknown',
+            description: effect.description || 'No description provided',
+            reversible: this.inferReversibilityFromEffect(effect)
+          }))
         };
 
         execution.status = result.success ? 'completed' : 'failed';
@@ -578,11 +585,27 @@ Return JSON in this exact format:
   }
 
   // Helper methods
+
+  private inferReversibilityFromEffect(effect: { type: string; description?: string; data?: any }): boolean {
+    // Infer reversibility based on action type and side effects
+    switch (effect.type) {
+      case 'navigation':
+        return true; // Navigation can usually be reversed by going back
+      case 'dom_change':
+        return false; // DOM changes might be hard to reverse without specific logic
+      case 'api_call':
+        return false; // API calls typically have side effects that aren't easily reversible
+      case 'form_submission':
+        return false; // Form submissions usually create permanent changes
+      default:
+        return false; // Default to non-reversible for safety
+    }
+  }
   
   private shouldRequireConfirmation(action: SiteAction, riskLevel: string): boolean {
     if (action.confirmation) {return true;}
     if (riskLevel === 'high') {return true;}
-    if (action.sideEffecting === 'unsafe') {return true;}
+    if (action.sideEffecting === 'write') {return true;}
     return false;
   }
 
@@ -604,7 +627,8 @@ Return JSON in this exact format:
     return Math.abs(hash).toString(36);
   }
 
-  private createFallbackPlan(request: FunctionCallRequest): any {
+  private createFallbackPlan(_request: FunctionCallRequest): any {
+    // TODO: Use request context (userInput, availableActions) for more sophisticated fallback strategies
     return {
       toolCalls: [],
       overallConfidence: 0.3,
@@ -618,7 +642,8 @@ Return JSON in this exact format:
     };
   }
 
-  private createSafeFallbackResult(request: FunctionCallRequest): FunctionCallResult {
+  private createSafeFallbackResult(_request: FunctionCallRequest): FunctionCallResult {
+    // TODO: Use request context for more personalized and context-aware fallback messages
     return {
       toolCalls: [],
       needsConfirmation: false,

@@ -210,8 +210,13 @@ export class AIToolsRegistry {
     actions.forEach(action => {
       const toolName = `site.${action.name}`;
       
-      // Generate parameters schema from action parameters
-      const parametersSchema = this.createParametersSchema(action.parameters);
+      // Generate parameters schema from action parameters  
+      const parametersSchema = this.createParametersSchema(action.parameters.map(p => ({
+        name: p.name,
+        type: p.type,
+        required: p.required,
+        description: p.description || `${p.name} parameter`
+      })));
       
       const tool: RegistryToolDefinition = {
         name: toolName,
@@ -224,7 +229,7 @@ export class AIToolsRegistry {
           defaultValue: p.defaultValue,
         })),
         sideEffects: this.mapActionSideEffects(action.sideEffecting),
-        confirmRequired: action.confirmation,
+        confirmRequired: action.confirmation ?? false,
         auth: 'session',
         latencyBudgetMs: this.estimateActionLatency(action),
         idempotent: action.sideEffecting === 'safe',

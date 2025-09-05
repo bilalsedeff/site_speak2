@@ -1,6 +1,7 @@
 
 import { randomUUID } from 'crypto';
 import { createLogger } from '../../shared/utils.js';
+import type { RedisClientType } from 'redis';
 
 const logger = createLogger({ service: 'session' });
 
@@ -189,8 +190,9 @@ export class InMemorySessionStore implements SessionStore {
 export class RedisSessionStore implements SessionStore {
   // TODO: Implement Redis client integration for production session storage
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  constructor(private _redisClient: any) {
+  constructor(private _redisClient: RedisClientType) {
     // TODO: Implement Redis session store
+    // TODO: Use _redisClient for Redis operations
   }
 
   async create(_data: CreateSessionRequest): Promise<UserSession> {

@@ -14,7 +14,6 @@ import {
   ResourceIdSchema,
   SlotIdSchema,
   PartySizeSchema,
-  Rfc3339DateTimeSchema,
   IsoIntervalSchema,
   EmailSchema,
   PhoneSchema,
@@ -62,12 +61,6 @@ const BookSlotParametersSchema = z.object({
   idempotencyKey: IdempotencyKeySchema.describe('Unique booking identifier'),
 });
 
-const CancelBookingParametersSchema = z.object({
-  bookingId: z.string().min(1).describe('Booking identifier to cancel'),
-  reason: z.string().max(500).optional().describe('Cancellation reason'),
-  refundRequested: z.boolean().default(false).describe('Request refund if applicable'),
-  idempotencyKey: IdempotencyKeySchema.describe('Unique cancellation identifier'),
-});
 
 // ==================== TOOL IMPLEMENTATIONS ====================
 
@@ -255,14 +248,14 @@ async function executeBookSlot(
         slotId: parameters.slotId,
         customerName: parameters.customer.name,
         customerEmail: parameters.customer.email,
-        customerPhone: parameters.customer.phone,
-        paymentToken: parameters.paymentToken,
-        notes: parameters.notes,
-        specialRequests: parameters.customer.specialRequests,
+        ...(parameters.customer.phone && { customerPhone: parameters.customer.phone }),
+        ...(parameters.paymentToken && { paymentToken: parameters.paymentToken }),
+        ...(parameters.notes && { notes: parameters.notes }),
+        ...(parameters.customer.specialRequests && { specialRequests: parameters.customer.specialRequests }),
         idempotencyKey: parameters.idempotencyKey,
       },
-      sessionId: context.sessionId,
-      userId: context.userId,
+      ...(context.sessionId && { sessionId: context.sessionId }),
+      ...(context.userId && { userId: context.userId }),
     });
 
     const executionTime = Date.now() - startTime;
@@ -279,10 +272,6 @@ async function executeBookSlot(
       error: executionResult.error,
       executionTime,
       sideEffects: executionResult.sideEffects || [],
-      bridgeInstructions: executionResult.bridgeInstructions ? {
-        type: executionResult.bridgeInstructions.type as any,
-        payload: executionResult.bridgeInstructions.payload,
-      } : undefined,
     };
   } catch (error) {
     const executionTime = Date.now() - startTime;

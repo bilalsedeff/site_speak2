@@ -246,7 +246,9 @@ export class LanguageDetectionService {
    */
   private detectByCommonWords(text: string): { language: string; confidence: number } | null {
     const words = text.split(/\s+/).filter(word => word.length > 1);
-    if (words.length === 0) {return null;}
+    if (words.length === 0) {
+      return null;
+    }
 
     const scores: Record<string, number> = {};
 
@@ -332,7 +334,9 @@ export class LanguageDetectionService {
    * Normalize language tag to BCP-47 format
    */
   normalizeTag(tag: string): string {
-    if (!tag) {return this.config.fallbackLocale;}
+    if (!tag) {
+      return this.config.fallbackLocale;
+    }
 
     // Common mappings
     const mappings: Record<string, string> = {
@@ -359,14 +363,14 @@ export class LanguageDetectionService {
 
     // Check mappings
     const baseLanguage = normalized.split('-')[0];
-    if (mappings[baseLanguage]) {
+    if (baseLanguage && mappings[baseLanguage]) {
       return mappings[baseLanguage];
     }
 
     // Try to find in supported languages
-    const found = this.SUPPORTED_LANGUAGES.find(lang => 
+    const found = baseLanguage ? this.SUPPORTED_LANGUAGES.find(lang => 
       lang.toLowerCase().startsWith(baseLanguage)
-    );
+    ) : undefined;
 
     return found || this.config.fallbackLocale;
   }
@@ -387,7 +391,12 @@ export class LanguageDetectionService {
     direction: 'ltr' | 'rtl';
     script: string;
   } | null {
-    const info: Record<string, any> = {
+    const info: Record<string, {
+      name: string;
+      nativeName: string;
+      direction: 'ltr' | 'rtl';
+      script: string;
+    }> = {
       'en-US': { name: 'English', nativeName: 'English', direction: 'ltr', script: 'Latn' },
       'tr-TR': { name: 'Turkish', nativeName: 'Türkçe', direction: 'ltr', script: 'Latn' },
       'es-ES': { name: 'Spanish', nativeName: 'Español', direction: 'ltr', script: 'Latn' },

@@ -7,7 +7,7 @@ import { useEditorStore } from '../store/editorStore'
 import { ComponentRenderer } from './ComponentRenderer'
 import { SelectionOverlay } from './SelectionOverlay'
 import { GridOverlay } from './GridOverlay'
-import type { DragItem, DropResult, ComponentInstance } from '../types/editor'
+import type { DragItem, ComponentInstance } from '../types/editor'
 
 interface EditorCanvasProps {
   className?: string

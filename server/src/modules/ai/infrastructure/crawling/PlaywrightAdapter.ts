@@ -236,7 +236,10 @@ export class PlaywrightAdapter {
       // Convert headers to object
       const headers = response.headers();
       Object.keys(headers).forEach(key => {
-        responseHeaders[key] = headers[key];
+        const headerValue = headers[key];
+        if (headerValue !== undefined) {
+          responseHeaders[key] = headerValue;
+        }
       });
 
       const loadTime = Date.now() - startTime;
@@ -272,7 +275,7 @@ export class PlaywrightAdapter {
         loadTime,
         resourceCount,
         jsErrors,
-        screenshot,
+        ...(screenshot && { screenshot }),
         renderedAt: new Date()
       };
 

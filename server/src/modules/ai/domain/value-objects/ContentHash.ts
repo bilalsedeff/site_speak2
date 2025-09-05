@@ -211,6 +211,9 @@ export function createContentHashFromString(hashString: string): ContentHash {
   }
 
   const [algorithm, value] = parts;
+  if (!algorithm || !value) {
+    throw new Error('Invalid hash string format. Missing algorithm or value');
+  }
   if (!isValidHashAlgorithm(algorithm)) {
     throw new Error(`Unsupported hash algorithm: ${algorithm}`);
   }

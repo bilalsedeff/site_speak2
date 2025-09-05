@@ -30,7 +30,36 @@ export function SelectionOverlay({
       <div className="absolute inset-0 border-2 border-primary rounded" />
       
       {/* Resize handles */}
-      <div className="absolute -right-1 -bottom-1 w-3 h-3 bg-primary border border-background rounded-sm cursor-se-resize pointer-events-auto" />
+      <div 
+        className="absolute -right-1 -bottom-1 w-3 h-3 bg-primary border border-background rounded-sm cursor-se-resize pointer-events-auto"
+        onMouseDown={(e) => {
+          e.preventDefault()
+          const startX = e.clientX
+          const startY = e.clientY
+          const startWidth = instance.size.width
+          const startHeight = instance.size.height
+
+          const handleMouseMove = (e: MouseEvent) => {
+            const deltaX = e.clientX - startX
+            const deltaY = e.clientY - startY
+            
+            onUpdate(instanceId, {
+              size: {
+                width: Math.max(50, startWidth + deltaX),
+                height: Math.max(30, startHeight + deltaY)
+              }
+            })
+          }
+
+          const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+          }
+
+          document.addEventListener('mousemove', handleMouseMove)
+          document.addEventListener('mouseup', handleMouseUp)
+        }}
+      />
     </motion.div>
   )
 }

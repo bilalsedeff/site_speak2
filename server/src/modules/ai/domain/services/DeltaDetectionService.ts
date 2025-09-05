@@ -234,10 +234,10 @@ export class DeltaDetectionService {
       url,
       contentHash: this.generateContentHash(content),
       metadataHash: this.generateContentHash(JSON.stringify(metadata)),
-      title: metadata.title,
+      ...(metadata.title && { title: metadata.title }),
       contentLength: content.length,
-      etag: metadata.etag,
-      lastModified: metadata.lastModified,
+      ...(metadata.etag && { etag: metadata.etag }),
+      ...(metadata.lastModified && { lastModified: metadata.lastModified }),
       createdAt: new Date()
     };
   }

@@ -70,7 +70,10 @@ export { siteopsTools } from './siteops';
 // Registry functionality
 export { 
   getOpenAIToolsForSite,
-  AIToolsRegistry,
+  AIToolsRegistry
+} from './registry';
+
+export type {
   RegistryToolDefinition,
   TenantToolPolicy
 } from './registry';
@@ -137,14 +140,14 @@ export async function executeAITool(
     
     return {
       success: result.success,
-      result: result.result,
-      error: result.error,
+      ...(result.result !== undefined && { result: result.result }),
+      ...(result.error && { error: result.error }),
       executionTime: result.executionTime,
       toolName,
       sideEffects: result.sideEffects.map(effect => ({
         type: effect.type,
         description: effect.description,
-        data: effect.data,
+        ...(effect.data !== undefined && { data: effect.data }),
       })),
     };
   } catch (error) {

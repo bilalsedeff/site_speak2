@@ -115,8 +115,8 @@ export class Conversation {
   end(satisfaction?: number, resolved?: boolean): Conversation {
     const updatedAnalytics: ConversationAnalytics = {
       ...this.analytics,
-      satisfaction,
-      resolved,
+      ...(satisfaction !== undefined && { satisfaction }),
+      ...(resolved !== undefined && { resolved }),
     };
 
     return new Conversation(

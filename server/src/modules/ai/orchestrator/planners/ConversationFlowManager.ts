@@ -237,9 +237,10 @@ export class ConversationFlowManager {
     }
 
     // Pre-load search results if we have enough context
-    const contextSlots = Object.keys(slotFrame.slots).filter(key => 
-      slotFrame.slots[key].confidence > 0.6
-    );
+    const contextSlots = Object.keys(slotFrame.slots).filter(key => {
+      const slot = slotFrame.slots[key];
+      return slot && slot.confidence > 0.6;
+    });
 
     if (contextSlots.length >= 2 && safeActions.includes('search_content')) {
       speculativeActions.push({
@@ -505,7 +506,7 @@ Normalize common expressions:
     this.slotExtractors.set('quantitative', {
       extract: async (raw: string) => {
         const numberMatch = raw.match(/(\d+)/);
-        const quantity = numberMatch ? parseInt(numberMatch[1]) : 1;
+        const quantity = numberMatch && numberMatch[1] ? parseInt(numberMatch[1]) : 1;
         
         let itemType = 'items';
         if (raw.includes('ticket')) {itemType = 'tickets';}
@@ -568,8 +569,15 @@ Normalize common expressions:
     context: ConversationContext
   ): Promise<ClarificationResponse> {
     const knownInfo = Object.keys(slotFrame.slots)
-      .filter(key => slotFrame.slots[key].confidence > 0.6)
-      .map(key => `${key}: ${slotFrame.slots[key].raw}`)
+      .filter(key => {
+        const slot = slotFrame.slots[key];
+        return slot && slot.confidence > 0.6;
+      })
+      .map(key => {
+        const slot = slotFrame.slots[key];
+        return slot ? `${key}: ${slot.raw}` : '';
+      })
+      .filter(Boolean)
       .join(', ');
 
     const prompt = `Generate a natural, conversational clarification question for missing information:

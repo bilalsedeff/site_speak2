@@ -6,8 +6,7 @@
  */
 
 import { createLogger } from '../../../../shared/utils.js';
-import * as postgres from 'postgres';
-type Sql = postgres.Sql;
+import postgres from 'postgres';
 import { config } from '../../../../infrastructure/config';
 
 const logger = createLogger({ service: 'index-optimization' });
@@ -469,7 +468,11 @@ export class IndexOptimization {
 
       // Get optimal configurations
       const hnswConfig = this.hnsw.estimateOptimalParams(rowCount, dimensions, targetRecall);
-      const ivfflatConfig = this.ivfflat.getPresets()['balanced'](rowCount);
+      const balancedPreset = this.ivfflat.getPresets()['balanced'];
+      if (!balancedPreset) {
+        throw new Error('Balanced preset not found for IVFFlat configuration');
+      }
+      const ivfflatConfig = balancedPreset(rowCount);
 
       // Decision logic
       let recommended: 'hnsw' | 'ivfflat';
@@ -536,7 +539,11 @@ export class IndexOptimization {
         newIndexName = await this.hnsw.createIndex(tableName, 'embedding', config, options);
       } else {
         const rowCount = await this.getRowCount(tableName);
-        const config = this.ivfflat.getPresets()['balanced'](rowCount);
+        const balancedPreset = this.ivfflat.getPresets()['balanced'];
+        if (!balancedPreset) {
+          throw new Error('Balanced preset not found for IVFFlat configuration');
+        }
+        const config = balancedPreset(rowCount);
         newIndexName = await this.ivfflat.createIndex(tableName, 'embedding', config, options);
       }
 
@@ -578,9 +585,11 @@ export class IndexOptimization {
    */
   private extractColumnName(indexDef: string): string {
     const match = indexDef.match(/\(([^)]+)\)/);
-    if (match) {
+    if (match && match[1]) {
       const column = match[1].split(' ')[0];
-      return column.replace(/"/g, '');
+      if (column) {
+        return column.replace(/"/g, '');
+      }
     }
     return 'embedding';
   }

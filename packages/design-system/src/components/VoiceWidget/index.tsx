@@ -2,13 +2,13 @@ import * as React from 'react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Mic, MicOff, Volume2, Settings, X, Minimize2 } from 'lucide-react'
+import { Mic, MicOff, Volume2, Settings, Minimize2 } from 'lucide-react'
 
 import { cn } from '../../utils/cn'
 import { Button } from '../Button'
 import { Card, CardContent, CardHeader } from '../Card'
 import { VoiceWidgetPropsSchema, type VoiceWidgetProps } from '../../schemas/component-schemas'
-import { VoiceWidgetAriaRequirements, validateAriaCompliance } from '../../schemas/aria-schemas'
+import { validateAriaCompliance } from '../../schemas/aria-schemas'
 import { ComponentMetadata, generateAriaAttributes, generateActionAttributes } from '../../utils/component-metadata'
 
 // Web Audio API type definitions
@@ -73,8 +73,9 @@ interface VoiceState {
 }
 
 // Audio processor for real-time audio handling
-class AudioProcessor extends AudioWorkletProcessor {
-  process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>) {
+// TODO: Integrate with VoiceWidget for real-time audio processing
+export class AudioProcessor extends AudioWorkletProcessor {
+  override process(inputs: Float32Array[][], _outputs: Float32Array[][], _parameters: Record<string, Float32Array>) {
     const input = inputs[0]
     if (input && input.length > 0) {
       // Calculate RMS for audio level

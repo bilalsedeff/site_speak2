@@ -4,8 +4,8 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { Loader2 } from 'lucide-react'
 
 import { cn } from '../../utils/cn'
-import { ButtonPropsSchema, type ButtonProps } from '../../schemas/component-schemas'
-import { ButtonAriaRequirements, validateAriaCompliance } from '../../schemas/aria-schemas'
+import { ButtonPropsSchema } from '../../schemas/component-schemas'
+import { validateAriaCompliance } from '../../schemas/aria-schemas'
 import { ComponentMetadata } from '../../utils/component-metadata'
 
 const buttonVariants = cva(

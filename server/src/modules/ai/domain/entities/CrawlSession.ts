@@ -192,10 +192,10 @@ export class CrawlSession {
       chunksUpdated: this.progress.chunksUpdated,
       errorCount: this.errors.length,
       criticalErrors: this.errors.filter(e => e.severity === 'critical').length,
-      avgPageTime: this.performance.avgPageProcessingTime,
+      avgPageTime: this.performance.avgPageProcessingTime || 0,
       pagesPerMinute: this.calculatePagesPerMinute(),
       startedAt: this.startedAt,
-      completedAt: this.completedAt
+      ...(this.completedAt && { completedAt: this.completedAt })
     };
   }
 

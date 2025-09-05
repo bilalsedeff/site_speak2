@@ -3,8 +3,8 @@
  * Following Frontend Source-of-Truth: Shadow DOM isolation, postMessage bridge
  */
 
-import { VoiceWidgetApp } from './app/VoiceWidgetApp' // TODO: Implement VoiceWidgetApp
-import { ActionsBridge } from '@sitespeak/actions-bridge' // TODO: Implement ActionsBridge
+import { VoiceWidgetApp } from './app/VoiceWidgetApp'
+import { ActionsBridge } from './bridge/ActionsBridge'
 
 interface EmbedConfig {
   apiEndpoint?: string
@@ -281,7 +281,9 @@ class VoiceWidgetManager {
 
     // Listen for page navigation (for SPA support)
     window.addEventListener('popstate', () => {
-      this.app?.onNavigationChange(window.location.href)
+      this.app?.onNavigationChange((url) => {
+        console.log('[VoiceWidget] Navigation changed to:', url)
+      })
     })
 
     // Listen for visibility changes
@@ -307,7 +309,7 @@ class VoiceWidgetManager {
    */
   updateConfig(newConfig: Partial<EmbedConfig>): void {
     this.config = { ...this.config, ...newConfig }
-    this.app?.updateConfig(this.config)
+    this.app?.updateConfig({ config: this.config })
   }
 
   /**
@@ -415,11 +417,11 @@ function autoInit(): void {
 
   const config: EmbedConfig = {
     tenantId: script.dataset['tenantId'] || '',
-    apiEndpoint: script.dataset['apiEndpoint'],
-    theme: (script.dataset['theme'] as any) || 'system',
-    position: (script.dataset['position'] as any) || 'bottom-right',
-    color: script.dataset['color'],
-    size: (script.dataset['size'] as any) || 'md',
+    ...(script.dataset['apiEndpoint'] && { apiEndpoint: script.dataset['apiEndpoint'] }),
+    theme: (script.dataset['theme'] as 'light' | 'dark' | 'system') || 'system',
+    position: (script.dataset['position'] as 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left') || 'bottom-right',
+    ...(script.dataset['color'] && { color: script.dataset['color'] }),
+    size: (script.dataset['size'] as 'sm' | 'md' | 'lg') || 'md',
   }
 
   if (config.tenantId) {

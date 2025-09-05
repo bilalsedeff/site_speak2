@@ -80,6 +80,7 @@ export class MetricsService {
   private responseTimes: number[] = [];
   private errorCounts = new Map<string, number>();
   // TODO: Use for application start time metrics (vs process uptime)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private _startTime = Date.now(); // Application start time for future use
   private eventLoopMonitor: ReturnType<typeof monitorEventLoopDelay>;
   private isDraining = false;
@@ -514,6 +515,7 @@ export class MetricsService {
     try {
       // Simple disk usage estimation - for production, use a proper disk usage library
       // TODO: Implement actual disk usage calculation using _stats
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _stats = await fs.promises.stat(process.cwd());
       
       // Return placeholder values for now - in production, use a library like 'node-disk-info'

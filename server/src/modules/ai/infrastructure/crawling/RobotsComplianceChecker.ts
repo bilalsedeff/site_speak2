@@ -211,39 +211,50 @@ export class RobotsComplianceChecker {
     try {
       logger.debug('Fetching robots.txt', { robotsUrl });
 
-      const response = await fetch(robotsUrl, {
-        headers: {
-          'User-Agent': 'SiteSpeak-Crawler/1.0 (+https://sitespeak.ai/crawler)'
-        },
-        timeout: 10000,
-        redirect: 'follow'
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      try {
+        const response = await fetch(robotsUrl, {
+          headers: {
+            'User-Agent': 'SiteSpeak-Crawler/1.0 (+https://sitespeak.ai/crawler)'
+          },
+          signal: controller.signal,
+          redirect: 'follow'
+        });
+        clearTimeout(timeoutId);
 
-      let result: RobotsResult;
+        let result: RobotsResult;
 
-      if (response.ok) {
-        const content = await response.text();
-        result = {
-          url: robotsUrl,
-          exists: true,
-          content,
-          lastModified: response.headers.get('last-modified') 
-            ? new Date(response.headers.get('last-modified')!) 
-            : undefined,
-          fetchedAt: new Date()
-        };
-      } else {
-        result = {
-          url: robotsUrl,
-          exists: false,
-          content: '',
-          fetchedAt: new Date()
-        };
+        if (response.ok) {
+          const content = await response.text();
+          const lastModifiedHeader = response.headers.get('last-modified');
+          result = {
+            url: robotsUrl,
+            exists: true,
+            content,
+            ...(lastModifiedHeader && { lastModified: new Date(lastModifiedHeader) }),
+            fetchedAt: new Date()
+          };
+        } else {
+          result = {
+            url: robotsUrl,
+            exists: false,
+            content: '',
+            fetchedAt: new Date()
+          };
+        }
+
+        // Cache the result
+        this.robotsCache.set(robotsUrl, result);
+        return result;
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          logger.warn('Robots.txt fetch timeout', { robotsUrl });
+        }
+        throw fetchError;
       }
-
-      // Cache the result
-      this.robotsCache.set(robotsUrl, result);
-      return result;
 
     } catch (error) {
       logger.debug('Failed to fetch robots.txt', {
@@ -286,7 +297,7 @@ export class RobotsComplianceChecker {
       }
 
       const [key, ...valueParts] = line.split(':');
-      if (valueParts.length === 0) {continue;}
+      if (!key || valueParts.length === 0) {continue;}
       
       const value = valueParts.join(':').trim();
       const lowerKey = key.toLowerCase().trim();
@@ -458,7 +469,7 @@ export class RobotsComplianceChecker {
     for (const line of lines) {
       const trimmed = line.trim();
       const match = trimmed.match(/^sitemap:\s*(.+)$/i);
-      if (match) {
+      if (match && match[1]) {
         sitemaps.push(match[1].trim());
       }
     }

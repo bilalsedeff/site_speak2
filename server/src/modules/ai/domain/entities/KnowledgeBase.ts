@@ -118,9 +118,7 @@ export class KnowledgeBase {
       totalUrls,
       processedUrls: 0,
       failedUrls: 0,
-      startedAt: new Date(),
-      completedAt: undefined,
-      errorMessage: undefined,
+      startedAt: new Date()
     });
   }
 

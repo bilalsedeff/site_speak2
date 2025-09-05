@@ -1,8 +1,6 @@
 import { JSDOM } from 'jsdom'
 import { 
-  generateActionManifest,
   getComponentActions,
-  validateActionParameters,
   ComponentAction 
 } from '@sitespeak/design-system'
 import { 
@@ -37,7 +35,7 @@ export class ActionsEmitter {
     let secureActions = 0
 
     // Process each component
-    for (const [componentName, contract] of Object.entries(components)) {
+    for (const [componentName, _contract] of Object.entries(components)) {
       // Get base actions for this component
       const baseActions = getComponentActions(componentName)
       if (baseActions.length === 0) {continue}
@@ -51,7 +49,21 @@ export class ActionsEmitter {
           category: action.category,
           selector: action.selector || `[data-action="${action.name}"]`,
           event: action.event || 'click',
-          parameters: action.parameters || [],
+          parameters: (action.parameters || []).map(param => ({
+            name: param.name,
+            type: param.type,
+            required: param.required,
+            ...(param.description && { description: param.description }),
+            ...(param.validation && { 
+              validation: {
+                ...(param.validation.min !== undefined && { min: param.validation.min }),
+                ...(param.validation.max !== undefined && { max: param.validation.max }),
+                ...(param.validation.pattern && { pattern: param.validation.pattern }),
+                ...(param.validation.enum && { enum: param.validation.enum })
+              }
+            }),
+            ...(param.defaultValue !== undefined && { defaultValue: param.defaultValue })
+          })),
           security: securityConfig,
         }
 
@@ -126,7 +138,10 @@ export class ActionsEmitter {
       'search.submit',
     ]
 
-    if (rateLimitedActions.some(limitedAction => action.name.includes(limitedAction.split('.')[0]))) {
+    if (rateLimitedActions.some(limitedAction => {
+      const actionPrefix = limitedAction.split('.')[0]
+      return actionPrefix && action.name.includes(actionPrefix)
+    })) {
       security.rateLimit = {
         maxCalls: 10,
         windowMs: 60000, // 1 minute
@@ -134,7 +149,11 @@ export class ActionsEmitter {
     }
 
     // Set allowed origins
-    security.allowedOrigins = action.allowedOrigins || [this.baseUrl]
+    if (action.allowedOrigins) {
+      security.allowedOrigins = action.allowedOrigins
+    } else {
+      security.allowedOrigins = [this.baseUrl]
+    }
 
     return security
   }
@@ -185,7 +204,7 @@ export class ActionsEmitter {
             implemented = true
             
             // Enhance action with implementation details
-            const enhancedAction = {
+            const enhancedAction: any = {
               ...action,
               implementation: {
                 pages: [pageUrl],
@@ -204,18 +223,19 @@ export class ActionsEmitter {
               enhancedAction.validationIssues = validationResults.issues
             }
             
-            foundActions.push(enhancedAction as ComponentActionContract)
+            foundActions.push(enhancedAction)
             break
           }
         }
 
         if (!implemented && this.strict) {
           // Include unimplemented actions with a flag
-          foundActions.push({
+          const unimplementedAction: any = {
             ...action,
             implemented: false,
             validationIssues: ['Action not found in any page']
-          } as ComponentActionContract)
+          }
+          foundActions.push(unimplementedAction)
         } else if (implemented) {
           foundActions.push(action)
         }

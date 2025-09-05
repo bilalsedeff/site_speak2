@@ -120,7 +120,36 @@ export function ComponentRenderer({
           
           {/* Resize handles */}
           <div className="absolute -inset-2 border-2 border-primary rounded pointer-events-none">
-            <div className="absolute -right-2 -bottom-2 w-4 h-4 bg-primary rounded-sm cursor-se-resize pointer-events-auto" />
+            <div 
+              className="absolute -right-2 -bottom-2 w-4 h-4 bg-primary rounded-sm cursor-se-resize pointer-events-auto" 
+              onMouseDown={(e) => {
+                e.preventDefault()
+                const startX = e.clientX
+                const startY = e.clientY
+                const startWidth = instance.size.width
+                const startHeight = instance.size.height
+
+                const handleMouseMove = (e: MouseEvent) => {
+                  const deltaX = e.clientX - startX
+                  const deltaY = e.clientY - startY
+                  
+                  onUpdate({
+                    size: {
+                      width: Math.max(50, startWidth + deltaX),
+                      height: Math.max(30, startHeight + deltaY)
+                    }
+                  })
+                }
+
+                const handleMouseUp = () => {
+                  document.removeEventListener('mousemove', handleMouseMove)
+                  document.removeEventListener('mouseup', handleMouseUp)
+                }
+
+                document.addEventListener('mousemove', handleMouseMove)
+                document.addEventListener('mouseup', handleMouseUp)
+              }}
+            />
           </div>
         </>
       )}

@@ -152,23 +152,29 @@ export class FormExtractor {
       return null;
     }
 
+    const label = this.getFieldLabel(element);
+    const placeholder = element.getAttribute('placeholder');
+    const validation = this.extractFieldValidation(element);
+    const options = this.getFieldOptions(element);
+    const value = this.getFieldValue(element);
+    
     const field: FormField = {
       name: this.getFieldName(element),
       type: this.getFieldType(element),
-      label: this.getFieldLabel(element),
+      ...(label && { label }),
       selector: this.generateFieldSelector(element, index),
       required: element.hasAttribute('required'),
       disabled: element.hasAttribute('disabled'),
       readonly: element.hasAttribute('readonly'),
-      placeholder: element.getAttribute('placeholder') || undefined,
-      value: this.getFieldValue(element),
-      validation: this.extractFieldValidation(element),
-      options: this.getFieldOptions(element),
+      ...(placeholder && { placeholder }),
+      ...(value && { value }),
+      ...(validation && { validation }),
+      ...(options && { options }),
       confidence: this.calculateFieldConfidence(element),
       extractionMeta: {
         index,
         tagName,
-        hasLabel: !!this.getFieldLabel(element),
+        hasLabel: !!label,
         hasValidation: this.hasValidationAttributes(element),
         extractedAt: new Date()
       }
@@ -201,9 +207,11 @@ export class FormExtractor {
     const text = this.getElementText(element);
     if (!text) {return null;}
 
+    const value = this.getElementValue(element);
+
     return {
       text,
-      value: this.getElementValue(element),
+      ...(value && { value }),
       selector: this.generateFieldSelector(element, index),
       primary: index === 0, // First submit button is usually primary
       type: this.classifySubmitButton(text)
@@ -235,12 +243,13 @@ export class FormExtractor {
 
     // Extract form-level validation attributes
     const novalidate = form.hasAttribute('novalidate');
+    const customValidation = this.extractCustomValidation(form);
 
     return {
       rules,
       groups,
       novalidate,
-      customValidation: this.extractCustomValidation(form)
+      ...(customValidation && { customValidation })
     };
   }
 
@@ -314,7 +323,7 @@ export class FormExtractor {
   private getFieldName(element: HTMLElement): string {
     return element.getAttribute('name') || 
            element.getAttribute('id') || 
-           `field-${Math.random().toString(36).substr(2, 9)}`;
+           `field-${Math.random().toString(36).substring(2, 11)}`;
   }
 
   /**

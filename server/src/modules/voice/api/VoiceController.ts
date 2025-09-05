@@ -73,8 +73,8 @@ export class VoiceController {
       const result = await voiceProcessingService.speechToText({
         audioBuffer: req.file.buffer,
         filename: req.file.originalname,
-        language: data.language,
-        prompt: data.prompt,
+        ...(data.language && { language: data.language }),
+        ...(data.prompt && { prompt: data.prompt }),
       });
 
       // Analyze voice for sentiment/emotion
@@ -159,8 +159,11 @@ export class VoiceController {
       const { sessionId } = req.params;
 
       // TODO: Get actual session analytics from database
+      // Implement tenant isolation and user authentication
       const mockAnalytics = {
         sessionId,
+        userId: user.id,
+        tenantId: user.tenantId,
         totalInteractions: 15,
         duration: 8.5, // minutes
         speechToTextAccuracy: 0.92,
@@ -168,6 +171,7 @@ export class VoiceController {
         emotionsDetected: ['neutral', 'happy', 'curious'],
         languagesUsed: ['en'],
         qualityScore: 0.88,
+        // TODO: Replace with real analytics query filtered by user.tenantId
       };
 
       res.json({
@@ -193,7 +197,10 @@ export class VoiceController {
       const user = req.user!;
 
       // TODO: Get actual usage statistics from database
+      // Implement tenant-specific usage tracking with proper isolation
       const mockStats = {
+        userId: user.id,
+        tenantId: user.tenantId,
         currentMonth: {
           voiceMinutesUsed: 45.5,
           speechToTextRequests: 120,

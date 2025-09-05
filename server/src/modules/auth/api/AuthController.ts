@@ -4,7 +4,6 @@ import { randomUUID } from 'crypto';
 
 import { createLogger } from '../../../shared/utils.js';
 import { jwtService, sessionManager } from '../../../infrastructure/auth';
-import { config } from '../../../infrastructure/config';
 import type { 
   LoginRequest, 
   RegisterRequest, 
@@ -32,13 +31,14 @@ export class AuthController {
       // For now, mock the registration process
       const userId = randomUUID();
       const tenantId = randomUUID();
-      const hashedPassword = await bcrypt.hash(data.password, 12);
+      // TODO: Use hashedPassword when implementing database user creation
+      const _hashedPassword = await bcrypt.hash(data.password, 12);
 
       // Create session
       const session = await sessionManager.createSession({
         userId,
         tenantId,
-        ipAddress: req.ip,
+        ipAddress: req.ip || '0.0.0.0',
         userAgent: req.get('User-Agent') || 'Unknown',
         metadata: {
           registrationMethod: 'email',
@@ -115,7 +115,7 @@ export class AuthController {
         const session = await sessionManager.createSession({
           userId,
           tenantId,
-          ipAddress: req.ip,
+          ipAddress: req.ip || '0.0.0.0',
           userAgent: req.get('User-Agent') || 'Unknown',
           metadata: {
             loginMethod: 'email',
@@ -240,7 +240,7 @@ export class AuthController {
     }
   }
 
-  async refreshToken(req: Request, res: Response, next: NextFunction) {
+  async refreshToken(req: Request, res: Response, _next: NextFunction) {
     try {
       const data: RefreshTokenRequest = req.body;
       
@@ -356,7 +356,8 @@ export class AuthController {
   async changePassword(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user!;
-      const data: ChangePasswordRequest = req.body;
+      // TODO: Use data to verify current password and update with new password
+      const _data: ChangePasswordRequest = req.body;
       
       // TODO: Verify current password
       // TODO: Update password in database
@@ -414,6 +415,10 @@ export class AuthController {
       const user = req.user!;
       const { sessionId } = req.params;
       
+      if (!sessionId) {
+        return res.status(400).json({ error: 'Session ID is required' });
+      }
+      
       // TODO: Verify session belongs to user
       const deleted = await sessionManager.deleteSession(sessionId);
       
@@ -424,12 +429,12 @@ export class AuthController {
           correlationId: req.correlationId,
         });
 
-        res.json({
+        return res.json({
           success: true,
           message: 'Session deleted successfully',
         });
       } else {
-        res.status(404).json({
+        return res.status(404).json({
           success: false,
           error: 'Session not found',
           code: 'SESSION_NOT_FOUND',
@@ -443,7 +448,7 @@ export class AuthController {
         sessionId: req.params['sessionId'],
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -474,7 +479,8 @@ export class AuthController {
 
   async resetPassword(req: Request, res: Response, next: NextFunction) {
     try {
-      const { token, newPassword } = req.body;
+      // TODO: Use token to verify reset request and newPassword to update user password
+      const { token: _token, newPassword: _newPassword } = req.body;
       
       // TODO: Verify reset token
       // TODO: Update password in database

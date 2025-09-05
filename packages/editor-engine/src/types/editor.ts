@@ -1,5 +1,8 @@
 import type { ComponentMetadata } from '@sitespeak/design-system'
 
+// Re-export ComponentMetadata for convenience
+export type { ComponentMetadata }
+
 // Editor component instance
 export interface ComponentInstance {
   id: string

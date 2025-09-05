@@ -142,40 +142,52 @@ export class SitemapReader {
     try {
       logger.debug('Processing sitemap', { sitemapUrl });
 
-      const response = await fetch(sitemapUrl, {
-        headers: {
-          'User-Agent': this.userAgent,
-          'Accept': 'application/xml, text/xml, */*'
-        },
-        timeout: 30000
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      try {
+        const response = await fetch(sitemapUrl, {
+          headers: {
+            'User-Agent': this.userAgent,
+            'Accept': 'application/xml, text/xml, */*'
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const xmlContent = await response.text();
+        const parsed = await parseStringPromise(xmlContent, {
+          explicitArray: false,
+          ignoreAttrs: false,
+          trim: true
+        });
+
+        // Determine sitemap type and process accordingly
+        if (parsed.sitemapindex) {
+          // This is a sitemap index file
+          result.entries = await this.processSitemapIndex(parsed.sitemapindex, sitemapUrl);
+        } else if (parsed.urlset) {
+          // This is a regular sitemap
+          result.entries = this.processUrlSet(parsed.urlset, sitemapUrl);
+        } else {
+          throw new Error('Invalid sitemap format: no sitemapindex or urlset found');
+        }
+
+        logger.info('Sitemap processed successfully', {
+          sitemapUrl,
+          entriesCount: result.entries.length
+        });
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          throw new Error(`Sitemap fetch timeout: ${sitemapUrl}`);
+        }
+        throw fetchError;
       }
-
-      const xmlContent = await response.text();
-      const parsed = await parseStringPromise(xmlContent, {
-        explicitArray: false,
-        ignoreAttrs: false,
-        trim: true
-      });
-
-      // Determine sitemap type and process accordingly
-      if (parsed.sitemapindex) {
-        // This is a sitemap index file
-        result.entries = await this.processSitemapIndex(parsed.sitemapindex, sitemapUrl);
-      } else if (parsed.urlset) {
-        // This is a regular sitemap
-        result.entries = this.processUrlSet(parsed.urlset, sitemapUrl);
-      } else {
-        throw new Error('Invalid sitemap format: no sitemapindex or urlset found');
-      }
-
-      logger.info('Sitemap processed successfully', {
-        sitemapUrl,
-        entriesCount: result.entries.length
-      });
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -202,26 +214,38 @@ export class SitemapReader {
     
     try {
       const robotsUrl = new URL('/robots.txt', baseUrl).toString();
-      const response = await fetch(robotsUrl, {
-        headers: { 'User-Agent': this.userAgent },
-        timeout: 10000
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      try {
+        const response = await fetch(robotsUrl, {
+          headers: { 'User-Agent': this.userAgent },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
 
-      if (response.ok) {
-        const robotsContent = await response.text();
-        const sitemapMatches = robotsContent.match(/^Sitemap:\s*(.+)$/gmi);
-        
-        if (sitemapMatches) {
-          for (const match of sitemapMatches) {
-            const sitemapUrl = match.replace(/^Sitemap:\s*/i, '').trim();
-            sitemaps.push({
-              url: sitemapUrl,
-              source: 'robots.txt',
-              entries: [],
-              discovered: true
-            });
+        if (response.ok) {
+          const robotsContent = await response.text();
+          const sitemapMatches = robotsContent.match(/^Sitemap:\s*(.+)$/gmi);
+          
+          if (sitemapMatches) {
+            for (const match of sitemapMatches) {
+              const sitemapUrl = match.replace(/^Sitemap:\s*/i, '').trim();
+              sitemaps.push({
+                url: sitemapUrl,
+                source: 'robots.txt',
+                entries: [],
+                discovered: true
+              });
+            }
           }
         }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          logger.warn('Robots.txt fetch timeout', { robotsUrl });
+        }
+        // Continue silently as robots.txt discovery is optional
       }
     } catch (error) {
       logger.debug('Could not read robots.txt', {
@@ -250,19 +274,31 @@ export class SitemapReader {
     for (const path of commonPaths) {
       try {
         const sitemapUrl = new URL(path, baseUrl).toString();
-        const response = await fetch(sitemapUrl, {
-          method: 'HEAD',
-          headers: { 'User-Agent': this.userAgent },
-          timeout: 10000
-        });
-
-        if (response.ok && this.isXmlContentType(response.headers.get('content-type'))) {
-          sitemaps.push({
-            url: sitemapUrl,
-            source: 'common-location',
-            entries: [],
-            discovered: true
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        try {
+          const response = await fetch(sitemapUrl, {
+            method: 'HEAD',
+            headers: { 'User-Agent': this.userAgent },
+            signal: controller.signal
           });
+          clearTimeout(timeoutId);
+
+          if (response.ok && this.isXmlContentType(response.headers.get('content-type'))) {
+            sitemaps.push({
+              url: sitemapUrl,
+              source: 'common-location',
+              entries: [],
+              discovered: true
+            });
+          }
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+            logger.debug('Common sitemap location fetch timeout', { sitemapUrl });
+          }
+          // Continue trying other locations
         }
       } catch {
         // Ignore errors for common location checks
@@ -315,9 +351,9 @@ export class SitemapReader {
       if (url && url.loc) {
         const entry: SitemapEntry = {
           loc: url.loc,
-          lastmod: url.lastmod ? this.parseDate(url.lastmod) : undefined,
+          ...(url.lastmod && { lastmod: this.parseDate(url.lastmod) }),
           changefreq: this.parseChangeFreq(url.changefreq),
-          priority: url.priority ? parseFloat(url.priority) : undefined,
+          ...(url.priority && { priority: parseFloat(url.priority) }),
           source: sitemapUrl
         };
 

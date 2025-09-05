@@ -217,9 +217,6 @@ export function createRateLimit(config: RateLimitConfig) {
     try {
       const key = keyGenerator(req);
       
-      // Get current rate limit status
-      let current = await store.get(key);
-      
       // Increment counter
       const result = await store.increment(key, windowMs);
       
@@ -253,7 +250,7 @@ export function createRateLimit(config: RateLimitConfig) {
         // Add Retry-After header
         res.setHeader('Retry-After', resetSeconds.toString());
 
-        return res.status(429).type('application/problem+json').json({
+        res.status(429).type('application/problem+json').json({
           type: 'https://sitespeak.ai/problems/rate-limited',
           title: 'Too Many Requests',
           status: 429,
@@ -267,6 +264,7 @@ export function createRateLimit(config: RateLimitConfig) {
             policy
           }
         });
+        return;
       }
 
       // Handle response to potentially decrement counter on certain conditions
@@ -343,7 +341,7 @@ export const rateLimiters = {
 /**
  * Create custom rate limiter with specific config
  */
-export function createCustomRateLimit(name: string, options: Partial<RateLimitConfig> = {}) {
+export function createCustomRateLimit(_name: string, options: Partial<RateLimitConfig> = {}) {
   return createRateLimit({
     windowMs: 60 * 1000,
     max: 60,

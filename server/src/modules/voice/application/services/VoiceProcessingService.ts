@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import fs from 'fs/promises';
-import { ReadStream } from 'fs';
 import path from 'path';
 import { createLogger } from '../../../../shared/utils.js';
 import { config } from '../../../../infrastructure/config';
@@ -27,25 +26,29 @@ export interface SpeechToTextResponse {
   }>;
 }
 
-interface OpenAITranscriptionCreateParams {
-  file: ReadStream;
-  model: string;
-  language?: string;
-  prompt?: string;
-  temperature?: number;
-  response_format: string;
-}
+// Use official OpenAI types instead of custom interface to avoid duplication
+type OpenAITranscriptionCreateParams = OpenAI.Audio.TranscriptionCreateParamsNonStreaming;
 
-interface OpenAITranscriptionResponse {
+// OpenAI verbose_json response includes additional metadata
+interface OpenAIVerboseTranscriptionResponse {
   text: string;
   language?: string;
   duration?: number;
   segments?: Array<{
+    id: number;
     start: number;
     end: number;
     text: string;
+    tokens: number[];
+    temperature: number;
+    avg_logprob: number;
+    compression_ratio: number;
+    no_speech_prob: number;
   }>;
 }
+
+// Type for the actual response (could be simple text or verbose json)
+type OpenAITranscriptionResponse = OpenAI.Audio.Transcription | OpenAIVerboseTranscriptionResponse;
 
 // Type guard function for transcription response validation
 function isTranscriptionWithMetadata(transcription: any): transcription is OpenAITranscriptionResponse {
@@ -112,22 +115,22 @@ export class VoiceProcessingService {
 
       const startTime = Date.now();
 
-      // Call OpenAI Whisper API
+      // Call OpenAI Whisper API - using non-streaming type
       const transcriptionParams: OpenAITranscriptionCreateParams = {
         file: fileStream,
         model: 'whisper-1',
         temperature: request.temperature || 0,
         response_format: 'verbose_json',
+        ...(request.language && { language: request.language }),
+        ...(request.prompt && { prompt: request.prompt }),
       };
 
-      if (request.language) {
-        transcriptionParams.language = request.language;
-      }
-      if (request.prompt) {
-        transcriptionParams.prompt = request.prompt;
-      }
-
       const transcription = await this.openai.audio.transcriptions.create(transcriptionParams);
+
+      // Validate transcription response using type guard
+      if (!isTranscriptionWithMetadata(transcription)) {
+        throw new Error('Invalid transcription response from OpenAI API');
+      }
 
       await audioFile.close();
 

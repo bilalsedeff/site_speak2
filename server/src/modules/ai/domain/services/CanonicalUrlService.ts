@@ -141,9 +141,9 @@ export class CanonicalUrlService {
     
     for (const urlInfo of urls) {
       const canonical = this.resolveCanonicalUrl(urlInfo.url, {
-        relCanonical: urlInfo.relCanonical,
-        httpLinkHeader: urlInfo.httpLinkHeader,
-        sitemapCanonical: urlInfo.sitemapCanonical
+        ...(urlInfo.relCanonical && { relCanonical: urlInfo.relCanonical }),
+        ...(urlInfo.httpLinkHeader && { httpLinkHeader: urlInfo.httpLinkHeader }),
+        ...(urlInfo.sitemapCanonical && { sitemapCanonical: urlInfo.sitemapCanonical })
       });
       
       canonicalMap.set(urlInfo.url, canonical.canonicalUrl);
@@ -160,9 +160,9 @@ export class CanonicalUrlService {
     
     for (const urlInfo of urls) {
       const canonical = this.resolveCanonicalUrl(urlInfo.url, {
-        relCanonical: urlInfo.relCanonical,
-        httpLinkHeader: urlInfo.httpLinkHeader,
-        sitemapCanonical: urlInfo.sitemapCanonical
+        ...(urlInfo.relCanonical && { relCanonical: urlInfo.relCanonical }),
+        ...(urlInfo.httpLinkHeader && { httpLinkHeader: urlInfo.httpLinkHeader }),
+        ...(urlInfo.sitemapCanonical && { sitemapCanonical: urlInfo.sitemapCanonical })
       });
       
       if (!groups.has(canonical.canonicalUrl)) {

@@ -18,7 +18,8 @@ export class ContentHashService {
     const {
       algorithm = 'sha256',
       normalize = true,
-      includeMetadata = false,
+      // TODO: Implement metadata inclusion in hash computation
+      includeMetadata: _includeMetadata = false,
       encoding = 'hex'
     } = options;
 
@@ -84,7 +85,7 @@ export class ContentHashService {
     return {
       compositeHash,
       textHash: textHash.hash,
-      metadataHash: metadataHash?.hash,
+      ...(metadataHash?.hash && { metadataHash: metadataHash.hash }),
       algorithm,
       components: {
         text: content.text ? true : false,
@@ -164,9 +165,9 @@ export class ContentHashService {
       metadataHash: metadataHash.hash,
       contentLength: content.length,
       metadata: {
-        title: metadata.title,
-        lastModified: metadata.lastModified,
-        contentType: metadata.contentType
+        ...(metadata.title && { title: metadata.title }),
+        ...(metadata.lastModified && { lastModified: metadata.lastModified }),
+        ...(metadata.contentType && { contentType: metadata.contentType })
       },
       createdAt: new Date()
     };
