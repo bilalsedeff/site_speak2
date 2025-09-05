@@ -15,28 +15,35 @@
  */
 
 // Core components
-export { TurnManager, TurnManagerConfig, TurnEvent, getDefaultTurnManagerConfig } from './turnManager';
+export { TurnManager, getDefaultTurnManagerConfig } from './turnManager';
+export type { TurnManagerConfig, TurnEvent } from './turnManager';
 export { VisualFeedbackService, visualFeedbackService } from './visualFeedbackService';
-export { OpusFramer, opusFramer, OpusConfig, OpusFrame, PCMFrame, getDefaultOpusConfig } from './opusFramer';
-export { OpenAIRealtimeClient, openaiRealtimeClient, RealtimeConfig, createRealtimeConfig } from './openaiRealtimeClient';
+export { OpusFramer, opusFramer, getDefaultOpusConfig } from './opusFramer';
+export type { OpusConfig, OpusFrame, PCMFrame } from './opusFramer';
+export { OpenAIRealtimeClient, openaiRealtimeClient, createRealtimeConfig } from './openaiRealtimeClient';
+export type { RealtimeConfig } from './openaiRealtimeClient';
 
 // Transport layer
 export { 
   VoiceWebSocketServer, 
   voiceWebSocketServer,
+  attachVoiceWsServer 
+} from './transport/wsServer';
+export type { 
   VoiceSession, 
   WsAuth,
-  VoiceMessage,
-  attachVoiceWsServer 
+  VoiceMessage
 } from './transport/wsServer';
 
 // Main orchestrator
 export { 
   VoiceOrchestrator, 
   voiceOrchestrator,
-  VoiceOrchestratorConfig,
-  VoiceSessionState,
   getDefaultVoiceOrchestratorConfig 
+} from './voiceOrchestrator';
+export type { 
+  VoiceOrchestratorConfig,
+  VoiceSessionState
 } from './voiceOrchestrator';
 
 // Utilities and helpers
@@ -149,13 +156,13 @@ export const VoicePresets = {
 export function createVoiceMiddleware() {
   return {
     // Health check endpoint
-    health: (req: any, res: any) => {
+    health: (_req: any, res: any) => {
       const health = getVoiceServicesHealth();
       res.json(health);
     },
     
     // Status endpoint  
-    status: (req: any, res: any) => {
+    status: (_req: any, res: any) => {
       const status = voiceOrchestrator.getStatus();
       res.json({
         success: true,

@@ -3,7 +3,7 @@
  */
 
 export function formatBytes(bytes: number, decimals: number = 2): string {
-  if (bytes === 0) return '0 Bytes';
+  if (bytes === 0) {return '0 Bytes';}
   
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
@@ -15,9 +15,9 @@ export function formatBytes(bytes: number, decimals: number = 2): string {
 }
 
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3600000) return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+  if (ms < 1000) {return `${ms}ms`;}
+  if (ms < 60000) {return `${(ms / 1000).toFixed(1)}s`;}
+  if (ms < 3600000) {return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;}
   
   const hours = Math.floor(ms / 3600000);
   const minutes = Math.floor((ms % 3600000) / 60000);
@@ -33,7 +33,7 @@ export function formatPercentage(num: number, decimals: number = 1): string {
 }
 
 export function truncateText(text: string, length: number): string {
-  if (text.length <= length) return text;
+  if (text.length <= length) {return text;}
   return text.substring(0, length) + '...';
 }
 

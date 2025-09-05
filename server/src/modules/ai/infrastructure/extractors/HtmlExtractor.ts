@@ -1,5 +1,5 @@
 import { JSDOM } from 'jsdom';
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../../services/_shared/telemetry/logger';
 
 const logger = createLogger({ service: 'html-extractor' });
 
@@ -282,7 +282,7 @@ export class HtmlExtractor {
         const headerElements = tableElement.querySelectorAll('thead th, tr:first-child th');
         headerElements.forEach(header => {
           const text = header.textContent?.trim();
-          if (text) headers.push(text);
+          if (text) {headers.push(text);}
         });
 
         // If no explicit headers, try first row
@@ -290,7 +290,7 @@ export class HtmlExtractor {
           const firstRowCells = tableElement.querySelectorAll('tr:first-child td, tr:first-child th');
           firstRowCells.forEach(cell => {
             const text = cell.textContent?.trim();
-            if (text) headers.push(text);
+            if (text) {headers.push(text);}
           });
         }
 

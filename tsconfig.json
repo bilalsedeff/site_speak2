@@ -1,20 +1,22 @@
 {
   "include": [
     "client/src/**/*",
-    "client/types/**/*.d.ts",
+    "client/types/**/*.d.ts", 
     "client/vite-env.d.ts",
     "client/vite.config.ts",
     "shared/**/*",
     "server/src/**/*",
-    "server/src/types/**/*"
+    "server/src/types/**/*",
+    "packages/*/src/**/*"
   ],
   "exclude": [
     "node_modules",
-    "build",
+    "build", 
     "dist",
     "**/*.test.ts",
+    "**/*.test.tsx",
     "server/services/**",
-    "server/scripts/**",
+    "server/scripts/**", 
     "server/routes.ts",
     "server/**/crawler/**",
     "server/**/publishing.routes.backup.ts",
@@ -37,11 +39,16 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "noImplicitThis": true,
+    "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "preserve",
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
     "moduleResolution": "bundler",
     "downlevelIteration": true,
     "baseUrl": ".",
@@ -49,7 +56,15 @@
     "types": ["node", "express", "react", "react-dom", "jest", "cypress"],
     "paths": {
       "@/*": ["./client/src/*"],
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "@sitespeak/design-system": ["./packages/design-system/src"],
+      "@sitespeak/design-system/*": ["./packages/design-system/src/*"],
+      "@sitespeak/site-contract": ["./packages/site-contract/src"],
+      "@sitespeak/site-contract/*": ["./packages/site-contract/src/*"],
+      "@sitespeak/editor-engine": ["./packages/editor-engine/src"],
+      "@sitespeak/editor-engine/*": ["./packages/editor-engine/src/*"],
+      "@sitespeak/voice-widget": ["./packages/voice-widget/src"],
+      "@sitespeak/voice-widget/*": ["./packages/voice-widget/src/*"]
     }
   }
 }

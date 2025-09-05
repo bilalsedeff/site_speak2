@@ -9,11 +9,11 @@
  */
 
 import express from 'express';
-import '../../../../types/express'; // Import Express Request extensions
+// Express Request extensions declared in server/src/types/express.d.ts — no runtime import
 import { z } from 'zod';
 import { createLogger } from '../../../_shared/telemetry/logger';
 import { authenticate, optionalAuth } from '../../../../infrastructure/auth/middleware';
-import { enforceTenancy } from '../../../_shared/security/tenancy';
+import { enforceTenancy, type TenantRequest } from '../../../_shared/security/tenancy';
 import { validateRequest } from '../../../../infrastructure/middleware/validation';
 import { addProblemDetailMethod } from '../middleware/problem-details';
 import { createCustomRateLimit } from '../middleware/rate-limit-headers';
@@ -423,7 +423,7 @@ router.get('/session/:sessionId',
   }),
   authenticate(),
   enforceTenancy(),
-  async (req, res) => {
+  async (req: TenantRequest, res: express.Response) => {
     try {
       const { sessionId } = req.params;
       if (!sessionId) {
@@ -527,7 +527,7 @@ router.delete('/session/:sessionId',
   }),
   authenticate(),
   enforceTenancy(),
-  async (req, res) => {
+  async (req: TenantRequest, res: express.Response) => {
     try {
       const { sessionId } = req.params;
       if (!sessionId) {
@@ -606,7 +606,7 @@ router.get('/health',
     max: 120,
     keyGenerator: (req) => req.ip || 'unknown'
   }),
-  async (req, res) => {
+  async (_req, res) => {
     try {
       // Import voice orchestrator for health check
       const { voiceOrchestrator } = await import('../../../../services/voice');

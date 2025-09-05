@@ -2,7 +2,7 @@ import { createLogger } from '../../../shared/utils.js';
 import { LangGraphOrchestrator, SessionStateType } from '../domain/LangGraphOrchestrator';
 import { actionExecutorService } from './ActionExecutorService';
 import { languageDetectorService } from './LanguageDetectorService';
-import { KnowledgeBaseService } from './services/KnowledgeBaseService';
+import { KnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
 import type { SiteAction } from '../../../shared/types';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniversalAgentGraph, UniversalAgentGraph } from '../orchestrator/graphs/UniversalAgent.graph';
@@ -396,7 +396,7 @@ export class AIOrchestrationService {
 
       orchestrator = new LangGraphOrchestrator(siteId, {
         kbService: this.dependencies.kbService,
-        actionExecutor: actionExecutorService,
+        actionExecutor: this.createActionExecutorAdapter(actionExecutorService),
         languageDetector: languageDetectorService,
       });
 
@@ -510,10 +510,8 @@ export class AIOrchestrationService {
   private async getUniversalAgentGraph(siteId: string): Promise<UniversalAgentGraph> {
     if (!this.universalAgentGraphs.has(siteId)) {
       // Create function calling service instance
-      const functionCallingService = new FunctionCallingService({
-        actionDispatchService: actionExecutorService,
-        retryConfig: { maxRetries: 3, baseDelay: 1000 }
-      });
+      const actionDispatchService = await this.createActionDispatchServiceAdapter(actionExecutorService);
+      const functionCallingService = new FunctionCallingService(actionDispatchService); 
 
       // Create Universal Agent Graph with all dependencies
       const universalAgentGraph = createUniversalAgentGraph({
@@ -594,6 +592,66 @@ export class AIOrchestrationService {
       })) || []
     };
   }
+
+  /**
+   * Create adapter for ActionExecutorService to match LangGraph interface
+   */
+  private createActionExecutorAdapter(actionExecutorService: typeof import('./ActionExecutorService').actionExecutorService) {
+    return {
+      async execute(params: {
+        siteId: string;
+        actionName: string;
+        parameters: Record<string, unknown>;
+        sessionId?: string;
+        userId?: string;
+        tenantId?: string;
+      }) {
+        const result = await actionExecutorService.execute({
+          siteId: params.siteId,
+          actionName: params.actionName,
+          parameters: params.parameters,
+          ...(params.sessionId !== undefined && { sessionId: params.sessionId }),
+          ...(params.userId !== undefined && { userId: params.userId }),
+        });
+
+        return {
+          success: result.success,
+          result: result.result,
+          executionTime: result.executionTime,
+          ...(result.error !== undefined && { error: result.error }),
+          metadata: {
+            sideEffectsCount: result.sideEffects.length,
+            sideEffects: result.sideEffects,
+          },
+        };
+      },
+      
+      getAvailableActions(siteId: string) {
+        const actions = actionExecutorService.getAvailableActions(siteId);
+        return actions.map(action => ({
+          name: action.name,
+          description: action.description,
+          parameters: action.parameters.reduce((acc, param) => {
+            acc[param.name] = {
+              type: param.type,
+              required: param.required,
+              description: param.description,
+            };
+            return acc;
+          }, {} as Record<string, unknown>),
+          ...(action.confirmation !== undefined && { confirmation: action.confirmation }),
+        }));
+      },
+    };
+  }
+
+  /**
+   * Create adapter for ActionExecutorService to match ActionDispatchService interface
+   */
+  private async createActionDispatchServiceAdapter(_actionExecutorService: typeof import('./ActionExecutorService').actionExecutorService) {
+    const { getActionDispatchService } = await import('./services/ActionDispatchService.js');
+    return getActionDispatchService();
+  }
 }
 
 // Export singleton instance
@@ -605,21 +663,33 @@ export const aiOrchestrationService = new AIOrchestrationService({
       topK: number;
       locale: string;
     }) {
-      const kbService = new KnowledgeBaseService();
-      const searchResults = await kbService.search({
-        query: params.query,
-        knowledgeBaseId: params.siteId, // Using siteId as knowledgeBaseId
-        topK: params.topK,
-        threshold: 0.7, // Default threshold
-      });
-      
-      return searchResults.map(result => ({
-        id: result.chunk.id,
-        content: result.chunk.content,
-        url: result.chunk.metadata.url || '',
-        score: result.score,
-        metadata: result.chunk.metadata || {},
-      }));
+      try {
+        const kbService = new KnowledgeBaseService();
+        const searchResults = await kbService.semanticSearch({
+          query: params.query,
+          siteId: params.siteId,
+          tenantId: 'default-tenant', // TODO: Get from context
+          limit: params.topK,
+          threshold: 0.7,
+          filters: {
+            locale: params.locale
+          }
+        });
+        
+        return searchResults.map(result => ({
+          id: result.id,
+          content: result.content,
+          url: result.url,
+          score: result.score,
+          metadata: result.metadata || {},
+        }));
+      } catch (error) {
+        logger.error('Knowledge base search failed in adapter', {
+          siteId: params.siteId,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        return [];
+      }
     }
   },
   // Optional services are omitted instead of passing null

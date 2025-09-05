@@ -19,29 +19,22 @@ export interface LocaleContext {
   quality: Record<string, number>;
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      locale: string;
-      localeContext: LocaleContext;
-    }
-    
-    interface Locals {
-      locale: string;
-    }
-  }
-}
-
 /**
  * Parse Accept-Language header according to RFC 9110
  */
 function parseAcceptLanguage(acceptLanguage: string): Array<{ lang: string; q: number }> {
-  if (!acceptLanguage) return [];
+  if (!acceptLanguage) {return [];}
 
   return acceptLanguage
     .split(',')
     .map(lang => {
       const [language, qValue] = lang.trim().split(';q=');
+      
+      // Ensure language is not undefined or empty
+      if (!language || typeof language !== 'string') {
+        return null;
+      }
+      
       const q = qValue ? parseFloat(qValue) : 1.0;
       
       // Validate language tag format
@@ -64,21 +57,34 @@ function parseAcceptLanguage(acceptLanguage: string): Array<{ lang: string; q: n
 function normalizeLanguageTag(lang: string): string {
   const parts = lang.split('-');
   
+  if (parts.length === 0) {
+    return 'en'; // Fallback for edge case
+  }
+  
   if (parts.length === 1) {
-    return parts[0].toLowerCase();
+    return parts[0]?.toLowerCase() || 'en';
   }
   
   if (parts.length === 2) {
-    return `${parts[0].toLowerCase()}-${parts[1].toUpperCase()}`;
+    const [lang, region] = parts;
+    return `${(lang || '').toLowerCase()}-${(region || '').toUpperCase()}`;
   }
   
   // Handle longer tags (e.g., zh-Hans-CN)
   return parts
     .map((part, index) => {
-      if (index === 0) return part.toLowerCase();
-      if (index === 1 && part.length === 2) return part.toUpperCase();
+      if (!part) {
+        return '';
+      }
+      if (index === 0) {
+        return part.toLowerCase();
+      }
+      if (index === 1 && part.length === 2) {
+        return part.toUpperCase();
+      }
       return part.toLowerCase();
     })
+    .filter(Boolean)
     .join('-');
 }
 
@@ -98,9 +104,11 @@ function getBestMatch(requested: Array<{ lang: string; q: number }>, supported: 
     
     // Language-only match (e.g., 'en' for 'en-US')
     const languageOnly = normalized.split('-')[0];
-    const fallback = supported.find(s => s.toLowerCase().startsWith(languageOnly));
-    if (fallback) {
-      return fallback.toLowerCase();
+    if (languageOnly) {
+      const fallback = supported.find(s => s.toLowerCase().startsWith(languageOnly));
+      if (fallback) {
+        return fallback.toLowerCase();
+      }
     }
   }
   
@@ -179,7 +187,7 @@ export function localeDetect(options: {
       };
 
       // Expose to templates
-      res.locals.locale = selectedLocale;
+      res.locals['locale'] = selectedLocale;
 
       next();
     } catch (error) {
@@ -196,7 +204,7 @@ export function localeDetect(options: {
         languages: [fallback],
         quality: { [fallback]: 1.0 }
       };
-      res.locals.locale = fallback;
+      res.locals['locale'] = fallback;
 
       next();
     }

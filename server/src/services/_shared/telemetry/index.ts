@@ -41,7 +41,7 @@ export type { Counter, Histogram, Gauge } from './metrics.js';
 
 import { initializeOpenTelemetry } from './otel.js';
 import { initializeMetrics } from './metrics.js';
-import { logger } from './logger.js';
+import { logger, createServiceLogger } from './logger.js';
 
 /**
  * Initialize complete telemetry system

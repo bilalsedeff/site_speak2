@@ -8,7 +8,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { cfg } from '../config/index.js';
 import { logger } from '../telemetry/logger.js';
-import { validateAccessToken, JWTClaims } from './auth.js';
+import { validateAccessToken } from './auth.js';
+import type { UserRole } from '../../../../../shared/types';
 
 /**
  * Tenant context interface
@@ -28,8 +29,10 @@ export interface TenantRequest extends Request {
   user?: {
     id: string;
     tenantId: string;
-    role: string;
+    role: UserRole;
+    email: string;
     permissions: string[];
+    sessionId?: string;
   };
 }
 
@@ -104,11 +107,11 @@ export function enforceTenancy(options: {
 } = {}) {
   const {
     required = true,
-    allowedSources = ['jwt', 'header', 'params'],
+    allowedSources: _allowedSources = ['jwt', 'header', 'params'], // TODO: Implement source filtering
     skipRoutes = []
   } = options;
 
-  return async (req: TenantRequest, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     try {
       // Skip tenant enforcement for certain routes
       if (skipRoutes.some(route => req.path.startsWith(route))) {
@@ -178,7 +181,7 @@ export function enforceTenancy(options: {
       };
 
       // Add tenant ID to logger context for all subsequent logs
-      req.logger = logger.withTenant(tenantId);
+      // req.logger = logger.withTenant(tenantId); // Commented out until logger extension is implemented
 
       logger.debug('Tenant context established', {
         tenantId,
@@ -289,21 +292,23 @@ export function validateJobTenancy(
  * Express middleware to validate tenant access to resources
  */
 export function validateTenantResource(resourceParam: string = 'id') {
-  return async (req: TenantRequest, res: Response, next: NextFunction) => {
+  return async (req: TenantRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.tenant?.verified) {
-        return res.status(401).json({
+        res.status(401).json({
           error: 'Tenant context required',
           code: 'TENANT_CONTEXT_REQUIRED',
         });
+        return;
       }
 
       const resourceId = req.params[resourceParam];
       if (!resourceId) {
-        return res.status(400).json({
+        res.status(400).json({
           error: 'Resource ID required',
           code: 'RESOURCE_ID_REQUIRED',
         });
+        return;
       }
 
       // In production, this should validate resource ownership
@@ -328,6 +333,7 @@ export function validateTenantResource(resourceParam: string = 'id') {
         error: 'Resource validation failed',
         code: 'RESOURCE_VALIDATION_FAILED',
       });
+      return;
     }
   };
 }
@@ -360,7 +366,7 @@ export function getTenantContext(
  * Tenant-aware error handler
  */
 export function tenantErrorHandler() {
-  return (error: any, req: TenantRequest, res: Response, next: NextFunction) => {
+  return (error: any, req: TenantRequest, res: Response, next: NextFunction): void => {
     // Add tenant context to error logging
     const errorContext = {
       tenantId: req.tenant?.tenantId,
@@ -378,17 +384,19 @@ export function tenantErrorHandler() {
 
     // Check for tenant-specific errors
     if (error.code === 'TENANT_ISOLATION_VIOLATION') {
-      return res.status(403).json({
+      res.status(403).json({
         error: 'Access denied: tenant isolation violation',
         code: 'TENANT_ISOLATION_VIOLATION',
       });
+      return;
     }
 
     if (error.code === 'TENANT_NOT_FOUND') {
-      return res.status(404).json({
+      res.status(404).json({
         error: 'Tenant not found',
         code: 'TENANT_NOT_FOUND',
       });
+      return;
     }
 
     // Continue to next error handler
@@ -416,6 +424,3 @@ export function createTenantQuery(tenantId: string) {
     },
   };
 }
-
-// Export types
-export type { TenantRequest, TenantContext };

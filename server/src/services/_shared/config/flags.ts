@@ -229,7 +229,9 @@ export class FeatureFlagService {
   
   constructor(config: Config, remoteProvider?: RemoteConfigProvider) {
     this.config = config;
-    this.remoteProvider = remoteProvider;
+    if (remoteProvider) {
+      this.remoteProvider = remoteProvider;
+    }
     
     // Subscribe to remote changes if provider is available
     if (this.remoteProvider) {

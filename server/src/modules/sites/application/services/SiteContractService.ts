@@ -1,7 +1,5 @@
 import { createLogger } from '../../../../shared/utils.js';
-import type { 
-  Site,
-} from '../../../../shared/types';
+import type { Site, SitePage } from '../../../../domain/entities/Site.js';
 import { 
   SiteContract,
   BusinessInfo,
@@ -170,16 +168,19 @@ export class SiteContractService {
   private extractBusinessInfo(site: Site): BusinessInfo {
     const seoConfig = site.configuration.seo;
     const contact = site.content.pages
-      .find(page => page.name.toLowerCase().includes('contact'))?.content;
+      .find((page: SitePage) => page.name.toLowerCase().includes('contact'))?.content;
 
+    const contactEmail = this.extractContactInfo(contact, 'email');
+    const contactPhone = this.extractContactInfo(contact, 'phone');
+    
     return {
-      name: seoConfig?.title || site.name,
-      description: seoConfig?.description || site.description,
-      category: this.inferBusinessCategory(site),
-      logo: this.findLogo(site.content),
+      name: site.name,
+      description: seoConfig?.description || site.description || '',
+      category: 'business', // TODO: Extract from site template or config
+      logo: this.findLogo(site.content) || '',
       contact: {
-        email: this.extractContactInfo(contact, 'email'),
-        phone: this.extractContactInfo(contact, 'phone'),
+        ...(contactEmail && { email: contactEmail }),
+        ...(contactPhone && { phone: contactPhone }),
         website: site.getUrl(),
       },
     };
@@ -250,7 +251,7 @@ export class SiteContractService {
           type: 'form_submit',
           method: 'POST',
           endpoint: `/api/forms/${form.id}/submit`,
-          parameters: form.fields.map(field => ({
+          parameters: form.fields.map((field: any) => ({
             name: field.name,
             type: this.mapFieldTypeToActionType(field.type),
             description: field.label,
@@ -346,14 +347,14 @@ export class SiteContractService {
       },
     ];
 
-    const openGraph = {
+    const openGraph: Record<string, string> = {
       'og:type': 'website',
       'og:title': businessInfo.name,
       'og:description': businessInfo.description,
       'og:url': site.getUrl(),
     };
 
-    const twitterCard = {
+    const twitterCard: Record<string, string> = {
       'twitter:card': 'summary',
       'twitter:title': businessInfo.name,
       'twitter:description': businessInfo.description,
@@ -374,7 +375,7 @@ export class SiteContractService {
   /**
    * Generate accessibility information
    */
-  private generateAccessibilityInfo(site: Site, wcagLevel: 'A' | 'AA' | 'AAA') {
+  private generateAccessibilityInfo(_site: Site, wcagLevel: 'A' | 'AA' | 'AAA') {
     return {
       wcagLevel,
       features: [
@@ -393,7 +394,7 @@ export class SiteContractService {
   /**
    * Generate SEO information
    */
-  private generateSEOInfo(site: Site, pages: ContractPage[]) {
+  private generateSEOInfo(site: Site, _pages: ContractPage[]) {
     return {
       sitemap: `https://${site.getUrl()}/sitemap.xml`,
       robotsTxt: `https://${site.getUrl()}/robots.txt`,
@@ -409,28 +410,6 @@ export class SiteContractService {
   /**
    * Helper methods
    */
-  private inferBusinessCategory(site: Site): string {
-    const name = site.name.toLowerCase();
-    const description = site.description.toLowerCase();
-    const text = `${name} ${description}`;
-
-    const categories = {
-      'restaurant': ['restaurant', 'food', 'dining', 'cafe', 'bar', 'kitchen'],
-      'retail': ['shop', 'store', 'buy', 'sell', 'product', 'retail'],
-      'service': ['service', 'repair', 'maintenance', 'consulting'],
-      'healthcare': ['health', 'medical', 'doctor', 'clinic', 'hospital'],
-      'education': ['school', 'education', 'learning', 'course', 'training'],
-      'professional': ['business', 'professional', 'company', 'corporate'],
-    };
-
-    for (const [category, keywords] of Object.entries(categories)) {
-      if (keywords.some(keyword => text.includes(keyword))) {
-        return category;
-      }
-    }
-
-    return 'business';
-  }
 
   private findLogo(content: Site['content']): string | undefined {
     // Search for logo in site assets
@@ -501,7 +480,7 @@ export class SiteContractService {
     return contentStr.includes('heading') || contentStr.includes('h1') || contentStr.includes('title');
   }
 
-  private checkForLandmarks(content: any): boolean {
+  private checkForLandmarks(_content: any): boolean {
     // Check for ARIA landmarks or semantic HTML elements
     return true; // Simplified implementation
   }

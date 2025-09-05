@@ -38,10 +38,10 @@ export function EditorCanvas({
   const [{ isOver, canDrop }, drop] = useDrop({
     accept: ['component', 'instance'],
     drop: (item: DragItem, monitor) => {
-      if (!canvasRef.current) return
+      if (!canvasRef.current) {return}
 
       const clientOffset = monitor.getClientOffset()
-      if (!clientOffset) return
+      if (!clientOffset) {return}
 
       const canvasRect = canvasRef.current.getBoundingClientRect()
       const position = {

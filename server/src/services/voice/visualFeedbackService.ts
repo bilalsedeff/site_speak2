@@ -99,7 +99,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Stop the visual feedback service
    */
   stop(): void {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     this.isActive = false;
     this.currentMicState = 'idle';
@@ -122,7 +122,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Update microphone state
    */
   updateMicState(state: MicState, sessionId?: string): void {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     const previousState = this.currentMicState;
     this.currentMicState = state;
@@ -145,7 +145,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Update audio level for visual meter
    */
   updateAudioLevel(level: number, sessionId?: string): void {
-    if (!this.isActive || this.currentMicState !== 'listening') return;
+    if (!this.isActive || this.currentMicState !== 'listening') {return;}
 
     // Smooth level changes to avoid jittery UI
     this.audioLevel = this.audioLevel * 0.7 + level * 0.3;
@@ -174,7 +174,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Show partial transcript (gray text)
    */
   showPartialTranscript(text: string, confidence?: number, sessionId?: string): void {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     this.transcriptState.partial = text;
     if (confidence !== undefined) {
@@ -204,7 +204,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Show final transcript (black text)
    */
   showFinalTranscript(text: string, language?: string, sessionId?: string): void {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     this.transcriptState.final = text;
     this.transcriptState.partial = ''; // Clear partial
@@ -236,7 +236,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Highlight DOM element during tool execution
    */
   highlightElement(selector: string, options: Partial<ActionHighlight> = {}, sessionId?: string): string {
-    if (!this.isActive) return '';
+    if (!this.isActive) {return '';}
 
     const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const highlight: ActionHighlight = {
@@ -280,7 +280,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Remove element highlight
    */
   removeHighlight(highlightId: string, sessionId?: string): void {
-    if (!this.isActive || !this.activeHighlights.has(highlightId)) return;
+    if (!this.isActive || !this.activeHighlights.has(highlightId)) {return;}
 
     const highlight = this.activeHighlights.get(highlightId);
     this.activeHighlights.delete(highlightId);
@@ -303,7 +303,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Show streaming delta (typing indicator)
    */
   startStreaming(streamId: string, type: 'agent' | 'tool' | 'search' = 'agent', sessionId?: string): void {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     this.streamingStates.add(streamId);
 
@@ -326,7 +326,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Update streaming progress
    */
   updateStreaming(streamId: string, progress: { text?: string; tokens?: number }, sessionId?: string): void {
-    if (!this.isActive || !this.streamingStates.has(streamId)) return;
+    if (!this.isActive || !this.streamingStates.has(streamId)) {return;}
 
     this.emit('feedback', {
       type: 'streaming_delta',
@@ -344,7 +344,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Stop streaming indicator
    */
   stopStreaming(streamId: string, sessionId?: string): void {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     this.streamingStates.delete(streamId);
 
@@ -366,7 +366,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Show error toast
    */
   showErrorToast(toast: Omit<ErrorToast, 'id'>, sessionId?: string): string {
-    if (!this.isActive) return '';
+    if (!this.isActive) {return '';}
 
     const toastId = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const errorToast: ErrorToast = {
@@ -409,7 +409,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Hide error toast
    */
   hideErrorToast(toastId: string, sessionId?: string): void {
-    if (!this.isActive || !this.activeToasts.has(toastId)) return;
+    if (!this.isActive || !this.activeToasts.has(toastId)) {return;}
 
     this.activeToasts.delete(toastId);
 
@@ -430,7 +430,7 @@ export class VisualFeedbackService extends EventEmitter {
    * Clear all visual feedback
    */
   clearAll(sessionId?: string): void {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     this.audioLevel = 0;
     this.transcriptState = { partial: '', final: '' };

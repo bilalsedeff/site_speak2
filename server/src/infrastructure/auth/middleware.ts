@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import '../../types/express'; // Import Express Request extensions
+// Express Request extensions are declared in server/src/types/express.d.ts and
+// are included via tsconfig include; no runtime import needed here.
 
 import { jwtService } from './jwt';
 import { createLogger } from '../../shared/utils.js';

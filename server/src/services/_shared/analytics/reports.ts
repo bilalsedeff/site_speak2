@@ -9,7 +9,6 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { logger } from '../telemetry/logger.js';
 import { metrics } from '../telemetry/metrics.js';
-import { db } from '../db/index.js';
 
 /**
  * Time grain types for aggregation
@@ -367,12 +366,12 @@ export class AnalyticsReportsService {
    * Execute funnel query (mock implementation)
    */
   private async executeFunnelQuery(
-    tenantId: string,
-    siteId: string | undefined,
+    _tenantId: string,
+    _siteId: string | undefined,
     steps: string[],
-    from: string,
-    to: string,
-    timeoutHours: number
+    _from: string,
+    _to: string,
+    _timeoutHours: number
   ): Promise<FunnelStep[]> {
     // Mock funnel data - in reality this would be complex SQL
     // joining user sessions and tracking event sequences
@@ -387,7 +386,7 @@ export class AnalyticsReportsService {
       const rate = i === 0 ? 1.0 : nextCount / (funnelData[i - 1]?.count || currentCount);
       
       funnelData.push({
-        step,
+        step: step || `Step ${i + 1}`,
         count: currentCount,
         rate
       });
@@ -405,13 +404,13 @@ export class AnalyticsReportsService {
    * Execute topN query (mock implementation)
    */
   private async executeTopNQuery(
-    tenantId: string,
-    siteId: string | undefined,
+    _tenantId: string,
+    _siteId: string | undefined,
     metric: string,
     n: number,
-    from: string,
-    to: string,
-    filters?: Record<string, string | number | boolean>
+    _from: string,
+    _to: string,
+    _filters?: Record<string, string | number | boolean>
   ): Promise<TopNResult[]> {
     // Mock implementation - would query appropriate tables based on metric
     
@@ -465,7 +464,7 @@ export class AnalyticsReportsService {
     for (let i = 0; i < Math.min(n, keys.length); i++) {
       const value = Math.floor(remaining * (0.3 + Math.random() * 0.4));
       results.push({
-        key: keys[i],
+        key: keys[i] || `Item ${i + 1}`,
         value,
         percentage: value / total
       });
@@ -494,7 +493,7 @@ export const analyticsReportsService = new AnalyticsReportsService();
 export const reportsHandlers = {
   timeseries: async (req: Request, res: Response) => {
     try {
-      const query = SeriesQuerySchema.parse(req.body);
+      const query = SeriesQuerySchema.parse(req.body) as SeriesQuery;
       const data = await analyticsReportsService.getTimeseries(query);
       
       res.status(200).json({
@@ -537,7 +536,7 @@ export const reportsHandlers = {
           steps: query.steps.length,
           from: query.from,
           to: query.to,
-          overall_conversion: data.length > 0 ? data[data.length - 1].count / data[0].count : 0
+          overall_conversion: data.length > 0 ? (data[data.length - 1]?.count || 0) / (data[0]?.count || 1) : 0
         }
       });
     } catch (error) {

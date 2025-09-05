@@ -441,6 +441,22 @@ export class PrivacyGuards {
       suggestion: string;
     }> = [];
 
+    // Use contentType for context-aware detection
+    const contextAwarePatterns = this.getContextualPatterns(contentType);
+    for (const pattern of contextAwarePatterns) {
+      const matches = content.match(pattern);
+      if (matches) {
+        for (const match of matches) {
+          detections.push({
+            type: 'contextual_pii',
+            confidence: 0.8,
+            location: match,
+            suggestion: `Context-specific PII detected for ${contentType}`,
+          });
+        }
+      }
+    }
+    
     // Detect potential names using capitalization patterns
     const capitalizedWords = content.match(/\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b/g);
     if (capitalizedWords) {
@@ -525,7 +541,19 @@ export class PrivacyGuards {
       'personal_url': 'Remove URLs containing personal information',
     };
 
-    return suggestions[type] || 'Review and consider redacting this information';
+    const baseSuggestion = suggestions[type] || 'Review and consider redacting this information';
+    
+    // Add specific suggestion based on the match content
+    if (type === 'email' && match.includes('@')) {
+      const domain = match.split('@')[1];
+      return `${baseSuggestion} (detected ${domain} domain)`;
+    }
+    
+    if (type === 'phone' && match.length > 10) {
+      return `${baseSuggestion} (appears to be international format)`;
+    }
+    
+    return baseSuggestion;
   }
 
   /**
@@ -602,9 +630,19 @@ export class PrivacyGuards {
    */
   private async simulateDataDeletion(tenantId: string, userId: string, dataType: string): Promise<number> {
     // This would integrate with actual database operations
-    // For now, return a simulated count
+    logger.info('Simulating data deletion', { tenantId, userId, dataType });
+    
+    // For now, return a simulated count based on data type
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate async operation
-    return Math.floor(Math.random() * 50) + 1; // Random number between 1-50
+    
+    const baseCount = {
+      'user_data': 15,
+      'session_data': 25,
+      'analytics_data': 40,
+      'log_data': 30,
+    }[dataType] || 10;
+    
+    return Math.floor(Math.random() * baseCount) + 1;
   }
 
   /**
@@ -612,8 +650,17 @@ export class PrivacyGuards {
    */
   private async simulateRetentionDeletion(policy: DataRetentionPolicy): Promise<number> {
     // This would integrate with actual database operations to delete old data
+    logger.info('Simulating retention deletion', { 
+      policyType: policy.type, 
+      retentionPeriodDays: policy.retentionPeriodDays,
+      autoDelete: policy.autoDelete
+    });
+    
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate async operation
-    return Math.floor(Math.random() * 20); // Random number between 0-19
+    
+    // Base deletion count on retention period (older policies = more deletions)
+    const baseDeletions = Math.min(policy.retentionPeriodDays / 30, 20); // Max 20
+    return Math.floor(Math.random() * baseDeletions);
   }
 
   /**
@@ -703,6 +750,31 @@ export class PrivacyGuards {
       complianceChecks,
       erasureRequests,
     };
+  }
+
+  /**
+   * Get content-type specific PII patterns
+   */
+  private getContextualPatterns(contentType: string): RegExp[] {
+    switch (contentType.toLowerCase()) {
+      case 'form':
+        return [
+          /(?:ssn|social\s*security)\s*:?\s*(\d{3}-\d{2}-\d{4})/gi,
+          /(?:phone|tel|mobile)\s*:?\s*([+]?[\d\s()-]{10,})/gi,
+        ];
+      case 'comment':
+        return [
+          /my\s+name\s+is\s+([A-Z][a-z]+\s+[A-Z][a-z]+)/gi,
+          /i\s+am\s+([A-Z][a-z]+\s+[A-Z][a-z]+)/gi,
+        ];
+      case 'json':
+        return [
+          /"(?:firstName|lastName|fullName)"\s*:\s*"([^"]+)"/gi,
+          /"(?:phone|email|ssn)"\s*:\s*"([^"]+)"/gi,
+        ];
+      default:
+        return [];
+    }
   }
 }
 

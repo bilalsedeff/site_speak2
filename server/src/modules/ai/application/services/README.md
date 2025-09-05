@@ -6,15 +6,11 @@ This module contains the core application services that orchestrate AI functiona
 
 ```plaintext
 application/services/
-├── Enhanced Services (New)
-│   ├── EnhancedAIOrchestrationService.ts      # Enhanced AI coordination
-│   ├── EnhancedUniversalAIAssistantService.ts # Enhanced assistant service
-│   └── IncrementalIndexer.ts                  # Delta-based KB updates
-│
 ├── Core Services
 │   ├── AIOrchestrationService.ts              # AI workflow coordination
-│   ├── UniversalAIAssistantService.ts         # Main AI assistant
+│   ├── UniversalAIAssistantService.ts         # Main AI assistant (consolidated)
 │   ├── KnowledgeBaseService.ts                # KB operations
+│   ├── IncrementalIndexer.ts                  # Delta-based KB updates
 │   └── EmbeddingService.ts                    # Vector embeddings
 │
 └── Specialized Services
@@ -25,155 +21,151 @@ application/services/
 
 ## Service Categories
 
-### 🧠 **Enhanced AI Services**
-
-#### EnhancedUniversalAIAssistantService
-
-Next-generation AI assistant with advanced KB integration.
-
-**Key Features:**
-
-- Hybrid search integration with RRF fusion
-- Real-time KB updates and incremental indexing
-- Advanced caching with SWR semantics
-- Multi-strategy search with consensus scoring
-- Enhanced voice processing capabilities
-- Comprehensive analytics and monitoring
-
-**Usage:**
-
-```typescript
-import { enhancedUniversalAIAssistantService } from './services/EnhancedUniversalAIAssistantService';
-
-// Enhanced conversation processing
-const response = await enhancedUniversalAIAssistantService.processConversation({
-  input: 'How do I configure payment processing?',
-  siteId: 'site_123',
-  tenantId: 'tenant_abc',
-  context: {
-    userPreferences: {
-      searchStrategies: ['vector', 'fulltext', 'structured'],
-      requireHighConsensus: true
-    }
-  }
-});
-
-// Stream conversation with real-time results
-for await (const chunk of enhancedUniversalAIAssistantService.streamConversation(request)) {
-  console.log('Chunk:', chunk);
-}
-```
-
-**Configuration:**
-
-```typescript
-const config = {
-  enableVoice: true,
-  enableStreaming: true,
-  defaultLocale: 'en-US',
-  searchStrategies: ['vector', 'fulltext', 'structured'],
-  enableAdvancedCaching: true,
-  enableAutoIndexing: true,
-  consensusThreshold: 0.7
-};
-```
-
-#### EnhancedAIOrchestrationService
-
-Advanced orchestration service with enhanced KB integration.
-
-**Features:**
-
-- Multi-strategy knowledge retrieval
-- Real-time performance monitoring
-- Background KB updates
-- Enhanced error handling with fallbacks
-- Session-based search history
-
-**Usage:**
-
-```typescript
-import { enhancedAIOrchestrationService } from './services/EnhancedAIOrchestrationService';
-
-const response = await enhancedAIOrchestrationService.processConversation({
-  input: 'User question',
-  tenantId: 'tenant_abc',
-  siteId: 'site_123',
-  context: {
-    preferences: {
-      searchStrategies: ['vector', 'fulltext'],
-      enableCaching: true
-    }
-  }
-});
-```
-
-#### IncrementalIndexer
-
-Delta-based knowledge base update service.
-
-**Features:**
-
-- Sitemap.xml lastmod-based change detection
-- Content hashing for idempotent operations
-- Multi-phase processing pipeline
-- Comprehensive progress tracking
-- Error recovery and retry logic
-
-**Usage:**
-
-```typescript
-import { incrementalIndexer } from './IncrementalIndexer';
-
-const result = await incrementalIndexer.performIncrementalUpdate({
-  knowledgeBaseId: 'kb_site123',
-  tenantId: 'tenant_abc',
-  siteId: 'site_123',
-  baseUrl: 'https://example.com',
-  sessionType: 'delta',
-  options: {
-    maxDepth: 3,
-    extractStructuredData: true,
-    extractActions: true,
-    extractForms: true
-  }
-});
-
-console.log(`Updated ${result.newChunks} chunks, ${result.extractedEntities} entities`);
-```
-
----
-
 ### 🤖 **Core AI Services**
 
 #### UniversalAIAssistantService
 
-Main AI assistant service (legacy, maintained for compatibility).
+The main AI assistant service with comprehensive features including advanced KB integration, hybrid search support, and production-grade optimizations.
 
-**Features:**
+**Key Features:**
 
-- Conversation processing
-- Action execution
-- Session management
-- Voice integration
-- Metrics tracking
+- Hybrid search integration with multiple strategies (vector, fulltext, hybrid)
+- Real-time KB updates and incremental indexing support
+- Advanced caching and performance optimization
+- Multi-strategy search with consensus scoring
+- Enhanced voice processing with KB-aware responses
+- Comprehensive analytics and monitoring
+- Priority-based request handling
+- Knowledge base operation triggering
+
+**Enhanced Configuration:**
+
+```typescript
+export interface AIAssistantConfig {
+  enableVoice: boolean;
+  enableStreaming: boolean;
+  defaultLocale: string;
+  maxSessionDuration: number;
+  responseTimeoutMs: number;
+  searchStrategies?: SearchStrategy[];      // NEW: Configure search strategies
+  enableAdvancedCaching?: boolean;          // NEW: Advanced caching controls
+  enableAutoIndexing?: boolean;             // NEW: Auto KB indexing
+  consensusThreshold?: number;              // NEW: Search consensus threshold
+}
+```
+
+**Enhanced Request Interface:**
+
+```typescript
+export interface AssistantRequest {
+  input: string;
+  sessionId?: string;
+  siteId: string;
+  tenantId: string;
+  userId?: string;
+  context?: {
+    currentUrl?: string;
+    pageTitle?: string;
+    userAgent?: string;
+    browserLanguage?: string;
+    userPreferences?: {                     // NEW: User preferences
+      searchStrategies?: SearchStrategy[];
+      maxResults?: number;
+      enableCaching?: boolean;
+      requireHighConsensus?: boolean;
+    };
+  };
+  stream?: boolean;
+  priority?: 'low' | 'normal' | 'high';     // NEW: Request priority
+}
+```
+
+**Enhanced Response Metadata:**
+
+```typescript
+export interface AssistantResponse {
+  sessionId: string;
+  response: {
+    text: string;
+    audioUrl?: string;
+    citations: Array<{ url: string; title: string; snippet: string; }>;
+    uiHints: {
+      highlightElements?: string[];
+      scrollToElement?: string;
+      showModal?: boolean;
+      confirmationRequired?: boolean;
+      suggestedActions?: Array<{            // NEW: AI-suggested actions
+        name: string;
+        label: string;
+        parameters: Record<string, unknown>;
+      }>;
+    };
+    metadata: {
+      responseTime: number;
+      tokensUsed: number;
+      actionsTaken: number;
+      language: string;
+      intent?: string;
+      searchMetadata?: {                    // NEW: Search performance metrics
+        searchTime: number;
+        totalResults: number;
+        strategiesUsed: SearchStrategy[];
+        consensusScore?: number;
+      };
+    };
+  };
+  actions?: Array<{ /* ... */ }>;
+  knowledgeBase?: {                         // NEW: KB health information
+    indexHealth?: number;
+    coverage?: number;
+  };
+}
+```
 
 **Usage:**
 
 ```typescript
 import { universalAIAssistantService } from './UniversalAIAssistantService';
 
+// Basic conversation processing
 const response = await universalAIAssistantService.processConversation({
-  input: 'User question',
+  input: 'How do I configure payment processing?',
   siteId: 'site_123',
   tenantId: 'tenant_abc',
-  sessionId: 'session_def'
+  context: {
+    userPreferences: {
+      searchStrategies: ['vector', 'fulltext', 'hybrid'],
+      requireHighConsensus: true
+    }
+  },
+  priority: 'high'
+});
+
+// Stream conversation with real-time results
+for await (const chunk of universalAIAssistantService.streamConversation(request)) {
+  console.log('Chunk:', chunk);
+}
+
+// Enhanced site action registration
+await universalAIAssistantService.registerSiteActions({
+  siteId: 'site_123',
+  tenantId: 'tenant_abc',
+  actions: siteActions,
+  enableAutoDiscovery: true
+});
+
+// Trigger KB operations
+const sessionId = await universalAIAssistantService.triggerKnowledgeBaseOperation({
+  siteId: 'site_123',
+  tenantId: 'tenant_abc',
+  operationType: 'incremental',
+  priority: 'normal'
 });
 ```
 
 #### AIOrchestrationService
 
-Core AI workflow coordination (legacy).
+Core AI workflow coordination service.
 
 **Features:**
 
@@ -352,6 +344,40 @@ const sessionId = await webCrawlerService.startCrawl({
 const status = webCrawlerService.getCrawlStatus(sessionId);
 ```
 
+#### IncrementalIndexer
+
+Delta-based knowledge base update service.
+
+**Features:**
+
+- Sitemap.xml lastmod-based change detection
+- Content hashing for idempotent operations
+- Multi-phase processing pipeline
+- Comprehensive progress tracking
+- Error recovery and retry logic
+
+**Usage:**
+
+```typescript
+import { incrementalIndexer } from './IncrementalIndexer';
+
+const result = await incrementalIndexer.performIncrementalUpdate({
+  knowledgeBaseId: 'kb_site123',
+  tenantId: 'tenant_abc',
+  siteId: 'site_123',
+  baseUrl: 'https://example.com',
+  sessionType: 'delta',
+  options: {
+    maxDepth: 3,
+    extractStructuredData: true,
+    extractActions: true,
+    extractForms: true
+  }
+});
+
+console.log(`Updated ${result.newChunks} chunks, ${result.extractedEntities} entities`);
+```
+
 ---
 
 ## Service Integration Patterns
@@ -361,12 +387,13 @@ const status = webCrawlerService.getCrawlStatus(sessionId);
 Services use constructor injection for dependencies:
 
 ```typescript
-export class EnhancedUniversalAIAssistantService {
+export class UniversalAIAssistantService {
   constructor(
-    private config: EnhancedAIAssistantConfig,
+    private config: AIAssistantConfig,
     private voiceHandler?: VoiceWebSocketHandler
   ) {
-    this.orchestrationService = new EnhancedAIOrchestrationService({
+    this.orchestrationService = new AIOrchestrationService({
+      kbService: new KnowledgeBaseService(),
       websocketService: this.voiceHandler,
       ttsService: null
     });
@@ -379,15 +406,15 @@ export class EnhancedUniversalAIAssistantService {
 Services provide factory functions for easy instantiation:
 
 ```typescript
-export function createEnhancedUniversalAIAssistantService(
-  config?: Partial<EnhancedAIAssistantConfig>,
+export function createUniversalAIAssistantService(
+  config?: Partial<AIAssistantConfig>,
   voiceHandler?: VoiceWebSocketHandler
-): EnhancedUniversalAIAssistantService {
-  return new EnhancedUniversalAIAssistantService(config, voiceHandler);
+): UniversalAIAssistantService {
+  return new UniversalAIAssistantService(config, voiceHandler);
 }
 
 // Singleton export for compatibility
-export const enhancedUniversalAIAssistantService = createEnhancedUniversalAIAssistantService();
+export const universalAIAssistantService = new UniversalAIAssistantService();
 ```
 
 ### Event-Driven Communication
@@ -527,7 +554,7 @@ private async retryWithBackoff<T>(
 
 ## Monitoring & Observability
 
-### Metrics Collection
+### Enhanced Metrics Collection
 
 Services collect comprehensive metrics:
 
@@ -537,9 +564,15 @@ private metrics = {
   successfulRequests: 0,
   failedRequests: 0,
   averageResponseTime: 0,
-  hybridSearches: 0,
-  cacheHitRate: 0,
-  consensusFailures: 0
+  averageSearchTime: 0,           // NEW: Search performance
+  activeStreams: 0,
+  totalTokensUsed: 0,
+  totalActionsExecuted: 0,
+  hybridSearches: 0,              // NEW: Hybrid search usage
+  cacheHitRate: 0,                // NEW: Cache performance
+  consensusFailures: 0,           // NEW: Search consensus failures
+  autoIndexingTriggers: 0,        // NEW: Auto-indexing events
+  kbUpdatesTriggered: 0           // NEW: KB update events
 };
 
 private updateMetrics(success: boolean, responseTime: number, result: any) {
@@ -559,13 +592,15 @@ private updateMetrics(success: boolean, responseTime: number, result: any) {
 ```typescript
 import { createLogger } from '../../../../shared/utils';
 
-const logger = createLogger({ service: 'enhanced-ai-assistant' });
+const logger = createLogger({ service: 'universal-ai-assistant' });
 
 logger.info('Processing conversation', {
   tenantId: request.tenantId,
   siteId: request.siteId,
   sessionId: request.sessionId,
   inputLength: request.input.length,
+  priority: request.priority,
+  strategies: request.context?.userPreferences?.searchStrategies,
   correlationId: req.correlationId
 });
 ```
@@ -597,27 +632,27 @@ async getHealthStatus(): Promise<HealthStatus> {
 ### Environment-Based Config
 
 ```typescript
-export interface ServiceConfig {
+export interface AIAssistantConfig {
   // AI Settings
   enableVoice: boolean;
   enableStreaming: boolean;
   defaultLocale: string;
   
   // Search Settings
-  searchStrategies: SearchStrategy[];
-  consensusThreshold: number;
+  searchStrategies?: SearchStrategy[];
+  consensusThreshold?: number;
   
   // Performance Settings
-  enableAdvancedCaching: boolean;
-  enableAutoIndexing: boolean;
+  enableAdvancedCaching?: boolean;
+  enableAutoIndexing?: boolean;
   maxSessionDuration: number;
   responseTimeoutMs: number;
 }
 
 // Load from environment
-const config: ServiceConfig = {
+const config: AIAssistantConfig = {
   enableVoice: process.env.ENABLE_VOICE === 'true',
-  searchStrategies: process.env.SEARCH_STRATEGIES?.split(',') || ['vector', 'fulltext'],
+  searchStrategies: process.env.SEARCH_STRATEGIES?.split(',') as SearchStrategy[] || ['vector', 'fulltext'],
   consensusThreshold: parseFloat(process.env.CONSENSUS_THRESHOLD || '0.7')
 };
 ```
@@ -627,7 +662,7 @@ const config: ServiceConfig = {
 ```typescript
 // Update configuration at runtime
 service.updateConfig({
-  searchStrategies: ['vector', 'fulltext', 'structured'],
+  searchStrategies: ['vector', 'fulltext', 'hybrid'],
   enableAutoIndexing: true
 });
 ```
@@ -639,13 +674,13 @@ service.updateConfig({
 ### Unit Testing
 
 ```typescript
-describe('EnhancedUniversalAIAssistantService', () => {
-  let service: EnhancedUniversalAIAssistantService;
-  let mockOrchestration: jest.Mocked<EnhancedAIOrchestrationService>;
+describe('UniversalAIAssistantService', () => {
+  let service: UniversalAIAssistantService;
+  let mockOrchestration: jest.Mocked<AIOrchestrationService>;
 
   beforeEach(() => {
     mockOrchestration = createMockOrchestrationService();
-    service = new EnhancedUniversalAIAssistantService(
+    service = new UniversalAIAssistantService(
       { enableVoice: false },
       undefined // no voice handler for tests
     );
@@ -673,10 +708,10 @@ describe('AI Services Integration', () => {
     };
     
     // Test full pipeline
-    const response = await enhancedUniversalAIAssistantService.processConversation(request);
+    const response = await universalAIAssistantService.processConversation(request);
     
     expect(response.response.citations).toHaveLength.toBeGreaterThan(0);
-    expect(response.response.metadata.searchMetadata.strategiesUsed).toContain('vector');
+    expect(response.response.metadata.searchMetadata?.strategiesUsed).toContain('vector');
   });
 });
 ```
@@ -699,43 +734,6 @@ describe('Performance Tests', () => {
   });
 });
 ```
-
----
-
-## Migration Guide
-
-### From Legacy to Enhanced Services
-
-The enhanced services maintain backward compatibility:
-
-```typescript
-// Legacy usage (still works)
-const response = await universalAIAssistantService.processConversation({
-  input: 'user question',
-  siteId: 'site_123',
-  tenantId: 'tenant_abc'
-});
-
-// Enhanced usage (recommended)
-const response = await enhancedUniversalAIAssistantService.processConversation({
-  input: 'user question',
-  siteId: 'site_123',
-  tenantId: 'tenant_abc',
-  context: {
-    userPreferences: {
-      searchStrategies: ['vector', 'fulltext'],
-      enableCaching: true
-    }
-  }
-});
-```
-
-### Gradual Migration Strategy
-
-1. **Phase 1**: Deploy enhanced services alongside legacy
-2. **Phase 2**: Update high-traffic endpoints to use enhanced services
-3. **Phase 3**: Migrate remaining endpoints gradually
-4. **Phase 4**: Deprecate legacy services (with migration notice)
 
 ---
 

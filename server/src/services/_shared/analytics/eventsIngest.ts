@@ -6,16 +6,13 @@
  */
 
 import { Request, Response } from 'express';
-import { z } from 'zod';
 import { logger } from '../telemetry/logger.js';
 import { metrics } from '../telemetry/metrics.js';
 import { eventBus } from '../events/eventBus.js';
-import { db } from '../db/index.js';
 import { 
   BaseEvent, 
   EventBatch, 
   EventName, 
-  SCHEMA_REGISTRY,
   validateEvent, 
   validateEventBatch, 
   sanitizeEventForStorage,
@@ -94,9 +91,10 @@ export class EventsIngestService {
       };
 
       const result = await this.processBatch(batch, {
-        origin: req.headers.origin || req.headers.referer,
-        userAgent: req.headers['user-agent'],
-        contentEncoding: req.headers['content-encoding'],
+        ...(req.headers.origin && { origin: req.headers.origin }),
+        ...(req.headers.referer && !req.headers.origin && { origin: req.headers.referer }),
+        ...(req.headers['user-agent'] && { userAgent: req.headers['user-agent'] }),
+        ...(req.headers['content-encoding'] && { contentEncoding: req.headers['content-encoding'] }),
       });
 
       const duration = Date.now() - startTime;
@@ -111,7 +109,7 @@ export class EventsIngestService {
         res.status(400).json({
           success: false,
           error: 'Event validation failed',
-          details: result.rejected[0].errors,
+          details: result.rejected[0]?.errors || 'Validation failed',
           stats: result
         });
       } else {
@@ -188,9 +186,10 @@ export class EventsIngestService {
       }
 
       const result = await this.processBatch(batch, {
-        origin: req.headers.origin || req.headers.referer,
-        userAgent: req.headers['user-agent'],
-        contentEncoding: req.headers['content-encoding'],
+        ...(req.headers.origin && { origin: req.headers.origin }),
+        ...(req.headers.referer && !req.headers.origin && { origin: req.headers.referer }),
+        ...(req.headers['user-agent'] && { userAgent: req.headers['user-agent'] }),
+        ...(req.headers['content-encoding'] && { contentEncoding: req.headers['content-encoding'] }),
       });
 
       const duration = Date.now() - startTime;
@@ -468,7 +467,9 @@ export class EventsIngestService {
     const now = Date.now();
     const cutoff = now - (this.config.dedupeWindowMs * 2); // Keep 2x window for safety
     
-    for (const [key, timestamp] of dedupeCache.entries()) {
+    // Convert to array to avoid iterator issues
+    const entries = Array.from(dedupeCache.entries());
+    for (const [key, timestamp] of entries) {
       if (timestamp < cutoff) {
         dedupeCache.delete(key);
       }

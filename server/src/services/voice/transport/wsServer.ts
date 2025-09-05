@@ -577,7 +577,7 @@ export class VoiceWebSocketServer extends EventEmitter {
    * End session gracefully
    */
   private async endSession(session: VoiceSession, code: number, reason: string): Promise<void> {
-    if (!session.isActive) return;
+    if (!session.isActive) {return;}
 
     try {
       if (session.ws.readyState === WebSocket.OPEN) {

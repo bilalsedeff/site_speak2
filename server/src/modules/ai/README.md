@@ -17,7 +17,7 @@ modules/ai/
 
 ### Key Components
 
-- **🧠 Enhanced AI Services**: Next-generation AI assistant with hybrid search
+- **🧠 AI Assistant Services**: Universal AI assistant with hybrid search support
 - **🔍 Knowledge Base System**: Advanced KB with delta indexing and multi-tenant isolation
 - **⚡ Hybrid Search Engine**: Multi-strategy search with RRF fusion
 - **🕷️ Intelligent Crawling**: Sitemap-aware delta crawling with content change detection
@@ -31,10 +31,10 @@ modules/ai/
 ### Basic Usage
 
 ```typescript
-import { enhancedUniversalAIAssistantService } from './application/services/EnhancedUniversalAIAssistantService';
+import { universalAIAssistantService } from './application/UniversalAIAssistantService';
 
-// Process a conversation with enhanced AI
-const response = await enhancedUniversalAIAssistantService.processConversation({
+// Process a conversation with AI assistant
+const response = await universalAIAssistantService.processConversation({
   input: 'How do I configure payment processing?',
   siteId: 'site_123',
   tenantId: 'tenant_abc',
@@ -113,10 +113,10 @@ Provides HTTP endpoints for AI functionality:
 
 Business logic and use case implementations:
 
-- **EnhancedUniversalAIAssistantService**: Next-gen AI assistant
-- **EnhancedAIOrchestrationService**: Advanced workflow coordination
+- **UniversalAIAssistantService**: Main AI assistant with enhanced features
+- **AIOrchestrationService**: Workflow coordination and orchestration
 - **IncrementalIndexer**: Delta-based KB updates
-- **KnowledgeBaseService**: Legacy KB operations (maintained for compatibility)
+- **KnowledgeBaseService**: Knowledge base operations
 
 ### Infrastructure Services (`infrastructure/`)
 
@@ -238,12 +238,12 @@ Comprehensive observability and analytics:
 
 ```typescript
 // Performance metrics
-const metrics = service.getEnhancedMetrics();
+const metrics = universalAIAssistantService.getMetrics();
 console.log({
   averageResponseTime: metrics.averageResponseTime,
-  cacheHitRate: metrics.performance.cacheHitRate,
-  consensusFailureRate: metrics.performance.consensusFailureRate,
-  activeSearchStrategies: metrics.searchStrategies
+  cacheHitRate: metrics.cacheHitRate,
+  consensusFailures: metrics.consensusFailures,
+  hybridSearches: metrics.hybridSearches
 });
 
 // Health monitoring
@@ -453,7 +453,7 @@ describe('HybridSearchService', () => {
 // Integration test example
 describe('AI Conversation Flow', () => {
   it('should process conversation with KB search', async () => {
-    const response = await enhancedUniversalAIAssistantService.processConversation({
+    const response = await universalAIAssistantService.processConversation({
       input: 'How do I configure payments?',
       tenantId: 'test-tenant',
       siteId: 'test-site'

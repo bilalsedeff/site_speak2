@@ -37,13 +37,11 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-}, (table) => {
-  return {
-    emailIdx: index('idx_users_email').on(table.email),
-    tenantIdx: index('idx_users_tenant').on(table.tenantId),
-    statusIdx: index('idx_users_status').on(table.status),
-  };
-});
+}, (table) => [
+  index('idx_users_email').on(table.email),
+  index('idx_users_tenant').on(table.tenantId),
+  index('idx_users_status').on(table.status),
+]);
 
 export const userSessions = pgTable('user_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -65,13 +63,11 @@ export const userSessions = pgTable('user_sessions', {
   isActive: boolean('is_active').notNull().default(true),
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    sessionTokenIdx: index('idx_user_sessions_token').on(table.sessionToken),
-    userIdx: index('idx_user_sessions_user').on(table.userId),
-    expiresIdx: index('idx_user_sessions_expires').on(table.expiresAt),
-  };
-});
+}, (table) => [
+  index('idx_user_sessions_token').on(table.sessionToken),
+  index('idx_user_sessions_user').on(table.userId),
+  index('idx_user_sessions_expires').on(table.expiresAt),
+]);
 
 export const userPreferences = pgTable('user_preferences', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -137,14 +133,12 @@ export const userActivityLogs = pgTable('user_activity_logs', {
   errorMessage: text('error_message'),
   
   timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    userIdx: index('idx_activity_user').on(table.userId),
-    actionIdx: index('idx_activity_action').on(table.action),
-    timestampIdx: index('idx_activity_timestamp').on(table.timestamp),
-    resourceIdx: index('idx_activity_resource').on(table.resource, table.resourceId),
-  };
-});
+}, (table) => [
+  index('idx_activity_user').on(table.userId),
+  index('idx_activity_action').on(table.action),
+  index('idx_activity_timestamp').on(table.timestamp),
+  index('idx_activity_resource').on(table.resource, table.resourceId),
+]);
 
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users, {

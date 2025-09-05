@@ -27,6 +27,7 @@ interface MockTrace {
   getActiveSpan(): MockSpan | undefined;
   setSpan(context: any, span: MockSpan): any;
   getSpanContext(span: MockSpan): { traceId: string; spanId: string } | undefined;
+  getTracer?(name: string): MockTracer;
 }
 
 // Try to import OpenTelemetry, fallback to mocks if not available
@@ -34,39 +35,42 @@ let trace: MockTrace;
 let context: any;
 let NodeSDK: any;
 
-try {
-  const otelApi = await import('@opentelemetry/api');
-  const otelSdk = await import('@opentelemetry/sdk-node');
-  const otelInstrumentations = await import('@opentelemetry/auto-instrumentations-node');
-  
-  trace = otelApi.trace as any;
-  context = otelApi.context;
-  NodeSDK = otelSdk.NodeSDK;
-  
-} catch (error) {
-  logger.warn('OpenTelemetry packages not available, using mock implementation', {
+async function initializeOtelModules() {
+  try {
+    const otelApi = await import('@opentelemetry/api');
+    const otelSdk = await import('@opentelemetry/sdk-node');
+    // Import instrumentations (may be used later)
+    await import('@opentelemetry/auto-instrumentations-node');
+    
+    trace = otelApi.trace as any;
+    context = otelApi.context;
+    NodeSDK = otelSdk.NodeSDK;
+    
+  } catch (error) {
+    logger.warn('OpenTelemetry packages not available, using mock implementation', {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    
+    // Mock implementation
+    trace = {
+      getActiveSpan: () => undefined,
+      setSpan: (_ctx: any, _span: MockSpan) => _ctx,
+      getSpanContext: () => undefined,
+    };
+    
+    context = {
+      active: () => ({}),
+      with: (_ctx: any, fn: any) => fn(),
+    };
+  }
+}
+
+// Initialize modules immediately
+initializeOtelModules().catch((error) => {
+  logger.error('Failed to initialize OpenTelemetry modules', {
     error: error instanceof Error ? error.message : 'Unknown error'
   });
-  
-  // Mock implementation
-  const mockSpan: MockSpan = {
-    setAttributes: () => {},
-    recordException: () => {},
-    setStatus: () => {},
-    end: () => {},
-  };
-  
-  trace = {
-    getActiveSpan: () => undefined,
-    setSpan: (ctx: any, span: MockSpan) => ctx,
-    getSpanContext: () => undefined,
-  };
-  
-  context = {
-    active: () => ({}),
-    with: (ctx: any, fn: any) => fn(),
-  };
-}
+});
 
 /**
  * OpenTelemetry SDK instance

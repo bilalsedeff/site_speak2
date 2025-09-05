@@ -312,7 +312,7 @@ export function generateJsonLd(
   props: Record<string, any>
 ): Record<string, any> | null {
   const template = COMPONENT_JSONLD_TEMPLATES.find(t => t.componentName === componentName)
-  if (!template) return null
+  if (!template) {return null}
   
   const jsonld = JSON.parse(JSON.stringify(template.template))
   

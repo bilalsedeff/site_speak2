@@ -16,7 +16,7 @@ import { authErrorHandler } from '../auth';
 const logger = createLogger({ service: 'server' });
 
 export interface ServerDependencies {
-  // Will be injected when we create dependency injection container
+  // TODO: Add dependency injection container interfaces (database, redis, etc.)
 }
 
 export class SiteSeakServer {

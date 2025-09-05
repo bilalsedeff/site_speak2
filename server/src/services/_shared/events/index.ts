@@ -28,10 +28,10 @@ export {
   outboxHelpers,
 } from './outbox.js';
 
-export type { OutboxEvent, OutboxEventInsert } from './outbox.js';
+export type { OutboxEvent, OutboxEventInsert } from '../../../infrastructure/database/schema/outbox-events.js';
 
-import { eventBus } from './eventBus.js';
-import { outboxRelay } from './outbox.js';
+import { eventBus, Event } from './eventBus.js';
+import { outboxRelay, withOutbox } from './outbox.js';
 import { logger } from '../telemetry/logger.js';
 
 /**
@@ -191,19 +191,14 @@ export const publishEvent = {
     payload: T,
     correlationId?: string
   ): Promise<void> => {
-    // This would insert into outbox table within the transaction
-    // The outbox relay would later publish it to the event bus
-    
+    // Use the withOutbox helper to insert event atomically within transaction
     const outboxEvent = {
-      id: crypto.randomUUID(),
       tenantId,
       aggregate,
       aggregateId,
       type: eventType,
       payload: payload as Record<string, any>,
-      createdAt: new Date(),
-      attempts: 0,
-      correlationId,
+      correlationId: correlationId || `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     };
 
     logger.debug('Durable event queued for publishing', {
@@ -213,8 +208,26 @@ export const publishEvent = {
       tenantId,
     });
 
-    // In real implementation:
-    // await tx.insert(outboxEvents).values(outboxEvent);
+    // This would typically be called like:
+    // await withOutbox(async (tx) => {
+    //   // business logic here
+    //   return result;
+    // }, [outboxEvent]);
+    
+    // For now, we'll insert directly since we already have a transaction
+    const { outboxEvents, OutboxEventStatus } = await import('../../../infrastructure/database/schema/outbox-events.js');
+    
+    await tx.insert(outboxEvents).values({
+      tenantId: outboxEvent.tenantId,
+      aggregate: outboxEvent.aggregate,
+      aggregateId: outboxEvent.aggregateId,
+      type: outboxEvent.type,
+      payload: outboxEvent.payload,
+      correlationId: outboxEvent.correlationId,
+      status: OutboxEventStatus.PENDING,
+      attempts: 0,
+      maxAttempts: 5,
+    });
   },
 };
 

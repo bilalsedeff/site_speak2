@@ -4,7 +4,7 @@ import { SitemapReader, createSitemapReader } from '../../infrastructure/crawlin
 import { DeltaDetectionService, createDeltaDetectionService } from '../../domain/services/DeltaDetectionService';
 import { ContentHashService, createContentHashService } from '../../domain/services/ContentHashService';
 import { KnowledgeChunk, createKnowledgeChunk } from '../../domain/entities/KnowledgeChunk';
-import { ContentHash, createContentHash } from '../../domain/value-objects/ContentHash';
+// import { ContentHash, createContentHash } from '../../domain/value-objects/ContentHash'; // TODO: Implement if needed
 
 const logger = createLogger({ service: 'incremental-indexer' });
 
@@ -17,13 +17,13 @@ const logger = createLogger({ service: 'incremental-indexer' });
 export class IncrementalIndexer {
   private readonly crawlOrchestrator: CrawlOrchestrator;
   private readonly sitemapReader: SitemapReader;
-  private readonly deltaDetectionService: DeltaDetectionService;
+  private readonly _deltaDetectionService: DeltaDetectionService; // TODO: Implement delta detection logic
   private readonly contentHashService: ContentHashService;
 
   constructor() {
     this.crawlOrchestrator = createCrawlOrchestrator();
     this.sitemapReader = createSitemapReader();
-    this.deltaDetectionService = createDeltaDetectionService();
+    this._deltaDetectionService = createDeltaDetectionService();
     this.contentHashService = createContentHashService();
   }
 
@@ -297,7 +297,7 @@ export class IncrementalIndexer {
    */
   private async processContentIntoChunks(
     extractedContent: ExtractedPageContent,
-    request: IncrementalUpdateRequest
+    _request: IncrementalUpdateRequest  // TODO: Use request context for tenant/site-specific processing
   ): Promise<ChunkProcessResult> {
     let newChunks = 0;
     let updatedChunks = 0;
@@ -338,6 +338,9 @@ export class IncrementalIndexer {
     
     for (let i = 0; i < textSegments.length; i++) {
       const segment = textSegments[i];
+      if (!segment) {
+        continue;
+      }
       const contentHash = this.contentHashService.computeContentHash(segment);
       
       // Generate embedding (would integrate with embedding service)
@@ -349,11 +352,11 @@ export class IncrementalIndexer {
         embedding,
         metadata: {
           url: extractedContent.canonicalUrl,
-          title: extractedContent.title,
+          title: extractedContent.title || 'Untitled',
           contentType: 'text',
           language: extractedContent.language,
           hash: contentHash.hash,
-          lastModified: extractedContent.lastModified,
+          lastModified: extractedContent.lastModified || new Date(),
           importance: 'medium'
         },
         hierarchy: {
@@ -397,7 +400,7 @@ export class IncrementalIndexer {
           contentType: 'json-ld',
           language: extractedContent.language,
           hash: contentHash.hash,
-          lastModified: extractedContent.lastModified,
+          lastModified: extractedContent.lastModified || new Date(),
           importance: 'high',
           entities: [entity]
         },
@@ -464,7 +467,7 @@ export class IncrementalIndexer {
     
     // Process forms
     for (const form of extractedContent.forms) {
-      const formText = `Form: ${form.name}\nType: ${form.type}\nFields: ${form.fields.map(f => f.label || f.name).join(', ')}`;
+      const formText = `Form: ${form.name}\nType: ${form.type}\nFields: ${form.fields.map((f: any) => f.label || f.name).join(', ')}`;
       const contentHash = this.contentHashService.computeContentHash(formText);
       const embedding = new Array(1536).fill(0); // Placeholder
       
@@ -517,9 +520,9 @@ export class IncrementalIndexer {
 
       return changedEntries.map(entry => ({
         url: entry.loc,
-        lastmod: entry.lastmod,
-        changefreq: entry.changefreq,
-        priority: entry.priority,
+        lastmod: entry.lastmod || new Date(),
+        changefreq: entry.changefreq || 'weekly',
+        priority: entry.priority || 0.5,
         discoveredAt: new Date()
       }));
 
@@ -589,7 +592,7 @@ export class IncrementalIndexer {
     
     for (const sentence of sentences) {
       const trimmedSentence = sentence.trim();
-      if (!trimmedSentence) continue;
+      if (!trimmedSentence) {continue;}
       
       const potentialSegment = currentSegment + (currentSegment ? '. ' : '') + trimmedSentence;
       

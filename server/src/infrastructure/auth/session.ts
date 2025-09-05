@@ -186,6 +186,7 @@ export class InMemorySessionStore implements SessionStore {
  * TODO: Implement when Redis integration is added
  */
 export class RedisSessionStore implements SessionStore {
+  // TODO: Implement Redis client integration for production session storage
   constructor(private _redisClient: any) {
     // TODO: Implement Redis session store
   }

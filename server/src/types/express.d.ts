@@ -7,6 +7,7 @@
 
 import { AuthenticatedUser } from '../infrastructure/auth/middleware';
 import { TenantContext } from '../services/_shared/security/tenancy'; // Import the real TenantContext
+import { LocaleContext } from '../services/api-gateway/http/middleware/locale-detect';
 
 declare global {
   namespace Express {
@@ -22,11 +23,16 @@ declare global {
       
       // Locale detection (added by locale detection middleware)
       locale?: string;
+      localeContext?: LocaleContext;
       
       // Additional tenant and security context (added by tenancy middleware)
       tenantId?: string;
       siteId?: string;
       tenant?: TenantContext; // Now uses the real TenantContext interface
+    }
+
+    interface Locals {
+      locale?: string;
     }
   }
 }

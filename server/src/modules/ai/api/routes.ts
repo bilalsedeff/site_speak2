@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import '../../../types/express'; // Import Express Request extensions
+// Express Request extensions declared in server/src/types/express.d.ts — no runtime import
 import { createLogger } from '../../../shared/utils.js';
 import { universalAIAssistantService } from '../application/UniversalAIAssistantService.js';
 import { authenticateRequest, requireTenantAccess, requireAdminAccess } from '../../../shared/middleware/auth.js';

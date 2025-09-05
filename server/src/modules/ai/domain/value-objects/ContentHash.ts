@@ -134,19 +134,19 @@ export class ContentHash {
    */
   private validateHash(value: string, algorithm: HashAlgorithm, throwOnError: boolean = true): boolean {
     if (!value) {
-      if (throwOnError) throw new Error('Hash value cannot be empty');
+      if (throwOnError) {throw new Error('Hash value cannot be empty');}
       return false;
     }
 
     if (!algorithm) {
-      if (throwOnError) throw new Error('Hash algorithm must be specified');
+      if (throwOnError) {throw new Error('Hash algorithm must be specified');}
       return false;
     }
 
     // Check if value contains only valid hex characters
     const hexPattern = /^[a-fA-F0-9]+$/;
     if (!hexPattern.test(value)) {
-      if (throwOnError) throw new Error('Hash value must contain only hexadecimal characters');
+      if (throwOnError) {throw new Error('Hash value must contain only hexadecimal characters');}
       return false;
     }
 

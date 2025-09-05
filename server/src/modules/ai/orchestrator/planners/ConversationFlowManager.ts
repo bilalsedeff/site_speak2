@@ -508,9 +508,9 @@ Normalize common expressions:
         const quantity = numberMatch ? parseInt(numberMatch[1]) : 1;
         
         let itemType = 'items';
-        if (raw.includes('ticket')) itemType = 'tickets';
-        if (raw.includes('seat')) itemType = 'seats';
-        if (raw.includes('person')) itemType = 'people';
+        if (raw.includes('ticket')) {itemType = 'tickets';}
+        if (raw.includes('seat')) {itemType = 'seats';}
+        if (raw.includes('person')) {itemType = 'people';}
         
         return {
           quantity,

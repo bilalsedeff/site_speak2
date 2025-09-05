@@ -16,7 +16,7 @@ import cors from 'cors';
 import { createLogger } from '../_shared/telemetry/logger';
 import { localeDetect } from './http/middleware/locale-detect';
 import { problemDetailsHandler, addProblemDetailMethod } from './http/middleware/problem-details';
-import { rateLimiters, addRateLimitHeaders } from './http/middleware/rate-limit-headers';
+import { rateLimiters } from './http/middleware/rate-limit-headers';
 
 const logger = createLogger({ service: 'api-gateway' });
 
@@ -56,7 +56,7 @@ export function createAPIGateway(config: APIGatewayConfig = {}): express.Router 
   
   // 2. Locale detection middleware
   gateway.use(localeDetect({ 
-    supportedLocales,
+    supportedLocales: supportedLocales || ['en', 'tr'],
     headerOverride: 'x-user-locale' 
   }));
 
@@ -189,7 +189,7 @@ async function setupV1Routes(router: express.Router, config: { enableAuth: boole
   try {
     // OpenAPI documentation endpoint
     const { generateOpenAPISpec } = await import('./openapi/generator');
-    router.get('/openapi.json', async (req, res) => {
+    router.get('/openapi.json', async (_req, res) => {
       try {
         const spec = await generateOpenAPISpec();
         res.json(spec);
@@ -245,7 +245,7 @@ async function setupV1Routes(router: express.Router, config: { enableAuth: boole
  */
 function setupHealthRoutes(router: express.Router) {
   // Basic health check
-  router.get('/health', async (req, res) => {
+  router.get('/health', async (_req, res) => {
     try {
       const health = await performHealthChecks();
       const status = health.healthy ? 200 : 503;
@@ -269,7 +269,7 @@ function setupHealthRoutes(router: express.Router) {
   });
 
   // Kubernetes liveness probe
-  router.get('/health/live', (req, res) => {
+  router.get('/health/live', (_req, res) => {
     res.json({
       status: 'alive',
       timestamp: new Date().toISOString(),
@@ -280,7 +280,7 @@ function setupHealthRoutes(router: express.Router) {
   });
 
   // Kubernetes readiness probe
-  router.get('/health/ready', async (req, res) => {
+  router.get('/health/ready', async (_req, res) => {
     try {
       const health = await performHealthChecks();
       const status = health.healthy ? 200 : 503;

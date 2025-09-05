@@ -135,7 +135,7 @@ export class VoiceOrchestrator extends EventEmitter {
    * Stop the voice orchestrator
    */
   async stop(): Promise<void> {
-    if (!this.isRunning) return;
+    if (!this.isRunning) {return;}
 
     try {
       // Stop all active sessions
@@ -366,7 +366,7 @@ export class VoiceOrchestrator extends EventEmitter {
     const { turnManager, realtimeClient } = sessionState;
     const sessionId = sessionState.id;
 
-    if (!turnManager || !realtimeClient) return;
+    if (!turnManager || !realtimeClient) {return;}
 
     // TurnManager events
     turnManager.on('event', (event: TurnEvent) => {
@@ -467,7 +467,7 @@ export class VoiceOrchestrator extends EventEmitter {
         break;
 
       case 'barge_in':
-        const bargeInLatency = Date.now();
+        { const bargeInLatency = Date.now();
         sessionState.metrics.performance.bargeInLatencies.push(bargeInLatency);
         this.updatePerformanceMetrics();
         
@@ -478,7 +478,7 @@ export class VoiceOrchestrator extends EventEmitter {
             target: this.config.performance.targetBargeInMs,
           });
         }
-        break;
+        break; }
 
       case 'partial_asr':
         this.visualFeedback.showPartialTranscript(event.text, event.confidence, sessionId);
@@ -504,7 +504,7 @@ export class VoiceOrchestrator extends EventEmitter {
    */
   private async handleIncomingAudioFrame(data: any): Promise<void> {
     const sessionState = this.activeSessions.get(data.sessionId);
-    if (!sessionState) return;
+    if (!sessionState) {return;}
 
     try {
       // Convert to PCM frame for processing
@@ -531,7 +531,7 @@ export class VoiceOrchestrator extends EventEmitter {
    */
   private async handleIncomingTextInput(data: any): Promise<void> {
     const sessionState = this.activeSessions.get(data.sessionId);
-    if (!sessionState?.realtimeClient) return;
+    if (!sessionState?.realtimeClient) {return;}
 
     try {
       await sessionState.realtimeClient.sendText(data.text);
@@ -552,7 +552,7 @@ export class VoiceOrchestrator extends EventEmitter {
    */
   private async handleControlMessage(data: any): Promise<void> {
     const sessionState = this.activeSessions.get(data.sessionId);
-    if (!sessionState) return;
+    if (!sessionState) {return;}
 
     switch (data.action) {
       case 'start_recording':

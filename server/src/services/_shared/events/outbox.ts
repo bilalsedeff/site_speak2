@@ -6,39 +6,19 @@
  */
 
 import { db, withTransaction } from '../db/index.js';
-import { cfg } from '../config/index.js';
+import { 
+  outboxEvents, 
+  OutboxEventStatus,
+  OutboxEventInsert,
+} from '../../../infrastructure/database/schema/outbox-events.js';
 import { logger } from '../telemetry/logger.js';
 import { eventBus, Event } from './eventBus.js';
-import { eq, and, isNull, lt, sql } from 'drizzle-orm';
+import { eq, and, sql, asc } from 'drizzle-orm';
 
 /**
- * Outbox event record
+ * Database outbox event type for compatibility
  */
-export interface OutboxEvent {
-  id: string;
-  tenantId: string;
-  aggregate: string;        // Domain aggregate (e.g., 'site', 'user', 'kb-document')
-  aggregateId: string;     // ID of the aggregate
-  type: string;            // Event type
-  payload: Record<string, any>;
-  createdAt: Date;
-  publishedAt?: Date;
-  attempts: number;
-  lastAttemptAt?: Date;
-  error?: string;
-}
-
-/**
- * Outbox event insert data
- */
-export interface OutboxEventInsert {
-  tenantId: string;
-  aggregate: string;
-  aggregateId: string;
-  type: string;
-  payload: Record<string, any>;
-  correlationId?: string;
-}
+type DatabaseOutboxEvent = typeof outboxEvents.$inferSelect;
 
 /**
  * Transaction helper with outbox event recording
@@ -54,19 +34,19 @@ export async function withOutbox<T>(
     // Record outbox events if any
     if (events.length > 0) {
       const outboxRecords = events.map(event => ({
-        id: crypto.randomUUID(),
         tenantId: event.tenantId,
         aggregate: event.aggregate,
         aggregateId: event.aggregateId,
         type: event.type,
         payload: event.payload,
-        createdAt: new Date(),
+        correlationId: event.correlationId || `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        status: OutboxEventStatus.PENDING,
         attempts: 0,
-        correlationId: event.correlationId,
+        maxAttempts: 5,
       }));
 
-      // Insert into outbox table (this would need the outbox table schema)
-      // await tx.insert(outboxEvents).values(outboxRecords);
+      // Insert into outbox table
+      await tx.insert(outboxEvents).values(outboxRecords);
       
       logger.debug('Outbox events recorded', {
         count: outboxRecords.length,
@@ -145,20 +125,15 @@ export class OutboxRelay {
     if (!this.isRunning) {return;}
 
     try {
-      // This would query the outbox table for unpublished events
-      // For now, we'll simulate the logic
-      
       logger.debug('Processing outbox events...');
 
-      // In real implementation:
-      // 1. Query unpublished events (published_at IS NULL)
-      // 2. Order by created_at ASC
-      // 3. Limit to batch size
-      // 4. Process each event
-      // 5. Mark as published or increment attempt count
-
-      // Simulated outbox processing
-      const unpublishedEvents: OutboxEvent[] = []; // Would come from database
+      // Query unpublished events
+      const unpublishedEvents = await db
+        .select()
+        .from(outboxEvents)
+        .where(eq(outboxEvents.status, OutboxEventStatus.PENDING))
+        .orderBy(asc(outboxEvents.createdAt))
+        .limit(this.batchSize);
 
       if (unpublishedEvents.length > 0) {
         logger.info('Processing outbox events', { count: unpublishedEvents.length });
@@ -177,17 +152,17 @@ export class OutboxRelay {
   /**
    * Publish a single outbox event
    */
-  private async publishEvent(outboxEvent: OutboxEvent): Promise<void> {
+  private async publishEvent(outboxEvent: DatabaseOutboxEvent): Promise<void> {
     try {
       // Convert outbox event to internal event format
       const event: Event = {
         type: outboxEvent.type,
-        payload: outboxEvent.payload,
+        payload: outboxEvent.payload as Record<string, any>,
         metadata: {
           tenantId: outboxEvent.tenantId,
           timestamp: outboxEvent.createdAt,
           source: 'outbox',
-          correlationId: crypto.randomUUID(),
+          correlationId: outboxEvent.correlationId || crypto.randomUUID(),
         },
       };
 
@@ -220,8 +195,13 @@ export class OutboxRelay {
    */
   private async markAsPublished(eventId: string): Promise<void> {
     try {
-      // In real implementation, update the outbox table:
-      // UPDATE outbox_events SET published_at = NOW() WHERE id = eventId
+      await db
+        .update(outboxEvents)
+        .set({ 
+          status: OutboxEventStatus.PUBLISHED,
+          publishedAt: new Date() 
+        })
+        .where(eq(outboxEvents.id, eventId));
       
       logger.debug('Outbox event marked as published', { eventId });
     } catch (error) {
@@ -237,14 +217,38 @@ export class OutboxRelay {
    */
   private async markAsFailed(eventId: string, errorMessage: string): Promise<void> {
     try {
-      // In real implementation, update the outbox table:
-      // UPDATE outbox_events SET 
-      //   attempts = attempts + 1,
-      //   last_attempt_at = NOW(),
-      //   error = errorMessage
-      // WHERE id = eventId
+      // Get current event to check attempts
+      const [currentEvent] = await db
+        .select({ attempts: outboxEvents.attempts, maxAttempts: outboxEvents.maxAttempts })
+        .from(outboxEvents)
+        .where(eq(outboxEvents.id, eventId));
+
+      if (!currentEvent) {
+        logger.warn('Outbox event not found for failure marking', { eventId });
+        return;
+      }
+
+      const newAttempts = currentEvent.attempts + 1;
+      const status = newAttempts >= currentEvent.maxAttempts 
+        ? OutboxEventStatus.DEAD_LETTER 
+        : OutboxEventStatus.FAILED;
+
+      await db
+        .update(outboxEvents)
+        .set({
+          attempts: newAttempts,
+          lastAttemptAt: new Date(),
+          error: errorMessage,
+          status,
+        })
+        .where(eq(outboxEvents.id, eventId));
       
-      logger.debug('Outbox event marked as failed', { eventId, errorMessage });
+      logger.debug('Outbox event marked as failed', { 
+        eventId, 
+        errorMessage,
+        attempts: newAttempts,
+        status,
+      });
     } catch (error) {
       logger.error('Failed to mark outbox event as failed', {
         eventId,
@@ -276,13 +280,45 @@ export class OutboxRelay {
     oldestPending?: Date;
   }> {
     try {
-      // In real implementation, query outbox table for stats
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Get counts by status
+      const [pendingCount] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(outboxEvents)
+        .where(eq(outboxEvents.status, OutboxEventStatus.PENDING));
+
+      const [failedCount] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(outboxEvents)
+        .where(eq(outboxEvents.status, OutboxEventStatus.FAILED));
+
+      const [publishedTodayCount] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(outboxEvents)
+        .where(
+          and(
+            eq(outboxEvents.status, OutboxEventStatus.PUBLISHED),
+            sql`${outboxEvents.publishedAt} >= ${today}`
+          )
+        );
+
+      // Get oldest pending event
+      const [oldestPending] = await db
+        .select({ createdAt: outboxEvents.createdAt })
+        .from(outboxEvents)
+        .where(eq(outboxEvents.status, OutboxEventStatus.PENDING))
+        .orderBy(asc(outboxEvents.createdAt))
+        .limit(1);
+
       const stats = {
-        pendingEvents: 0,
-        failedEvents: 0,
-        publishedToday: 0,
+        pendingEvents: pendingCount?.count || 0,
+        failedEvents: failedCount?.count || 0,
+        publishedToday: publishedTodayCount?.count || 0,
+        ...(oldestPending && { oldestPending: oldestPending.createdAt }),
       };
-      // Only include oldestPending if there's a valid date
+
       return stats;
     } catch (error) {
       logger.error('Failed to get outbox stats', {
@@ -302,13 +338,46 @@ export class OutboxRelay {
    */
   async retryFailedEvents(maxAge: number = 24 * 60 * 60 * 1000): Promise<number> {
     try {
-      // In real implementation:
-      // 1. Find failed events within maxAge
-      // 2. Reset their attempts and error
-      // 3. They'll be picked up in next polling cycle
+      const cutoffTime = new Date(Date.now() - maxAge);
+
+      // First, count the events that will be retried
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(outboxEvents)
+        .where(
+          and(
+            eq(outboxEvents.status, OutboxEventStatus.FAILED),
+            sql`${outboxEvents.createdAt} >= ${cutoffTime}`,
+            sql`${outboxEvents.attempts} < ${outboxEvents.maxAttempts}`
+          )
+        );
+
+      const retryCount = countResult?.count || 0;
+
+      if (retryCount > 0) {
+        // Reset failed events within the age limit that haven't exceeded max attempts
+        await db
+          .update(outboxEvents)
+          .set({
+            status: OutboxEventStatus.PENDING,
+            error: null,
+            lastAttemptAt: null,
+          })
+          .where(
+            and(
+              eq(outboxEvents.status, OutboxEventStatus.FAILED),
+              sql`${outboxEvents.createdAt} >= ${cutoffTime}`,
+              sql`${outboxEvents.attempts} < ${outboxEvents.maxAttempts}`
+            )
+          );
+      }
       
-      logger.info('Retrying failed outbox events', { maxAge });
-      return 0; // Return number of events reset
+      logger.info('Retrying failed outbox events', { 
+        maxAge, 
+        retriedCount: retryCount 
+      });
+      
+      return retryCount;
     } catch (error) {
       logger.error('Failed to retry outbox events', {
         error: error instanceof Error ? error.message : 'Unknown error',

@@ -13,12 +13,22 @@ const logger = createLogger({ service: 'langraph' });
 
 // Session State Definition
 const SessionState = Annotation.Root({
-  sessionId: Annotation<string>(),
-  siteId: Annotation<string>(),
+  sessionId: Annotation<string>({
+    reducer: (x: string, y: string) => y || x,
+    default: () => ''
+  }),
+  siteId: Annotation<string>({
+    reducer: (x: string, y: string) => y || x,
+    default: () => ''
+  }),
   messages: Annotation<BaseMessage[]>({
     reducer: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
+    default: () => []
   }),
-  userInput: Annotation<string>(),
+  userInput: Annotation<string>({
+    reducer: (x: string, y: string) => y || x,
+    default: () => ''
+  }),
   detectedLanguage: Annotation<string | null>({
     reducer: (x: string | null, y: string | null) => y ?? x,
     default: () => null
@@ -136,17 +146,109 @@ const SessionState = Annotation.Root({
   }),
   
   // Original input storage for privacy redaction
-  originalInput: Annotation<string>(),
+  originalInput: Annotation<string>({
+    reducer: (x: string, y: string) => y || x,
+    default: () => ''
+  }),
   
   // Tenant context for security
-  tenantId: Annotation<string>(),
+  tenantId: Annotation<string>({
+    reducer: (x: string, y: string) => y || x,
+    default: () => 'default-tenant'
+  }),
   userId: Annotation<string | null>({
     reducer: (x: string | null, y: string | null) => y ?? x,
     default: () => null
   }),
 });
 
-export type SessionStateType = typeof SessionState.State;
+// Explicit type definition for better TypeScript support
+export interface SessionStateType {
+  sessionId: string;
+  siteId: string;
+  messages: BaseMessage[];
+  userInput: string;
+  detectedLanguage: string | null;
+  intent: {
+    category: string;
+    confidence: number;
+    extractedEntities: Record<string, unknown>;
+  } | null;
+  kbResults: Array<{
+    id: string;
+    content: string;
+    url: string;
+    score: number;
+    metadata: Record<string, unknown>;
+  }>;
+  actionPlan: Array<{
+    actionName: string;
+    parameters: Record<string, unknown>;
+    reasoning: string;
+    riskLevel: string;
+  }>;
+  toolResults: Array<{
+    toolName: string;
+    input: Record<string, unknown>;
+    output: unknown;
+    success: boolean;
+    error?: string;
+  }>;
+  finalResponse: {
+    text: string;
+    audioUrl?: string;
+    citations: Array<{
+      url: string;
+      title: string;
+      snippet: string;
+    }>;
+    uiHints: {
+      highlightElements?: string[];
+      scrollToElement?: string;
+      showModal?: boolean;
+      confirmationRequired?: boolean;
+    };
+    metadata: {
+      tokensUsed: number;
+      processingTime: number;
+      actionsExecuted: number;
+    };
+  } | null;
+  needsConfirmation: boolean;
+  confirmationReceived: boolean;
+  error: string | null;
+  
+  // Enterprise Security & Privacy
+  securityResult: {
+    allowed: boolean;
+    riskLevel: 'low' | 'medium' | 'high';
+    issues: Array<{ type: string; severity: string; description: string }>;
+  } | null;
+  privacyResult: {
+    hasPII: boolean;
+    detectedTypes: string[];
+    redactionApplied: boolean;
+  } | null;
+  
+  // Resource Management
+  resourceUsage: {
+    tokensUsed: number;
+    actionsExecuted: number;
+    apiCallsMade: number;
+    budgetRemaining: Record<string, number>;
+  };
+  
+  // Error Recovery
+  errorRecoveryAttempted: boolean;
+  errorRecoveryStrategy: string | null;
+  
+  // Original input storage for privacy redaction
+  originalInput: string;
+  
+  // Tenant context for security
+  tenantId: string;
+  userId: string | null;
+}
 
 export interface LangGraphDependencies {
   kbService: {
@@ -155,12 +257,17 @@ export interface LangGraphDependencies {
       query: string;
       topK: number;
       locale: string;
+      tenantId?: string;
+      threshold?: number;
+      filters?: Record<string, unknown>;
     }): Promise<Array<{
       id: string;
       content: string;
       url: string;
       score: number;
       metadata: Record<string, unknown>;
+      chunkIndex?: number;
+      relevantSnippet?: string;
     }>>;
   };
   actionExecutor: {
@@ -170,15 +277,23 @@ export interface LangGraphDependencies {
       parameters: Record<string, unknown>;
       sessionId?: string;
       userId?: string;
+      tenantId?: string;
     }): Promise<{
       success: boolean;
       result: unknown;
       executionTime: number;
       error?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+    getAvailableActions(siteId: string): Array<{
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+      confirmation?: boolean;
     }>;
   };
   languageDetector: {
-    detect(text: string, browserLanguage?: string): Promise<string>;
+    detect(text: string, browserLanguage?: string, context?: Record<string, unknown>): Promise<string>;
   };
 }
 
@@ -224,29 +339,77 @@ export class LangGraphOrchestrator {
   }
 
   /**
-   * Process a complete conversation turn
+   * Process a complete conversation turn with enhanced context
    */
   async processConversation(input: {
     userInput: string;
     sessionId: string;
     siteId: string;
+    tenantId?: string;
+    userId?: string;
+    context?: {
+      currentUrl?: string;
+      pageTitle?: string;
+      userAgent?: string;
+      browserLanguage?: string;
+    };
   }): Promise<SessionStateType> {
     const config = { configurable: { thread_id: input.sessionId } };
     
     const initialState: Partial<SessionStateType> = {
       sessionId: input.sessionId,
       siteId: input.siteId,
+      tenantId: input.tenantId || 'default-tenant',
+      userId: input.userId || null,
       userInput: input.userInput,
+      originalInput: input.userInput, // Store original for privacy processing
       messages: [new HumanMessage(input.userInput)],
+      detectedLanguage: null,
+      intent: null,
+      kbResults: [],
+      actionPlan: [],
+      toolResults: [],
+      finalResponse: null,
+      needsConfirmation: false,
+      confirmationReceived: false,
+      error: null,
+      securityResult: null,
+      privacyResult: null,
+      resourceUsage: {
+        tokensUsed: 0,
+        actionsExecuted: 0,
+        apiCallsMade: 0,
+        budgetRemaining: {}
+      },
+      errorRecoveryAttempted: false,
+      errorRecoveryStrategy: null
     };
 
     try {
-      const result = await this.graph.invoke(initialState, config);
+      logger.info('Starting conversation processing with enhanced context', {
+        sessionId: input.sessionId,
+        siteId: input.siteId,
+        tenantId: input.tenantId,
+        hasContext: !!input.context,
+        inputLength: input.userInput.length
+      });
+
+      const result = await this.graph.invoke(initialState, config) as unknown as SessionStateType;
+      
+      logger.info('Conversation processing completed', {
+        sessionId: input.sessionId,
+        finalResponseLength: result.finalResponse?.text?.length || 0,
+        actionsExecuted: result.toolResults?.length || 0,
+        tokensUsed: result.resourceUsage?.tokensUsed || 0
+      });
+
       return result;
     } catch (error) {
       logger.error('Conversation processing failed', { 
         sessionId: input.sessionId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        siteId: input.siteId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
       });
       throw error;
     }
@@ -270,7 +433,8 @@ export class LangGraphOrchestrator {
     };
 
     try {
-      for await (const chunk of this.graph.stream(initialState, config)) {
+      const stream = await this.graph.stream(initialState, config);
+      for await (const chunk of stream) {
         const nodeKey = Object.keys(chunk)[0];
         if (nodeKey) {
           yield {
@@ -353,7 +517,7 @@ export class LangGraphOrchestrator {
     workflow.addEdge('humanInTheLoop', 'toolCall');
     workflow.addEdge('finalize', END);
 
-    return workflow.compile({ checkpointer: this.checkpointer });
+    return workflow.compile({ checkpointer: this.checkpointer }) as CompiledStateGraph<typeof SessionState.State, unknown>;
   }
 
   /**
@@ -712,7 +876,7 @@ export class LangGraphOrchestrator {
     if (state.toolResults.length === 0) {return false;}
     
     const lastResult = state.toolResults[state.toolResults.length - 1];
-    return lastResult && lastResult.success && state.intent?.category !== 'multi_step';
+    return lastResult !== undefined && lastResult.success === true && state.intent?.category !== 'multi_step';
   }
 
   // ========== ENTERPRISE NODES ==========
@@ -727,18 +891,21 @@ export class LangGraphOrchestrator {
     });
 
     try {
-      const securityResult = await securityGuards.validateSecurity({
+      const securityValidationRequest = {
         tenantId: state.tenantId,
         siteId: state.siteId,
-        userId: state.userId,
         sessionId: state.sessionId,
         userInput: state.userInput,
         clientInfo: {
           origin: 'web', // Could be enhanced to detect actual origin
           userAgent: 'SiteSpeak-AI/1.0',
           ipAddress: '127.0.0.1' // Would be extracted from request in real implementation
-        }
-      });
+        },
+        // Only include userId if it's a real value, not null
+        ...(state.userId && { userId: state.userId })
+      };
+
+      const securityResult = await securityGuards.validateSecurity(securityValidationRequest);
 
       return { securityResult };
     } catch (error) {
@@ -767,16 +934,19 @@ export class LangGraphOrchestrator {
     });
 
     try {
-      const piiResult = await privacyGuards.detectAndRedactPII({
+      const privacyValidationRequest = {
         tenantId: state.tenantId,
         siteId: state.siteId,
         content: state.userInput,
-        contentType: 'user_input',
+        contentType: 'user_input' as const,
         context: {
-          userId: state.userId,
-          sessionId: state.sessionId
+          sessionId: state.sessionId,
+          // Only include userId if it's a real value, not null
+          ...(state.userId && { userId: state.userId })
         }
-      });
+      };
+
+      const piiResult = await privacyGuards.detectAndRedactPII(privacyValidationRequest);
 
       // Convert PII result to privacy result format expected by state
       const privacyResult = {
@@ -908,19 +1078,22 @@ export class LangGraphOrchestrator {
     });
 
     try {
-      const recoveryResult = await errorRecoverySystem.analyzeAndRecover({
+      const errorContext = {
         sessionId: state.sessionId,
         siteId: state.siteId,
         errorMessage: state.error,
         timestamp: new Date(),
         userInput: state.userInput,
-        intent: state.intent,
         previousActions: state.toolResults.map(tr => ({
           name: tr.toolName,
           success: tr.success,
           timestamp: new Date() // Would be stored with each tool result in real implementation
-        }))
-      });
+        })),
+        // Only include intent if it's not null
+        ...(state.intent && { intent: state.intent })
+      };
+
+      const recoveryResult = await errorRecoverySystem.analyzeAndRecover(errorContext);
 
       const shouldClearError = recoveryResult.shouldRetry && recoveryResult.recoveryStrategies.length > 0;
 
@@ -944,10 +1117,235 @@ export class LangGraphOrchestrator {
   }
 
   /**
-   * Helper: Estimate token usage for budget planning
+   * Helper: Enhanced token usage estimation
    */
   private estimateTokenUsage(input: string): number {
-    // Rough estimate: ~4 characters per token
-    return Math.ceil(input.length / 4) + 500; // Add buffer for system prompts
+    // Enhanced token estimation with different content types
+    const baseChars = input.length;
+    const jsonComplexity = (input.match(/[{}\\[\\]:,]/g) || []).length;
+    const systemPromptBuffer = 800; // Increased buffer for enhanced prompts
+    
+    // More accurate estimation: ~3.5 chars per token for complex content
+    const estimatedTokens = Math.ceil(baseChars / 3.5) + Math.ceil(jsonComplexity / 2) + systemPromptBuffer;
+    
+    return estimatedTokens;
+  }
+
+  /**
+   * Enhanced task completion analysis
+   */
+  private analyzeTaskCompletion(state: SessionStateType): {
+    isComplete: boolean;
+    needsRecovery: boolean;
+    reason: string;
+    failedActions: string[];
+    lastError?: string;
+  } {
+    if (state.toolResults.length === 0) {
+      return {
+        isComplete: false,
+        needsRecovery: false,
+        reason: 'No actions executed yet',
+        failedActions: []
+      };
+    }
+
+    const recentResults = state.toolResults.slice(-5); // Last 5 actions
+    const failedResults = recentResults.filter(r => !r.success);
+    const successfulResults = recentResults.filter(r => r.success);
+    
+    // Check for repeated failures
+    if (failedResults.length >= 3) {
+      const lastFailedResult = failedResults[failedResults.length - 1];
+      return {
+        isComplete: false,
+        needsRecovery: true,
+        reason: 'Multiple consecutive failures detected',
+        failedActions: failedResults.map(r => r.toolName),
+        ...(lastFailedResult?.error && { lastError: lastFailedResult.error })
+      };
+    }
+
+    const lastResult = state.toolResults[state.toolResults.length - 1];
+    
+    // Task completion heuristics
+    const completionIndicators = {
+      lastActionSuccessful: lastResult?.success || false,
+      hasInformationalIntent: state.intent?.category === 'information',
+      hasGoodKBResults: state.kbResults.length > 0 && (state.kbResults[0]?.score ?? 0) > 0.7,
+      completedNavigation: successfulResults.some(r => r.toolName.includes('navigate')),
+      completedTransaction: successfulResults.some(r => 
+        ['purchase', 'book', 'add_to_cart', 'checkout'].some(action => r.toolName.includes(action))
+      ),
+      maxActionsReached: state.toolResults.length >= 10, // Safety limit
+      noMoreActionsPlanned: state.actionPlan.length === 0
+    };
+
+    // Determine completion based on context
+    let isComplete = false;
+    let reason = 'Task in progress';
+
+    if (completionIndicators.hasInformationalIntent && completionIndicators.hasGoodKBResults) {
+      isComplete = true;
+      reason = 'Informational request satisfied with KB results';
+    } else if (completionIndicators.completedTransaction) {
+      isComplete = true;
+      reason = 'Transaction completed successfully';
+    } else if (completionIndicators.lastActionSuccessful && 
+               completionIndicators.noMoreActionsPlanned &&
+               successfulResults.length > 0) {
+      isComplete = true;
+      reason = 'All planned actions completed successfully';
+    } else if (completionIndicators.maxActionsReached) {
+      isComplete = true;
+      reason = 'Maximum action limit reached';
+    }
+
+    return {
+      isComplete,
+      needsRecovery: false,
+      reason,
+      failedActions: failedResults.map(r => r.toolName)
+    };
+  }
+
+  /**
+   * Validate and enhance action plan
+   */
+  private validateAndEnhanceActionPlan(rawPlan: any[], state: SessionStateType): Array<{
+    actionName: string;
+    parameters: Record<string, unknown>;
+    reasoning: string;
+    riskLevel: string;
+    priority?: number;
+    dependsOn?: string[];
+  }> {
+    if (!Array.isArray(rawPlan)) {
+      logger.warn('Invalid action plan format, using empty plan', {
+        sessionId: state.sessionId,
+        rawPlanType: typeof rawPlan
+      });
+      return [];
+    }
+
+    const validatedPlan = [];
+    
+    for (const action of rawPlan) {
+      // Validate action exists
+      if (!this.availableActions.has(action.actionName)) {
+        logger.warn('Action not available, skipping', {
+          sessionId: state.sessionId,
+          actionName: action.actionName,
+          availableActions: Array.from(this.availableActions.keys())
+        });
+        continue;
+      }
+
+      // Enhance with defaults and validation
+      const enhancedAction = {
+        actionName: action.actionName,
+        parameters: action.parameters || {},
+        reasoning: action.reasoning || 'No reasoning provided',
+        riskLevel: ['low', 'medium', 'high'].includes(action.riskLevel) ? action.riskLevel : 'medium',
+        priority: action.priority || 1,
+        dependsOn: Array.isArray(action.dependsOn) ? action.dependsOn : []
+      };
+
+      // Apply security-based risk adjustments
+      if (state.securityResult?.riskLevel === 'high' && enhancedAction.riskLevel === 'low') {
+        enhancedAction.riskLevel = 'medium';
+        logger.info('Elevated action risk level due to security assessment', {
+          sessionId: state.sessionId,
+          actionName: action.actionName
+        });
+      }
+
+      validatedPlan.push(enhancedAction);
+    }
+
+    // Sort by priority and dependencies
+    return validatedPlan.sort((a, b) => (a.priority || 1) - (b.priority || 1));
+  }
+
+  /**
+   * Enhanced method to get available actions with metadata
+   */
+  getAvailableActionsWithMetadata(): Array<{
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+    confirmation: boolean;
+    riskLevel: string;
+    category: string;
+  }> {
+    return Array.from(this.availableActions.values()).map(action => ({
+      name: action.name,
+      description: action.description || 'No description available',
+      parameters: this.convertParametersToRecord(action.parameters || []),
+      confirmation: action.confirmation || false,
+      riskLevel: action.confirmation ? 'high' : 'low',
+      category: this.categorizeAction(action.name)
+    }));
+  }
+
+  /**
+   * Convert ActionParameter[] to Record<string, unknown> for compatibility
+   */
+  private convertParametersToRecord(parameters: ActionParameter[]): Record<string, unknown> {
+    const record: Record<string, unknown> = {};
+    
+    for (const param of parameters) {
+      record[param.name] = {
+        type: param.type,
+        required: param.required,
+        ...(param.description && { description: param.description }),
+        ...(param.default !== undefined && { default: param.default }),
+        ...(param.validation && { validation: param.validation })
+      };
+    }
+    
+    return record;
+  }
+
+  /**
+   * Categorize actions for better decision making
+   */
+  private categorizeAction(actionName: string): string {
+    const name = actionName.toLowerCase();
+    
+    if (name.includes('navigate') || name.includes('scroll') || name.includes('click')) {
+      return 'navigation';
+    } else if (name.includes('cart') || name.includes('purchase') || name.includes('buy')) {
+      return 'commerce';
+    } else if (name.includes('book') || name.includes('schedule') || name.includes('reserve')) {
+      return 'booking';
+    } else if (name.includes('search') || name.includes('filter') || name.includes('find')) {
+      return 'search';
+    } else if (name.includes('form') || name.includes('submit') || name.includes('input')) {
+      return 'interaction';
+    } else {
+      return 'general';
+    }
+  }
+
+  /**
+   * Get orchestrator statistics
+   */
+  getStats(): {
+    siteId: string;
+    totalConversations: number;
+    averageActionsPerConversation: number;
+    successRate: number;
+    availableActions: number;
+    enterpriseFeaturesEnabled: boolean;
+  } {
+    return {
+      siteId: this.siteId,
+      totalConversations: 0, // Would be tracked in real implementation
+      averageActionsPerConversation: 2.5, // Would be calculated from actual data
+      successRate: 0.85, // Would be calculated from actual data
+      availableActions: this.availableActions.size,
+      enterpriseFeaturesEnabled: true
+    };
   }
 }

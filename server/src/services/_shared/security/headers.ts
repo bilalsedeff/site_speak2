@@ -1,5 +1,24 @@
 /**
- * Security Headers - Standard security headers configuration
+ * Security Headers - Standard securi  csp: {
+    directives: {
+      'default-src': ["'self'"],
+      'script-src': ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https:'],
+      'style-src': ["'self'", "'unsafe-inline'", 'https:'],
+      'img-src': ["'self'", 'data:', 'https:'],
+      'font-src': ["'self'", 'https:'],
+      'connect-src': ["'self'", 'https:', 'wss:', 'ws:'],
+      'media-src': ["'self'", 'blob:', 'data:'],
+      'object-src': ["'none'"],
+      'frame-src': ["'self'"],
+      'worker-src': ["'self'", 'blob:'],
+      'manifest-src': ["'self'"],
+      'base-uri': ["'self'"],
+      'form-action': ["'self'"],
+      'frame-ancestors': ["'none'"],
+    },
+    ...(cfg.CSP_REPORT_URI && { reportUri: cfg.CSP_REPORT_URI }),
+    reportOnly: false,
+  },tion
  * 
  * Provides HSTS, CSP, and other security headers with
  * configuration for widget/agent domains.
@@ -7,6 +26,9 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { cfg } from '../config/index.js';
+import { createLogger } from '../telemetry/logger.js';
+
+const logger = createLogger({ service: 'security-headers' });
 
 /**
  * Security headers configuration
@@ -54,7 +76,7 @@ const DEFAULT_CONFIG: Required<SecurityHeadersConfig> = {
       'form-action': ["'self'"],
       'frame-ancestors': ["'none'"],
     },
-    reportUri: cfg.CSP_REPORT_URI,
+    reportUri: cfg.CSP_REPORT_URI || '',
     reportOnly: cfg.NODE_ENV === 'development',
   },
   referrerPolicy: 'strict-origin-when-cross-origin',
@@ -114,7 +136,7 @@ export function securityHeaders(config: SecurityHeadersConfig = {}) {
         'Content-Security-Policy-Report-Only' : 
         'Content-Security-Policy';
       
-      let cspValue = buildCSPHeader(mergedConfig.csp.directives);
+      let cspValue = buildCSPHeader(mergedConfig.csp.directives || {});
       
       if (mergedConfig.csp.reportUri) {
         cspValue += `; report-uri ${mergedConfig.csp.reportUri}`;

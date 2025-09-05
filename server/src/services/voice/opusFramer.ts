@@ -119,7 +119,7 @@ export class OpusFramer extends EventEmitter {
    * Stop the Opus framer
    */
   stop(): void {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     this.isActive = false;
     this.frameBuffer = [];
@@ -138,6 +138,20 @@ export class OpusFramer extends EventEmitter {
     }
 
     this.stats.totalFrames++;
+    
+    // Track frame timing for performance monitoring
+    const now = Date.now();
+    const timeSinceLastFrame = this._lastFrameTime > 0 ? now - this._lastFrameTime : 0;
+    this._lastFrameTime = now;
+    
+    // Log timing issues for debugging
+    if (timeSinceLastFrame > 0 && Math.abs(timeSinceLastFrame - this.frameTimeMs) > 5) {
+      logger.debug('Frame timing irregularity detected', {
+        expected: this.frameTimeMs,
+        actual: timeSinceLastFrame,
+        drift: timeSinceLastFrame - this.frameTimeMs
+      });
+    }
 
     try {
       // Validate frame
@@ -182,7 +196,7 @@ export class OpusFramer extends EventEmitter {
    * Extract complete frame from buffer
    */
   private extractCompleteFrame(): Int16Array | null {
-    if (!this.hasCompleteFrame()) return null;
+    if (!this.hasCompleteFrame()) {return null;}
 
     const frameData = new Int16Array(this.frameSize);
     let dataIndex = 0;
@@ -190,7 +204,7 @@ export class OpusFramer extends EventEmitter {
 
     while (samplesNeeded > 0 && this.frameBuffer.length > 0) {
       const buffer = this.frameBuffer[0];
-      if (!buffer) break;
+      if (!buffer) {break;}
       
       const samplesAvailable = buffer.data.length;
       const samplesToTake = Math.min(samplesNeeded, samplesAvailable);

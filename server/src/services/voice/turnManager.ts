@@ -120,7 +120,7 @@ export class TurnManager extends EventEmitter {
    * Stop the turn manager and cleanup resources
    */
   async stop(): Promise<void> {
-    if (!this.isActive) return;
+    if (!this.isActive) {return;}
 
     try {
       this.isActive = false;
@@ -454,7 +454,7 @@ export class TurnManager extends EventEmitter {
         break;
     }
     
-    if (latencies.length === 0) return 0;
+    if (latencies.length === 0) {return 0;}
     
     return latencies.reduce((sum: number, lat: number) => sum + lat, 0) / latencies.length;
   }

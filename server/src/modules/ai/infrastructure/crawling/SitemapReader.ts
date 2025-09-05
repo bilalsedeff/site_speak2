@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 import { parseStringPromise } from 'xml2js';
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../../services/_shared/telemetry/logger';
 
 const logger = createLogger({ service: 'sitemap-reader' });
 
@@ -354,7 +354,7 @@ export class SitemapReader {
    * Check if content type is XML
    */
   private isXmlContentType(contentType: string | null): boolean {
-    if (!contentType) return false;
+    if (!contentType) {return false;}
     return contentType.includes('xml') || contentType.includes('text/plain');
   }
 
@@ -385,7 +385,7 @@ export class SitemapReader {
    * Parse change frequency
    */
   private parseChangeFreq(changefreq: string | undefined): SitemapChangeFreq | undefined {
-    if (!changefreq) return undefined;
+    if (!changefreq) {return undefined;}
     
     const validFreqs: SitemapChangeFreq[] = [
       'always', 'hourly', 'daily', 'weekly', 'monthly', 'yearly', 'never'

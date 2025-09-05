@@ -37,22 +37,22 @@ export function ComponentRenderer({
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md touch-target"
             {...props}
           >
-            {props.children || 'Button'}
+            {props['children'] || 'Button'}
           </button>
         )
       
       case 'Text':
         return (
           <div className="text-foreground max-reading-width" {...props}>
-            {props.text || 'Sample text'}
+            {props['text'] || 'Sample text'}
           </div>
         )
       
       case 'Image':
         return (
           <img
-            src={props.src || 'https://via.placeholder.com/300x200'}
-            alt={props.alt || 'Sample image'}
+            src={props['src'] || 'https://via.placeholder.com/300x200'}
+            alt={props['alt'] || 'Sample image'}
             className="max-w-full h-auto rounded-lg"
             {...props}
           />
@@ -62,10 +62,10 @@ export function ComponentRenderer({
         return (
           <div className="bg-card border border-border rounded-lg p-6 shadow-sm" {...props}>
             <h3 className="font-semibold mb-2 max-heading-width">
-              {props.title || 'Card Title'}
+              {props['title'] || 'Card Title'}
             </h3>
             <p className="text-muted-foreground max-reading-width">
-              {props.description || 'Card description text'}
+              {props['description'] || 'Card description text'}
             </p>
           </div>
         )

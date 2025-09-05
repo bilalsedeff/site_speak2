@@ -79,16 +79,14 @@ export const voiceSessions = pgTable('voice_sessions', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    sessionIdIdx: index('idx_voice_sessions_session_id').on(table.sessionId),
-    siteIdx: index('idx_voice_sessions_site').on(table.siteId),
-    userIdx: index('idx_voice_sessions_user').on(table.userId),
-    statusIdx: index('idx_voice_sessions_status').on(table.status),
-    startedAtIdx: index('idx_voice_sessions_started').on(table.startedAt),
-    activeIdx: index('idx_voice_sessions_active').on(table.lastActivityAt),
-  };
-});
+}, (table) => [
+  index('idx_voice_sessions_session_id').on(table.sessionId),
+  index('idx_voice_sessions_site').on(table.siteId),
+  index('idx_voice_sessions_user').on(table.userId),
+  index('idx_voice_sessions_status').on(table.status),
+  index('idx_voice_sessions_started').on(table.startedAt),
+  index('idx_voice_sessions_active').on(table.lastActivityAt),
+]);
 
 export const voiceInteractions = pgTable('voice_interactions', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -132,16 +130,14 @@ export const voiceInteractions = pgTable('voice_interactions', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    sessionIdx: index('idx_voice_interactions_session').on(table.sessionId),
-    turnIdIdx: index('idx_voice_interactions_turn_id').on(table.turnId),
-    typeIdx: index('idx_voice_interactions_type').on(table.type),
-    statusIdx: index('idx_voice_interactions_status').on(table.status),
-    intentIdx: index('idx_voice_interactions_intent').on(table.detectedIntent),
-    receivedAtIdx: index('idx_voice_interactions_received').on(table.receivedAt),
-  };
-});
+}, (table) => [
+  index('idx_voice_interactions_session').on(table.sessionId),
+  index('idx_voice_interactions_turn_id').on(table.turnId),
+  index('idx_voice_interactions_type').on(table.type),
+  index('idx_voice_interactions_status').on(table.status),
+  index('idx_voice_interactions_intent').on(table.detectedIntent),
+  index('idx_voice_interactions_received').on(table.receivedAt),
+]);
 
 export const voiceAudioFiles = pgTable('voice_audio_files', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -178,15 +174,13 @@ export const voiceAudioFiles = pgTable('voice_audio_files', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    interactionIdx: index('idx_voice_audio_interaction').on(table.interactionId),
-    sessionIdx: index('idx_voice_audio_session').on(table.sessionId),
-    typeIdx: index('idx_voice_audio_type').on(table.audioType),
-    expiresIdx: index('idx_voice_audio_expires').on(table.expiresAt),
-    temporaryIdx: index('idx_voice_audio_temporary').on(table.isTemporary),
-  };
-});
+}, (table) => [
+  index('idx_voice_audio_interaction').on(table.interactionId),
+  index('idx_voice_audio_session').on(table.sessionId),
+  index('idx_voice_audio_type').on(table.audioType),
+  index('idx_voice_audio_expires').on(table.expiresAt),
+  index('idx_voice_audio_temporary').on(table.isTemporary),
+]);
 
 export const voiceWidgets = pgTable('voice_widgets', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -254,12 +248,10 @@ export const voiceWidgets = pgTable('voice_widgets', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_voice_widgets_site').on(table.siteId),
-    enabledIdx: index('idx_voice_widgets_enabled').on(table.enabled),
-  };
-});
+}, (table) => [
+  index('idx_voice_widgets_site').on(table.siteId),
+  index('idx_voice_widgets_enabled').on(table.enabled),
+]);
 
 // Zod schemas for validation
 export const insertVoiceSessionSchema = createInsertSchema(voiceSessions, {

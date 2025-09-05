@@ -6,7 +6,7 @@ This directory contains infrastructure adapters for the SiteSpeak publishing sys
 
 The adapters follow the hexagonal architecture pattern, providing uniform interfaces over different cloud providers while maintaining the ability to swap implementations without affecting business logic.
 
-```
+```plaintext
 ┌─────────────────────────────────────────────────┐
 │            Publishing Pipeline                  │
 └─────────────────┬───────────────┬───────────────┘
@@ -194,7 +194,7 @@ MINIO_REGION=us-east-1
 
 The `CDNProvider` interface enables precise cache control and purging across different CDN providers.
 
-### Supported Providers
+### Supported Providers of CDNProvider
 
 | Provider | Purge Methods | Special Features |
 |----------|---------------|------------------|
@@ -202,16 +202,16 @@ The `CDNProvider` interface enables precise cache control and purging across dif
 | **Fastly** | URL, Surrogate Key, All | VCL, real-time analytics |
 | **Generic** | URL, Prefix | Custom HTTP endpoints |
 
-### Key Features
+### Key Features of CDNProvider
 
 - **Precise Purging**: URL, tag, and prefix-based cache invalidation
 - **Preview URLs**: Deployment-specific testing URLs
 - **Performance**: Sub-minute cache purging globally
 - **Flexibility**: Support for custom CDN providers
 
-### API Reference
+### API Reference of CDNProvider
 
-#### Core Methods
+#### Core Methods of CDNProvider
 
 ```typescript
 interface CDNProvider {
@@ -254,7 +254,7 @@ interface PurgeResult {
 }
 ```
 
-### Usage Examples
+### Usage Examples of CDNProvider
 
 #### Cache Invalidation
 
@@ -312,7 +312,7 @@ await cdn.setCachingRules([
 ]);
 ```
 
-### Provider-Specific Configuration
+### Provider-Specific Configuration of CDNProvider
 
 #### Cloudflare
 
@@ -324,6 +324,7 @@ CDN_PURGE_TIMEOUT=30000
 ```
 
 **Required Permissions:**
+
 - `Zone:Cache Purge`
 - `Zone:Zone Settings:Read`
 
@@ -508,16 +509,19 @@ Recommended monitoring setup:
 ### Common Issues
 
 **"Access denied" errors:**
+
 - Verify IAM permissions include required bucket/zone access
 - Check credential format and expiration
 - Validate region/endpoint configuration
 
 **"Rate limit exceeded":**
+
 - Implement exponential backoff with jitter
 - Consider request batching
 - Contact provider for limit increases
 
 **"Presigned URL failures":**
+
 - Verify clock synchronization (AWS requirement)
 - Check URL expiration times
 - Validate request signatures
@@ -533,6 +537,7 @@ DEBUG=sitespeak:artifact-store,sitespeak:cdn-provider npm run dev
 ### Provider Status Pages
 
 Monitor provider health:
+
 - [AWS Service Health](https://status.aws.amazon.com/)
 - [Cloudflare Status](https://www.cloudflarestatus.com/)
 - [Fastly Status](https://status.fastly.com/)

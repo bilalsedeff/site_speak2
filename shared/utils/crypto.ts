@@ -21,7 +21,7 @@ export function generateSlug(text: string): string {
 
 export function hashCode(str: string): number {
   let hash = 0;
-  if (str.length === 0) return hash;
+  if (str.length === 0) {return hash;}
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
@@ -32,7 +32,7 @@ export function hashCode(str: string): number {
 
 export function maskEmail(email: string): string {
   const [localPart, domain] = email.split('@');
-  if (!localPart || !domain) return email;
+  if (!localPart || !domain) {return email;}
   
   const maskedLocal = localPart.length > 2 
     ? localPart[0] + '*'.repeat(localPart.length - 2) + localPart[localPart.length - 1]
@@ -42,6 +42,6 @@ export function maskEmail(email: string): string {
 }
 
 export function maskPhone(phone: string): string {
-  if (phone.length < 4) return phone;
+  if (phone.length < 4) {return phone;}
   return '*'.repeat(phone.length - 4) + phone.slice(-4);
 }

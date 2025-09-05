@@ -1,5 +1,5 @@
 import fetch, { Response } from 'node-fetch';
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../../services/_shared/telemetry/logger';
 
 const logger = createLogger({ service: 'conditional-fetcher' });
 
@@ -45,15 +45,26 @@ export class ConditionalFetcher {
         headers['If-Modified-Since'] = storedInfo.lastModified.toUTCString();
       }
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-        timeout: options.timeout || 30000,
-        follow: options.followRedirects !== false ? 10 : 0,
-        compress: true
-      });
+      // Setup timeout using AbortController
+      const abortController = new AbortController();
+      const timeoutMs = options.timeout || 30000;
+      const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
-      return await this.processResponse(url, response, storedInfo);
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers,
+          signal: abortController.signal,
+          follow: options.followRedirects !== false ? 10 : 0,
+          compress: true
+        });
+
+        clearTimeout(timeoutId);
+        return await this.processResponse(url, response, storedInfo);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
+      }
 
     } catch (error) {
       logger.error('Conditional fetch failed', {
@@ -101,18 +112,21 @@ export class ConditionalFetcher {
       // Process results
       for (let j = 0; j < batchResults.length; j++) {
         const result = batchResults[j];
-        if (result.status === 'fulfilled') {
+        if (result && result.status === 'fulfilled') {
           results.push(result.value);
-        } else {
-          results.push({
-            url: batch[j].url,
-            status: 'error',
-            statusCode: 0,
-            content: null,
-            contentChanged: false,
-            error: result.reason?.message || 'Batch fetch failed',
-            fetchedAt: new Date()
-          });
+        } else if (result && result.status === 'rejected') {
+          const request = batch[j];
+          if (request) {
+            results.push({
+              url: request.url,
+              status: 'error',
+              statusCode: 0,
+              content: null,
+              contentChanged: false,
+              error: result.reason?.message || 'Batch fetch failed',
+              fetchedAt: new Date()
+            });
+          }
         }
       }
     }
@@ -148,60 +162,74 @@ export class ConditionalFetcher {
         headers['If-Modified-Since'] = storedInfo.lastModified.toUTCString();
       }
 
-      const response = await fetch(url, {
-        method: 'HEAD',
-        headers,
-        timeout: 10000
-      });
+      // Setup timeout using AbortController
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), 10000);
 
-      const currentEtag = response.headers.get('etag');
-      const currentLastModified = response.headers.get('last-modified');
+      try {
+        const response = await fetch(url, {
+          method: 'HEAD',
+          headers,
+          signal: abortController.signal
+        });
 
-      if (response.status === 304) {
-        return {
-          url,
-          modified: false,
-          reason: 'not-modified-header',
-          statusCode: 304
-        };
-      }
+        clearTimeout(timeoutId);
 
-      // Check if ETags differ
-      if (storedInfo?.etag && currentEtag && storedInfo.etag !== currentEtag) {
-        return {
-          url,
-          modified: true,
-          reason: 'etag-changed',
-          statusCode: response.status,
-          newEtag: currentEtag,
-          newLastModified: currentLastModified ? new Date(currentLastModified) : undefined
-        };
-      }
+        const currentEtag = response.headers.get('etag');
+        const currentLastModified = response.headers.get('last-modified');
 
-      // Check if Last-Modified differs
-      if (storedInfo?.lastModified && currentLastModified) {
-        const newLastModified = new Date(currentLastModified);
-        if (newLastModified > storedInfo.lastModified) {
+        if (response.status === 304) {
           return {
             url,
-            modified: true,
-            reason: 'last-modified-changed',
-            statusCode: response.status,
-            newEtag: currentEtag,
-            newLastModified
+            modified: false,
+            reason: 'not-modified-header',
+            statusCode: 304
           };
         }
-      }
 
-      // If we get here and response is successful, assume modified if no stored info
-      return {
-        url,
-        modified: !storedInfo,
-        reason: storedInfo ? 'headers-unchanged' : 'no-stored-info',
-        statusCode: response.status,
-        newEtag: currentEtag,
-        newLastModified: currentLastModified ? new Date(currentLastModified) : undefined
-      };
+        // Check if ETags differ
+        if (storedInfo?.etag && currentEtag && storedInfo.etag !== currentEtag) {
+          const result: ModificationCheckResult = {
+            url,
+            modified: true,
+            reason: 'etag-changed',
+            statusCode: response.status
+          };
+          if (currentEtag) { result.newEtag = currentEtag; }
+          if (currentLastModified) { result.newLastModified = new Date(currentLastModified); }
+          return result;
+        }
+
+        // Check if Last-Modified differs
+        if (storedInfo?.lastModified && currentLastModified) {
+          const newLastModified = new Date(currentLastModified);
+          if (newLastModified > storedInfo.lastModified) {
+            const result: ModificationCheckResult = {
+              url,
+              modified: true,
+              reason: 'last-modified-changed',
+              statusCode: response.status,
+              newLastModified
+            };
+            if (currentEtag) { result.newEtag = currentEtag; }
+            return result;
+          }
+        }
+
+        // If we get here and response is successful, assume modified if no stored info
+        const result: ModificationCheckResult = {
+          url,
+          modified: !storedInfo,
+          reason: storedInfo ? 'headers-unchanged' : 'no-stored-info',
+          statusCode: response.status
+        };
+        if (currentEtag) { result.newEtag = currentEtag; }
+        if (currentLastModified) { result.newLastModified = new Date(currentLastModified); }
+        return result;
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
+      }
 
     } catch (error) {
       return {
@@ -222,14 +250,19 @@ export class ConditionalFetcher {
     const cacheControl = response.headers.get('cache-control');
     const expires = response.headers.get('expires');
 
-    return {
-      etag: etag || undefined,
-      lastModified: lastModified ? new Date(lastModified) : undefined,
-      cacheControl: cacheControl || undefined,
-      expires: expires ? new Date(expires) : undefined,
-      maxAge: this.parseCacheControlMaxAge(cacheControl),
+    const result: CachingInfo = {
       extractedAt: new Date()
     };
+
+    if (etag) { result.etag = etag; }
+    if (lastModified) { result.lastModified = new Date(lastModified); }
+    if (cacheControl) { result.cacheControl = cacheControl; }
+    if (expires) { result.expires = new Date(expires); }
+    
+    const maxAge = this.parseCacheControlMaxAge(cacheControl || undefined);
+    if (maxAge !== undefined) { result.maxAge = maxAge; }
+
+    return result;
   }
 
   /**
@@ -317,10 +350,10 @@ export class ConditionalFetcher {
    * Parse Cache-Control max-age directive
    */
   private parseCacheControlMaxAge(cacheControl?: string): number | undefined {
-    if (!cacheControl) return undefined;
+    if (!cacheControl) { return undefined; }
     
     const maxAgeMatch = cacheControl.match(/max-age=(\d+)/i);
-    return maxAgeMatch ? parseInt(maxAgeMatch[1], 10) : undefined;
+    return maxAgeMatch && maxAgeMatch[1] ? parseInt(maxAgeMatch[1], 10) : undefined;
   }
 
   /**

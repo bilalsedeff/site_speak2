@@ -34,12 +34,14 @@ interface SlotFrame {
 Handles time expressions with context awareness:
 
 **Supported Patterns:**
+
 - Relative: "this summer", "next week", "tonight"  
 - Absolute: "July 12th", "2024-08-15"
 - Ranges: "this weekend", "next month"
 - Seasonal: "winter holidays", "spring break"
 
 **Hemisphere Detection:**
+
 ```typescript
 // "this summer" interpretation
 Northern Hemisphere: June-August
@@ -48,6 +50,7 @@ Auto-detected from user location or site settings
 ```
 
 **Examples:**
+
 ```typescript
 extractTemporalSlots("this summer") 
 // → { startDate: "2025-06-21", endDate: "2025-09-22", season: "summer" }
@@ -61,12 +64,14 @@ extractTemporalSlots("tonight at 8pm")
 Processes location and proximity information:
 
 **Supported Patterns:**
+
 - Proximity: "near me", "within 10 miles", "close to downtown"
 - Features: "by the sea", "waterfront", "beach venue"
 - Addresses: "123 Main St", "New York City"
 - Landmarks: "near Central Park", "close to the airport"
 
 **Feature Matching:**
+
 ```typescript
 extractSpatialSlots("by the sea near me")
 // → { 
@@ -81,12 +86,14 @@ extractSpatialSlots("by the sea near me")
 Extracts numbers, quantities, and measurements:
 
 **Patterns:**
+
 - Cardinal: "2 tickets", "four people", "a dozen roses"
-- Ordinal: "first choice", "second option" 
+- Ordinal: "first choice", "second option"
 - Ranges: "5-10 people", "between 2 and 4 tickets"
 - Measurements: "under $50", "more than 3 hours"
 
 **Examples:**
+
 ```typescript
 extractQuantitativeSlots("2 VIP tickets for 4 people")
 // → {
@@ -100,12 +107,14 @@ extractQuantitativeSlots("2 VIP tickets for 4 people")
 Handles taxonomic classifications:
 
 **Domain-Specific Taxonomies:**
+
 - **Music**: genres, artists, venues, instruments
 - **Food**: cuisines, dietary restrictions, meal types
 - **Events**: categories, formats, audiences
 - **Travel**: accommodation types, transportation, activities
 
 **Fuzzy Matching:**
+
 ```typescript
 extractCategoricalSlots("EDM and house music")
 // → {

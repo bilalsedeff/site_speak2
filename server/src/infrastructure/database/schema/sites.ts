@@ -69,17 +69,15 @@ export const sites = pgTable('sites', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-}, (table) => {
-  return {
-    tenantIdx: index('idx_sites_tenant').on(table.tenantId),
-    userIdx: index('idx_sites_user').on(table.userId),
-    statusIdx: index('idx_sites_status').on(table.status),
-    slugIdx: index('idx_sites_slug').on(table.slug),
-    domainIdx: index('idx_sites_domain').on(table.domain),
-    publishedIdx: index('idx_sites_published').on(table.publishedAt),
-    categoryIdx: index('idx_sites_category').on(table.category),
-  };
-});
+}, (table) => [
+  index('idx_sites_tenant').on(table.tenantId),
+  index('idx_sites_user').on(table.userId),
+  index('idx_sites_status').on(table.status),
+  index('idx_sites_slug').on(table.slug),
+  index('idx_sites_domain').on(table.domain),
+  index('idx_sites_published').on(table.publishedAt),
+  index('idx_sites_category').on(table.category),
+]);
 
 export const siteManifests = pgTable('site_manifests', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -110,13 +108,11 @@ export const siteManifests = pgTable('site_manifests', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_site_manifests_site').on(table.siteId),
-    validIdx: index('idx_site_manifests_valid').on(table.isValid),
-    scoreIdx: index('idx_site_manifests_score').on(table.crawlabilityScore),
-  };
-});
+}, (table) => [
+  index('idx_site_manifests_site').on(table.siteId),
+  index('idx_site_manifests_valid').on(table.isValid),
+  index('idx_site_manifests_score').on(table.crawlabilityScore),
+]);
 
 export const siteDeployments = pgTable('site_deployments', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -152,14 +148,12 @@ export const siteDeployments = pgTable('site_deployments', {
   deploymentConfig: jsonb('deployment_config').default({}),
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_site_deployments_site').on(table.siteId),
-    statusIdx: index('idx_site_deployments_status').on(table.buildStatus),
-    environmentIdx: index('idx_site_deployments_env').on(table.environment),
-    versionIdx: index('idx_site_deployments_version').on(table.version),
-  };
-});
+}, (table) => [
+  index('idx_site_deployments_site').on(table.siteId),
+  index('idx_site_deployments_status').on(table.buildStatus),
+  index('idx_site_deployments_env').on(table.environment),
+  index('idx_site_deployments_version').on(table.version),
+]);
 
 export const siteTemplates = pgTable('site_templates', {
   id: varchar('id', { length: 50 }).primaryKey(), // e.g., 'modern-business-v1'
@@ -199,13 +193,11 @@ export const siteTemplates = pgTable('site_templates', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    categoryIdx: index('idx_site_templates_category').on(table.category),
-    activeIdx: index('idx_site_templates_active').on(table.isActive),
-    popularIdx: index('idx_site_templates_popular').on(table.usageCount),
-  };
-});
+}, (table) => [
+  index('idx_site_templates_category').on(table.category),
+  index('idx_site_templates_active').on(table.isActive),
+  index('idx_site_templates_popular').on(table.usageCount),
+]);
 
 // Zod schemas for validation
 export const insertSiteSchema = createInsertSchema(sites, {

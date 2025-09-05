@@ -168,8 +168,8 @@ export class ResourceBudgetsService {
       remaining: Math.max(0, remaining),
       budget: budgetLimit,
       overageAllowed,
-      estimatedCost,
-      resetTime,
+      ...(estimatedCost !== undefined ? { estimatedCost } : {}),
+      ...(resetTime ? { resetTime } : {}),
     };
   }
 
@@ -262,7 +262,7 @@ export class ResourceBudgetsService {
       recorded: true,
       newTotal,
       remaining: Math.max(0, remaining),
-      warning,
+      ...(warning ? { warning } : {}),
     };
   }
 

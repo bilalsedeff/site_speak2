@@ -46,13 +46,11 @@ export const knowledgeBases = pgTable('knowledge_bases', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_knowledge_bases_site').on(table.siteId),
-    statusIdx: index('idx_knowledge_bases_status').on(table.status),
-    lastCrawledIdx: index('idx_knowledge_bases_crawled').on(table.lastCrawledAt),
-  };
-});
+}, (table) => [
+  index('idx_knowledge_bases_site').on(table.siteId),
+  index('idx_knowledge_bases_status').on(table.status),
+  index('idx_knowledge_bases_crawled').on(table.lastCrawledAt),
+]);
 
 export const knowledgeChunks = pgTable('knowledge_chunks', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -102,22 +100,20 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    kbIdx: index('idx_knowledge_chunks_kb').on(table.knowledgeBaseId),
-    urlHashIdx: index('idx_knowledge_chunks_url_hash').on(table.urlHash),
-    contentHashIdx: index('idx_knowledge_chunks_content_hash').on(table.contentHash),
-    embeddingIdx: index('idx_knowledge_chunks_embedding').using('hnsw', table.embedding.op('vector_cosine_ops')),
-    parentIdx: index('idx_knowledge_chunks_parent').on(table.parentChunkId),
-    languageIdx: index('idx_knowledge_chunks_language').on(table.language),
-    contentTypeIdx: index('idx_knowledge_chunks_content_type').on(table.contentType),
-    pageTypeIdx: index('idx_knowledge_chunks_page_type').on(table.pageType),
-    importanceIdx: index('idx_knowledge_chunks_importance').on(table.importance),
-    crawledAtIdx: index('idx_knowledge_chunks_crawled').on(table.crawledAt),
-    // Compound index for deduplication
-    uniqueContentIdx: index('idx_knowledge_chunks_unique').on(table.knowledgeBaseId, table.contentHash),
-  };
-});
+}, (table) => [
+  index('idx_knowledge_chunks_kb').on(table.knowledgeBaseId),
+  index('idx_knowledge_chunks_url_hash').on(table.urlHash),
+  index('idx_knowledge_chunks_content_hash').on(table.contentHash),
+  index('idx_knowledge_chunks_embedding').using('hnsw', table.embedding.op('vector_cosine_ops')),
+  index('idx_knowledge_chunks_parent').on(table.parentChunkId),
+  index('idx_knowledge_chunks_language').on(table.language),
+  index('idx_knowledge_chunks_content_type').on(table.contentType),
+  index('idx_knowledge_chunks_page_type').on(table.pageType),
+  index('idx_knowledge_chunks_importance').on(table.importance),
+  index('idx_knowledge_chunks_crawled').on(table.crawledAt),
+  // Compound index for deduplication
+  index('idx_knowledge_chunks_unique').on(table.knowledgeBaseId, table.contentHash),
+]);
 
 export const crawlSessions = pgTable('crawl_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -160,14 +156,12 @@ export const crawlSessions = pgTable('crawl_sessions', {
   summary: jsonb('summary').default({}),
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    kbIdx: index('idx_crawl_sessions_kb').on(table.knowledgeBaseId),
-    statusIdx: index('idx_crawl_sessions_status').on(table.status),
-    typeIdx: index('idx_crawl_sessions_type').on(table.sessionType),
-    startedAtIdx: index('idx_crawl_sessions_started').on(table.startedAt),
-  };
-});
+}, (table) => [
+  index('idx_crawl_sessions_kb').on(table.knowledgeBaseId),
+  index('idx_crawl_sessions_status').on(table.status),
+  index('idx_crawl_sessions_type').on(table.sessionType),
+  index('idx_crawl_sessions_started').on(table.startedAt),
+]);
 
 export const crawlPages = pgTable('crawl_pages', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -217,14 +211,12 @@ export const crawlPages = pgTable('crawl_pages', {
   processedAt: timestamp('processed_at', { withTimezone: true }),
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    sessionIdx: index('idx_crawl_pages_session').on(table.crawlSessionId),
-    urlHashIdx: index('idx_crawl_pages_url_hash').on(table.urlHash),
-    statusIdx: index('idx_crawl_pages_status').on(table.status),
-    crawledAtIdx: index('idx_crawl_pages_crawled').on(table.crawledAt),
-  };
-});
+}, (table) => [
+  index('idx_crawl_pages_session').on(table.crawlSessionId),
+  index('idx_crawl_pages_url_hash').on(table.urlHash),
+  index('idx_crawl_pages_status').on(table.status),
+  index('idx_crawl_pages_crawled').on(table.crawledAt),
+]);
 
 // Zod schemas for validation
 export const insertKnowledgeBaseSchema = createInsertSchema(knowledgeBases, {

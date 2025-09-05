@@ -168,7 +168,7 @@ export class DeltaDetectionService {
    * Calculate overall confidence score from individual reasons
    */
   private calculateOverallConfidence(reasons: ChangeReason[]): number {
-    if (reasons.length === 0) return 0;
+    if (reasons.length === 0) {return 0;}
 
     // Weight different types of evidence
     let totalWeight = 0;

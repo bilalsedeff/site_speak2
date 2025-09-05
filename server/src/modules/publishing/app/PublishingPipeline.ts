@@ -12,7 +12,7 @@
  * - Idempotent state transitions
  */
 
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../services/_shared/telemetry/logger';
 import { EventBus } from '../../../services/_shared/events/eventBus';
 import { metricsService } from '../../../infrastructure/monitoring';
 import { siteContractService, ContractGenerationResult } from '../../sites/application/services/SiteContractService';

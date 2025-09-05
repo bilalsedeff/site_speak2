@@ -3,7 +3,8 @@ import { createLogger } from '../../../../shared/utils.js';
 import { parseString as parseXML } from 'xml2js';
 import * as cheerio from 'cheerio';
 import { knowledgeBaseService } from './KnowledgeBaseService.js';
-import type { KnowledgeChunk } from '../../domain/entities/KnowledgeBase.js';
+// TODO: Remove if KnowledgeChunk types are not needed for future web crawler features
+// import type { KnowledgeChunk } from '../../domain/entities/KnowledgeBase.js';
 
 const logger = createLogger({ service: 'web-crawler' });
 
@@ -39,6 +40,7 @@ export interface CrawlOptions {
   blockResources: Array<'image' | 'font' | 'media' | 'stylesheet' | 'analytics'>;
   respectRobots: boolean;
   useConditionalRequests: boolean;
+  skipMinimalContent?: boolean;
   userAgent?: string;
   headers?: Record<string, string>;
 }
@@ -114,7 +116,7 @@ export class WebCrawlerService {
    * Start a new crawling session
    */
   async startCrawl(request: CrawlRequest): Promise<string> {
-    const sessionId = `crawl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `crawl_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     
     const session: CrawlSession = {
       sessionId,
@@ -551,7 +553,7 @@ export class WebCrawlerService {
       if (etag || lastModified) {
         this.etagCache.set(entry.url, {
           etag: etag || '',
-          lastModified,
+          ...(lastModified ? { lastModified } : {}),
           timestamp: Date.now()
         });
       }
@@ -559,14 +561,18 @@ export class WebCrawlerService {
       // Calculate DOM metrics
       const domMetrics = await this.calculateDomMetrics(page, html, loadMs);
 
+      const redirectedUrl = response.url() !== entry.url ? response.url() : null;
       const result: CrawlResult = {
         url: entry.url,
         status: response.status(),
-        redirectedTo: response.url() !== entry.url ? response.url() : undefined,
+        ...(redirectedUrl ? { redirectedTo: redirectedUrl } : {}),
         finalUrl: response.url(),
         html,
         domMetrics,
-        http: { etag, lastModified },
+        http: { 
+          ...(etag ? { etag } : {}),
+          ...(lastModified ? { lastModified } : {})
+        },
         extracted
       };
 
@@ -580,7 +586,8 @@ export class WebCrawlerService {
   /**
    * Extract structured metadata from page
    */
-  private async extractPageMetadata(page: Page, html: string): Promise<CrawlResult['extracted']> {
+  private async extractPageMetadata(_page: Page, html: string): Promise<CrawlResult['extracted']> {
+    // TODO: Use _page for JavaScript-rendered content extraction if needed
     const $ = cheerio.load(html);
     
     // Extract JSON-LD (highest priority for structured data)
@@ -618,9 +625,9 @@ export class WebCrawlerService {
     return {
       jsonld,
       meta,
-      title: title || undefined,
-      description: description || undefined,
-      canonical: canonical || undefined
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
+      ...(canonical ? { canonical } : {})
     };
   }
 
@@ -648,15 +655,19 @@ export class WebCrawlerService {
       // Clean content and remove PII/secrets
       const cleanedContent = this.cleanAndScrubContent(result.html, result.extracted);
       
-      if (cleanedContent.length < 100) {
+      // Check content length based on options
+      const minContentLength = options.skipMinimalContent ? 100 : 50;
+      if (cleanedContent.length < minContentLength) {
         logger.debug('Skipping page with insufficient content', { 
           url: result.url,
-          contentLength: cleanedContent.length 
+          contentLength: cleanedContent.length,
+          siteId,
+          tenantId
         });
         return;
       }
 
-      // Process into chunks
+      // Process into chunks with site context
       const chunks = await knowledgeBaseService.processTextIntoChunks(
         cleanedContent,
         {
@@ -664,15 +675,7 @@ export class WebCrawlerService {
           title: result.extracted.title || 'Untitled',
           contentType: 'html',
           section: 'main',
-          lastModified: new Date(),
-          hash: this.contentHashService.computeContentHash(cleanedContent).hash,
-          metadata: {
-            status: result.status,
-            loadMs: result.domMetrics.loadMs,
-            nodes: result.domMetrics.nodes,
-            jsonld: result.extracted.jsonld,
-            meta: result.extracted.meta
-          }
+          lastModified: new Date()
         },
         {
           maxChunkSize: 800, // Token-aware chunking as per document
@@ -684,13 +687,21 @@ export class WebCrawlerService {
       // Store chunks (this would integrate with repository layer)
       logger.info('Processed page into chunks', {
         url: result.url,
+        siteId,
+        tenantId,
         chunksCount: chunks.length,
         contentLength: cleanedContent.length,
-        jsonldCount: result.extracted.jsonld.length
+        jsonldCount: result.extracted.jsonld.length,
+        useOptions: options.skipMinimalContent ? 'minimal content skipped' : 'all content processed'
       });
 
     } catch (error) {
-      logger.error('Failed to process page result', { url: result.url, error });
+      logger.error('Failed to process page result', { 
+        url: result.url, 
+        siteId, 
+        tenantId, 
+        error 
+      });
       throw error;
     }
   }

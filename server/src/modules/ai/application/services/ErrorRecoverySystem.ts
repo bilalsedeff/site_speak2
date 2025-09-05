@@ -1,5 +1,6 @@
 import { createLogger } from '../../../../shared/utils.js';
-import type { SessionStateType } from '../../domain/LangGraphOrchestrator';
+// TODO: Import SessionStateType when implementing LangGraph session-aware error recovery
+// import type { SessionStateType } from '../../domain/LangGraphOrchestrator';
 
 const logger = createLogger({ service: 'error-recovery' });
 
@@ -50,7 +51,7 @@ export interface ErrorPattern {
 export class ErrorRecoverySystem {
   private errorHistory: Map<string, ErrorContext[]> = new Map();
   private errorPatterns: Map<string, ErrorPattern> = new Map();
-  private recoveryStrategies: Map<string, RecoveryStrategy[]> = new Map();
+  private _recoveryStrategies: Map<string, RecoveryStrategy[]> = new Map(); // TODO: Implement recovery strategy lookup
   private learningThreshold = 3; // Minimum occurrences to identify a pattern
 
   constructor() {
@@ -104,7 +105,7 @@ export class ErrorRecoverySystem {
 
     return {
       errorPattern,
-      recoveryStrategies: strategies,
+      recoveryStrategies: strategies, // TODO: Store in _recoveryStrategies map for lookup
       shouldRetry,
       estimatedRecoveryTime,
     };
@@ -384,6 +385,8 @@ export class ErrorRecoverySystem {
     if (strategies.length === 0) {return 0;}
 
     const topStrategy = strategies[0];
+    if (!topStrategy) {return 0;}
+    
     const retryAction = topStrategy.actions.find(action => action.type === 'retry');
     
     if (retryAction) {

@@ -205,7 +205,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
    * Disconnect from OpenAI Realtime API
    */
   async disconnect(): Promise<void> {
-    if (!this.isConnected || !this.ws) return;
+    if (!this.isConnected || !this.ws) {return;}
 
     this.isConnected = false;
     this.ws.close(1000, 'Client disconnect');
@@ -358,7 +358,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
    * Cancel ongoing response
    */
   async cancelResponse(): Promise<void> {
-    if (!this.isConnected || !this.ws) return;
+    if (!this.isConnected || !this.ws) {return;}
 
     const message = { type: 'response.cancel' };
     this.sendMessage(message);
@@ -398,7 +398,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
           break;
 
         case 'conversation.item.input_audio_transcription.completed':
-          const transcriptionLatency = this.audioBufferStart ? 
+          { const transcriptionLatency = this.audioBufferStart ? 
             Date.now() - this.audioBufferStart : 0;
           this.metrics.transcriptionLatency.push(transcriptionLatency);
           delete this.audioBufferStart;
@@ -408,17 +408,17 @@ export class OpenAIRealtimeClient extends EventEmitter {
             transcript: (message as any).transcript,
             latency: transcriptionLatency,
           });
-          break;
+          break; }
 
         case 'response.audio.delta':
-          const audioData = Buffer.from((message as any).delta, 'base64');
+          { const audioData = Buffer.from((message as any).delta, 'base64');
           this.metrics.audioBytesReceived += audioData.length;
           
           this.emit('audio_delta', {
             delta: audioData,
             timestamp: Date.now(),
           });
-          break;
+          break; }
 
         case 'response.audio_transcript.delta':
           this.emit('transcript_delta', {
@@ -554,9 +554,8 @@ export class OpenAIRealtimeClient extends EventEmitter {
         const latency = Date.now() - request.timestamp;
         this.metrics.firstTokenLatency.push(latency);
         this.pendingRequests.delete(requestId);
+        logger.debug('Response latency tracked', { latency });
       }
-
-      logger.debug('Response latency tracked', { latency });
     }
   }
 

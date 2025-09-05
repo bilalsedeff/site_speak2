@@ -72,6 +72,20 @@ export interface ActionContext {
   timestamp: Date;
 }
 
+export interface ActionParameter {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  required?: boolean;
+  description?: string;
+  default?: unknown;
+  enum?: string[];
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+  };
+}
+
 /**
  * Widget Action Bridge Service
  */
@@ -109,13 +123,13 @@ export class WidgetActionBridge {
       id: action.id,
       name: action.name,
       description: action.description,
-      selector: action.selector,
+      selector: action.selector || '',
       parameters: this.convertParameters(action.parameters),
-      method: action.method,
-      endpoint: action.endpoint,
-      confirmation: action.confirmation,
-      riskLevel: action.riskLevel,
-      category: action.category,
+      ...(action.method ? { method: action.method } : {}),
+      ...(action.endpoint ? { endpoint: action.endpoint } : {}),
+      confirmation: action.confirmation || false,
+      riskLevel: action.riskLevel || 'medium',
+      category: action.category || 'general',
     }));
 
     const config: BridgeConfig = {
@@ -672,8 +686,9 @@ export class WidgetActionBridge {
     return converted;
   }
 
-  private async executeNavigation(action: EnhancedSiteAction, args: Record<string, any>): Promise<any> {
+  private async executeNavigation(action: EnhancedSiteAction, _args: Record<string, any>): Promise<any> {
     // This would typically send navigation commands to the browser
+    // TODO: Use _args for navigation parameters like query strings, form data, etc.
     return {
       type: 'navigation',
       action: action.name,
@@ -685,9 +700,10 @@ export class WidgetActionBridge {
   private async executeFormAction(
     action: EnhancedSiteAction,
     args: Record<string, any>,
-    context: ActionContext
+    _context: ActionContext
   ): Promise<any> {
     // This would handle form submissions
+    // TODO: Use _context for user authentication and session validation
     return {
       type: 'form_submission',
       action: action.name,
@@ -696,7 +712,7 @@ export class WidgetActionBridge {
     };
   }
 
-  private async executeButtonAction(action: EnhancedSiteAction, args: Record<string, any>): Promise<any> {
+  private async executeButtonAction(action: EnhancedSiteAction, _args: Record<string, any>): Promise<any> {
     // This would handle button clicks
     return {
       type: 'button_click',
@@ -708,8 +724,8 @@ export class WidgetActionBridge {
 
   private async executeApiAction(
     action: EnhancedSiteAction,
-    args: Record<string, any>,
-    context: ActionContext
+    _args: Record<string, any>,
+    _context: ActionContext
   ): Promise<any> {
     // This would handle API calls
     return {
@@ -755,7 +771,4 @@ export class WidgetActionBridge {
  */
 export const widgetActionBridge = new WidgetActionBridge();
 
-/**
- * Export types
- */
-export type { BridgeConfig, ActionDef, WidgetMessage, ActionContext };
+// Types are exported at their declaration sites above

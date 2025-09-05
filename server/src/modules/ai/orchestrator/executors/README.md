@@ -46,17 +46,20 @@ Automatically categorizes function calls by potential impact:
 
 #### Risk Levels
 
-**Low Risk (Auto-execute)**
+##### **Low Risk (Auto-execute)**
+
 - Navigation actions: `navigate_to_page`, `scroll_to_element`
 - Read operations: `get_page_content`, `search_events`
 - UI interactions: `highlight_element`, `show_tooltip`
 
-**Medium Risk (Conditional confirmation)**
+##### **Medium Risk (Conditional confirmation)**
+
 - Form submissions: `submit_contact_form`, `update_profile`
 - Data modifications: `save_preferences`, `add_to_wishlist`
 - Non-financial transactions: `reserve_temporary_hold`
 
-**High Risk (Always require confirmation)**
+##### **High Risk (Always require confirmation)**
+
 - Financial transactions: `purchase_tickets`, `process_payment`
 - Irreversible actions: `delete_account`, `cancel_booking`
 - External API calls: `send_email`, `book_appointment`

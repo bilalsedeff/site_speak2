@@ -20,7 +20,7 @@ We use **LangGraph (JS/TS)** for stateful graphs with **MemorySaver** checkpoint
 
 ```plaintext
 /modules/ai/application/services/
-  EnhancedLangGraphOrchestrator.ts         # ✅ PRODUCTION - Complete stateful agent
+  LangGraphOrchestrator.ts         # ✅ PRODUCTION - Complete stateful agent
   ErrorRecoverySystem.ts                   # ✅ PRODUCTION - Learning error recovery
   ResourceBudgets.ts                       # ✅ PRODUCTION - Cost/quota management
   SecurityGuards.ts                        # ✅ PRODUCTION - OWASP security validation
@@ -38,7 +38,7 @@ We use **LangGraph (JS/TS)** for stateful graphs with **MemorySaver** checkpoint
 
 ---
 
-## 1) `EnhancedLangGraphOrchestrator.ts` ✅ PRODUCTION READY
+## 1) `LangGraphOrchestrator.ts` ✅ PRODUCTION READY
 
 ### *Complete stateful agent with comprehensive features*
 
@@ -58,7 +58,7 @@ We use **LangGraph (JS/TS)** for stateful graphs with **MemorySaver** checkpoint
 **ARCHITECTURE:**
 
 ```typescript
-export class EnhancedLangGraphOrchestrator {
+export class LangGraphOrchestrator {
   private graph: CompiledStateGraph<typeof SessionState.State>;
   private performanceMetrics: {
     totalProcessingTime: number;
@@ -297,11 +297,11 @@ export class UniversalAIAssistantService {
 
 ```typescript
 export class AIOrchestrationService {
-  private orchestrators: Map<string, EnhancedLangGraphOrchestrator> = new Map();
+  private orchestrators: Map<string, LangGraphOrchestrator> = new Map();
   
   async processConversation(request: ConversationRequest): Promise<ConversationResponse>;
   async *streamConversation(request: ConversationRequest): AsyncGenerator<StreamUpdate>;
-  private async getOrchestrator(siteId: string): Promise<EnhancedLangGraphOrchestrator>;
+  private async getOrchestrator(siteId: string): Promise<LangGraphOrchestrator>;
 }
 ```
 

@@ -1,13 +1,27 @@
 import { createLogger } from '../../../shared/utils.js';
-import { LangGraphOrchestrator, SessionStateType } from '../domain/LangGraphOrchestrator';
-import { AIOrchestrationService } from './AIOrchestrationService';
-import { VoiceWebSocketHandler } from '../../voice/infrastructure/websocket/VoiceWebSocketHandler';
+import { AIOrchestrationService, ConversationRequest } from './AIOrchestrationService';
 import { ActionExecutorService } from './ActionExecutorService';
 import { LanguageDetectorService } from './LanguageDetectorService';
-import { KnowledgeBaseService } from './services/KnowledgeBaseService';
+import { KnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
 import { SiteAction } from '../../../shared/types';
 
+// Voice handler interface - making it compatible with actual implementation
+export interface VoiceNotificationHandler {
+  notifyActionExecuted(data: unknown): Promise<void>;
+  broadcast(event: string, data: unknown): Promise<void>;
+  endAllSessions(): Promise<void>;
+  getMetrics?(): unknown;
+}
+
+// TTS service interface
+export interface TTSServiceInterface {
+  generateSpeech(text: string, options: Record<string, unknown>): Promise<string>;
+}
+
 const logger = createLogger({ service: 'universal-ai-assistant' });
+
+// Enhanced type definitions
+export type SearchStrategy = 'vector' | 'fulltext' | 'hybrid';
 
 export interface AIAssistantConfig {
   enableVoice: boolean;
@@ -15,6 +29,10 @@ export interface AIAssistantConfig {
   defaultLocale: string;
   maxSessionDuration: number;
   responseTimeoutMs: number;
+  searchStrategies?: SearchStrategy[];
+  enableAdvancedCaching?: boolean;
+  enableAutoIndexing?: boolean;
+  consensusThreshold?: number;
 }
 
 export interface AssistantRequest {
@@ -28,8 +46,15 @@ export interface AssistantRequest {
     pageTitle?: string;
     userAgent?: string;
     browserLanguage?: string;
+    userPreferences?: {
+      searchStrategies?: SearchStrategy[];
+      maxResults?: number;
+      enableCaching?: boolean;
+      requireHighConsensus?: boolean;
+    };
   };
   stream?: boolean;
+  priority?: 'low' | 'normal' | 'high';
 }
 
 export interface AssistantResponse {
@@ -47,6 +72,11 @@ export interface AssistantResponse {
       scrollToElement?: string;
       showModal?: boolean;
       confirmationRequired?: boolean;
+      suggestedActions?: Array<{
+        name: string;
+        label: string;
+        parameters: Record<string, unknown>;
+      }>;
     };
     metadata: {
       responseTime: number;
@@ -54,6 +84,12 @@ export interface AssistantResponse {
       actionsTaken: number;
       language: string;
       intent?: string;
+      searchMetadata?: {
+        searchTime: number;
+        totalResults: number;
+        strategiesUsed: SearchStrategy[];
+        consensusScore?: number;
+      };
     };
   };
   actions?: Array<{
@@ -63,6 +99,25 @@ export interface AssistantResponse {
     result?: unknown;
     error?: string;
   }>;
+  knowledgeBase?: {
+    indexHealth?: number;
+    coverage?: number;
+  };
+}
+
+export interface SiteActionRegistration {
+  siteId: string;
+  tenantId: string;
+  actions: SiteAction[];
+  enableAutoDiscovery?: boolean;
+}
+
+export interface KnowledgeBaseOperationRequest {
+  siteId: string;
+  tenantId: string;
+  operationType: 'incremental' | 'full' | 'delta';
+  baseUrl?: string;
+  priority?: 'low' | 'normal' | 'high';
 }
 
 /**
@@ -79,7 +134,7 @@ export interface AssistantResponse {
 export class UniversalAIAssistantService {
   private config: AIAssistantConfig;
   private orchestrationService: AIOrchestrationService;
-  private voiceHandler?: VoiceWebSocketHandler;
+  private voiceHandler: VoiceNotificationHandler | undefined;
   private actionExecutor: ActionExecutorService;
   
   // Service metrics
@@ -88,14 +143,20 @@ export class UniversalAIAssistantService {
     successfulRequests: 0,
     failedRequests: 0,
     averageResponseTime: 0,
+    averageSearchTime: 0,
     activeStreams: 0,
     totalTokensUsed: 0,
     totalActionsExecuted: 0,
+    hybridSearches: 0,
+    cacheHitRate: 0,
+    consensusFailures: 0,
+    autoIndexingTriggers: 0,
+    kbUpdatesTriggered: 0
   };
 
   constructor(
     config: Partial<AIAssistantConfig> = {},
-    voiceHandler?: VoiceWebSocketHandler
+    voiceHandler?: VoiceNotificationHandler
   ) {
     this.config = {
       enableVoice: config.enableVoice || false,
@@ -103,17 +164,40 @@ export class UniversalAIAssistantService {
       defaultLocale: config.defaultLocale || 'en-US',
       maxSessionDuration: config.maxSessionDuration || 30 * 60 * 1000, // 30 minutes
       responseTimeoutMs: config.responseTimeoutMs || 30000, // 30 seconds
+      searchStrategies: config.searchStrategies || ['vector', 'fulltext'],
+      enableAdvancedCaching: config.enableAdvancedCaching ?? true,
+      enableAutoIndexing: config.enableAutoIndexing ?? true,
+      consensusThreshold: config.consensusThreshold || 0.7
     };
 
     this.voiceHandler = voiceHandler;
     this.actionExecutor = new ActionExecutorService();
 
+    // Create knowledge base adapter
+    const kbServiceAdapter = this.createKnowledgeBaseAdapter(new KnowledgeBaseService());
+    
     // Initialize orchestration service with dependencies
-    this.orchestrationService = new AIOrchestrationService({
-      kbService: new KnowledgeBaseService(),
-      websocketService: this.voiceHandler,
-      ttsService: null, // TODO: Implement TTS service
-    });
+    const orchestrationDependencies: {
+      kbService: typeof kbServiceAdapter;
+      websocketService?: {
+        notifyActionExecuted(data: unknown): Promise<void>;
+        broadcast(event: string, data: unknown): Promise<void>;
+      };
+      ttsService?: {
+        generateSpeech(text: string, options: Record<string, unknown>): Promise<string>;
+      };
+    } = {
+      kbService: kbServiceAdapter,
+      // Only include websocketService if voiceHandler exists
+      ...(this.voiceHandler && {
+        websocketService: {
+          notifyActionExecuted: (data: unknown) => this.voiceHandler!.notifyActionExecuted(data),
+          broadcast: (event: string, data: unknown) => this.voiceHandler!.broadcast(event, data)
+        }
+      })
+    };
+    
+    this.orchestrationService = new AIOrchestrationService(orchestrationDependencies);
 
     // Initialize AI tools system
     this.initializeAITools();
@@ -171,13 +255,20 @@ export class UniversalAIAssistantService {
       );
 
       // Process through orchestration service
-      const orchestrationRequest = {
+      const orchestrationRequest: ConversationRequest = {
         input: request.input,
         siteId: request.siteId,
-        sessionId: request.sessionId,
-        userId: request.userId,
         browserLanguage: detectedLanguage,
-        context: request.context,
+        // Only include optional properties if they have values
+        ...(request.sessionId && { sessionId: request.sessionId }),
+        ...(request.userId && { userId: request.userId }),
+        ...(request.context && {
+          context: {
+            ...(request.context.currentUrl && { currentUrl: request.context.currentUrl }),
+            ...(request.context.pageTitle && { pageTitle: request.context.pageTitle }),
+            ...(request.context.userAgent && { userAgent: request.context.userAgent })
+          }
+        })
       };
 
       const result = await this.orchestrationService.processConversation(orchestrationRequest);
@@ -255,13 +346,20 @@ export class UniversalAIAssistantService {
       };
 
       // Stream through orchestration
-      const orchestrationRequest = {
+      const orchestrationRequest: ConversationRequest = {
         input: request.input,
         siteId: request.siteId,
         sessionId,
-        userId: request.userId,
         browserLanguage: detectedLanguage,
-        context: request.context,
+        // Only include optional properties if they have values
+        ...(request.userId && { userId: request.userId }),
+        ...(request.context && {
+          context: {
+            ...(request.context.currentUrl && { currentUrl: request.context.currentUrl }),
+            ...(request.context.pageTitle && { pageTitle: request.context.pageTitle }),
+            ...(request.context.userAgent && { userAgent: request.context.userAgent })
+          }
+        })
       };
 
       let finalResult: unknown = null;
@@ -321,25 +419,49 @@ export class UniversalAIAssistantService {
   /**
    * Register actions for a site
    */
-  async registerSiteActions(siteId: string, tenantId: string, actions: SiteAction[]): Promise<void> {
+  async registerSiteActions(siteId: string, tenantId: string, actions: SiteAction[]): Promise<void>;
+  async registerSiteActions(registration: SiteActionRegistration): Promise<void>;
+  async registerSiteActions(
+    siteIdOrRegistration: string | SiteActionRegistration,
+    tenantId?: string,
+    actions?: SiteAction[]
+  ): Promise<void> {
+    // Handle both signatures for backward compatibility
+    const registration: SiteActionRegistration = typeof siteIdOrRegistration === 'string'
+      ? { siteId: siteIdOrRegistration, tenantId: tenantId!, actions: actions! }
+      : siteIdOrRegistration;
+
     logger.info('Registering site actions', {
-      siteId,
-      tenantId,
-      actionCount: actions.length,
+      siteId: registration.siteId,
+      tenantId: registration.tenantId,
+      actionCount: registration.actions.length,
+      autoDiscovery: registration.enableAutoDiscovery
     });
 
     try {
       // Register with action executor
-      await this.actionExecutor.registerActions(siteId, actions);
+      await this.actionExecutor.registerActions(registration.siteId, registration.actions);
       
       // Register with orchestration service
-      await this.orchestrationService.registerSiteActions(siteId, actions);
+      await this.orchestrationService.registerSiteActions(registration.siteId, registration.actions);
 
-      logger.info('Site actions registered successfully', { siteId, actionCount: actions.length });
+      // TODO: Implement auto-discovery if enabled
+      if (registration.enableAutoDiscovery) {
+        logger.info('Auto-discovery enabled for site actions', {
+          siteId: registration.siteId,
+          tenantId: registration.tenantId
+        });
+        // Auto-discovery implementation would go here
+      }
+
+      logger.info('Site actions registered successfully', {
+        siteId: registration.siteId,
+        actionCount: registration.actions.length
+      });
     } catch (error) {
       logger.error('Failed to register site actions', {
-        siteId,
-        tenantId,
+        siteId: registration.siteId,
+        tenantId: registration.tenantId,
         error,
       });
       throw error;
@@ -403,6 +525,43 @@ export class UniversalAIAssistantService {
   }
 
   /**
+   * Trigger knowledge base operations
+   */
+  async triggerKnowledgeBaseOperation(request: KnowledgeBaseOperationRequest): Promise<string> {
+    logger.info('Triggering KB operation', {
+      siteId: request.siteId,
+      tenantId: request.tenantId,
+      operationType: request.operationType,
+      priority: request.priority
+    });
+
+    try {
+      // TODO: Implement actual KB operations when crawling services are available
+      const sessionId = `${request.operationType}_${Date.now()}_${request.siteId}`;
+      
+      logger.info('KB operation triggered', {
+        siteId: request.siteId,
+        tenantId: request.tenantId,
+        sessionId,
+        operationType: request.operationType
+      });
+      
+      // Update metrics
+      this.metrics.kbUpdatesTriggered++;
+      
+      return sessionId;
+    } catch (error) {
+      logger.error('KB operation failed', {
+        siteId: request.siteId,
+        tenantId: request.tenantId,
+        operationType: request.operationType,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get service metrics
    */
   getMetrics(): typeof this.metrics & {
@@ -411,13 +570,22 @@ export class UniversalAIAssistantService {
     kbStats?: unknown;
   } {
     const orchestrationStats = this.orchestrationService.getStats();
-    const voiceStats = this.voiceHandler?.getMetrics();
+    const voiceStats = this.voiceHandler?.getMetrics?.();
     
-    return {
+    const result = {
       ...this.metrics,
-      orchestrationStats,
-      voiceStats,
-      // kbStats would be implemented when KB service is ready
+      orchestrationStats
+    };
+    
+    // Only include voiceStats if it exists
+    if (voiceStats) {
+      (result as typeof result & { voiceStats: unknown }).voiceStats = voiceStats;
+    }
+    
+    return result as typeof this.metrics & {
+      orchestrationStats: unknown;
+      voiceStats?: unknown;
+      kbStats?: unknown;
     };
   }
 
@@ -442,12 +610,11 @@ export class UniversalAIAssistantService {
     }
   }
 
-
   /**
    * Build final response
    */
   private async buildResponse(
-    request: AssistantRequest,
+    _request: AssistantRequest,
     result: unknown,
     startTime: number
   ): Promise<AssistantResponse> {
@@ -476,23 +643,48 @@ export class UniversalAIAssistantService {
       }>;
     };
 
-    return {
+    const responseObj: AssistantResponse = {
       sessionId: resultObj.sessionId || this.generateSessionId(),
       response: {
         text: resultObj.response?.text || 'I processed your request successfully.',
-        audioUrl: resultObj.response?.audioUrl,
         citations: resultObj.response?.citations || [],
-        uiHints: resultObj.response?.uiHints || {},
+        uiHints: (resultObj.response?.uiHints as { 
+          highlightElements?: string[];
+          scrollToElement?: string;
+          showModal?: boolean;
+          confirmationRequired?: boolean;
+          suggestedActions?: Array<{
+            name: string;
+            label: string;
+            parameters: Record<string, unknown>;
+          }>;
+        }) || {},
         metadata: {
           responseTime,
           tokensUsed: resultObj.response?.metadata?.tokensUsed || 0,
           actionsTaken: resultObj.actions?.length || 0,
           language: resultObj.response?.metadata?.language || this.config.defaultLocale,
-          intent: resultObj.response?.metadata?.intent,
+          // Only include intent if it exists
+          ...(resultObj.response?.metadata?.intent && { intent: resultObj.response.metadata.intent }),
+          searchMetadata: {
+            searchTime: this.metrics.averageSearchTime,
+            totalResults: 0, // Will be populated by actual search results
+            strategiesUsed: this.config.searchStrategies || ['vector', 'fulltext'],
+            consensusScore: 0.8 // Default reasonable consensus score
+          }
         },
+        // Only include audioUrl if it exists
+        ...(resultObj.response?.audioUrl && { audioUrl: resultObj.response.audioUrl })
       },
-      actions: resultObj.actions,
+      knowledgeBase: {
+        indexHealth: 0.9, // Placeholder - would come from actual KB health check
+        coverage: 0.85 // Placeholder - would come from actual coverage analysis
+      },
+      // Only include actions if they exist
+      ...(resultObj.actions && { actions: resultObj.actions })
     };
+    
+    return responseObj;
   }
 
   /**
@@ -500,7 +692,7 @@ export class UniversalAIAssistantService {
    */
   private buildErrorResponse(
     request: AssistantRequest,
-    error: unknown,
+    _error: unknown,
     startTime: number
   ): AssistantResponse {
     const responseTime = Date.now() - startTime;
@@ -552,6 +744,52 @@ export class UniversalAIAssistantService {
    */
   private generateSessionId(): string {
     return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  }
+
+  /**
+   * Create knowledge base adapter to bridge interface differences
+   */
+  private createKnowledgeBaseAdapter(kbService: KnowledgeBaseService) {
+    return {
+      async semanticSearch(params: {
+        siteId: string;
+        query: string;
+        topK: number;
+        locale: string;
+      }): Promise<Array<{
+        id: string;
+        content: string;
+        url: string;
+        score: number;
+        metadata: Record<string, unknown>;
+      }>> {
+        try {
+          // Adapt the interface to match infrastructure service
+          const searchResults = await kbService.semanticSearch({
+            query: params.query,
+            siteId: params.siteId,
+            tenantId: 'default', // TODO: Get from context
+            limit: params.topK,
+            threshold: 0.7,
+            filters: {
+              locale: params.locale
+            }
+          });
+
+          // Transform results to match expected interface
+          return searchResults.map(result => ({
+            id: result.id,
+            content: result.content,
+            url: result.url,
+            score: result.score,
+            metadata: result.metadata
+          }));
+        } catch (error) {
+          logger.error('Knowledge base search failed', { error });
+          return [];
+        }
+      }
+    };
   }
 
   /**

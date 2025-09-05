@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
 
@@ -24,7 +24,15 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../shared/*"]
+      "@shared/*": ["../shared/*"],
+      "@sitespeak/design-system": ["../packages/design-system/src"],
+      "@sitespeak/design-system/*": ["../packages/design-system/src/*"],
+      "@sitespeak/site-contract": ["../packages/site-contract/src"],
+      "@sitespeak/site-contract/*": ["../packages/site-contract/src/*"],
+      "@sitespeak/editor-engine": ["../packages/editor-engine/src"],
+      "@sitespeak/editor-engine/*": ["../packages/editor-engine/src/*"],
+      "@sitespeak/voice-widget": ["../packages/voice-widget/src"],
+      "@sitespeak/voice-widget/*": ["../packages/voice-widget/src/*"]
     },
 
     /* Additional strict checks */
@@ -33,7 +41,12 @@
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,
-    "noPropertyAccessFromIndexSignature": false
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
   },
   "include": [
     "src/**/*",

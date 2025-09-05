@@ -57,14 +57,12 @@ export const siteAnalytics = pgTable('site_analytics', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_site_analytics_site').on(table.siteId),
-    dateIdx: index('idx_site_analytics_date').on(table.date),
-    periodIdx: index('idx_site_analytics_period').on(table.period),
-    siteDateIdx: index('idx_site_analytics_site_date').on(table.siteId, table.date, table.period),
-  };
-});
+}, (table) => [
+  index('idx_site_analytics_site').on(table.siteId),
+  index('idx_site_analytics_date').on(table.date),
+  index('idx_site_analytics_period').on(table.period),
+  index('idx_site_analytics_site_date').on(table.siteId, table.date, table.period),
+]);
 
 export const userInteractionEvents = pgTable('user_interaction_events', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -114,18 +112,16 @@ export const userInteractionEvents = pgTable('user_interaction_events', {
   currency: varchar('currency', { length: 3 }), // ISO 4217 currency code
   
   timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_user_interaction_events_site').on(table.siteId),
-    userIdx: index('idx_user_interaction_events_user').on(table.userId),
-    sessionIdx: index('idx_user_interaction_events_session').on(table.sessionId),
-    eventTypeIdx: index('idx_user_interaction_events_type').on(table.eventType),
-    eventCategoryIdx: index('idx_user_interaction_events_category').on(table.eventCategory),
-    timestampIdx: index('idx_user_interaction_events_timestamp').on(table.timestamp),
-    countryIdx: index('idx_user_interaction_events_country').on(table.country),
-    deviceIdx: index('idx_user_interaction_events_device').on(table.device),
-  };
-});
+}, (table) => [
+  index('idx_user_interaction_events_site').on(table.siteId),
+  index('idx_user_interaction_events_user').on(table.userId),
+  index('idx_user_interaction_events_session').on(table.sessionId),
+  index('idx_user_interaction_events_type').on(table.eventType),
+  index('idx_user_interaction_events_category').on(table.eventCategory),
+  index('idx_user_interaction_events_timestamp').on(table.timestamp),
+  index('idx_user_interaction_events_country').on(table.country),
+  index('idx_user_interaction_events_device').on(table.device),
+]);
 
 export const aiInteractionAnalytics = pgTable('ai_interaction_analytics', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -174,20 +170,18 @@ export const aiInteractionAnalytics = pgTable('ai_interaction_analytics', {
   turnNumber: integer('turn_number'),
   
   timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_ai_interaction_analytics_site').on(table.siteId),
-    dateIdx: index('idx_ai_interaction_analytics_date').on(table.date),
-    intentIdx: index('idx_ai_interaction_analytics_intent').on(table.intent),
-    responseTimeIdx: index('idx_ai_interaction_analytics_response_time').on(table.responseTime),
-    satisfactionIdx: index('idx_ai_interaction_analytics_satisfaction').on(table.userSatisfaction),
-    modelIdx: index('idx_ai_interaction_analytics_model').on(table.model),
-    errorIdx: index('idx_ai_interaction_analytics_error').on(table.hadError),
-    languageIdx: index('idx_ai_interaction_analytics_language').on(table.language),
-    timestampIdx: index('idx_ai_interaction_analytics_timestamp').on(table.timestamp),
-    queryHashIdx: index('idx_ai_interaction_analytics_query_hash').on(table.queryHash),
-  };
-});
+}, (table) => [
+  index('idx_ai_interaction_analytics_site').on(table.siteId),
+  index('idx_ai_interaction_analytics_date').on(table.date),
+  index('idx_ai_interaction_analytics_intent').on(table.intent),
+  index('idx_ai_interaction_analytics_response_time').on(table.responseTime),
+  index('idx_ai_interaction_analytics_satisfaction').on(table.userSatisfaction),
+  index('idx_ai_interaction_analytics_model').on(table.model),
+  index('idx_ai_interaction_analytics_error').on(table.hadError),
+  index('idx_ai_interaction_analytics_language').on(table.language),
+  index('idx_ai_interaction_analytics_timestamp').on(table.timestamp),
+  index('idx_ai_interaction_analytics_query_hash').on(table.queryHash),
+]);
 
 export const conversionEvents = pgTable('conversion_events', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -229,19 +223,17 @@ export const conversionEvents = pgTable('conversion_events', {
   metadata: jsonb('metadata').default({}),
   
   timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_conversion_events_site').on(table.siteId),
-    userIdx: index('idx_conversion_events_user').on(table.userId),
-    sessionIdx: index('idx_conversion_events_session').on(table.sessionId),
-    conversationIdx: index('idx_conversion_events_conversation').on(table.conversationId),
-    typeIdx: index('idx_conversion_events_type').on(table.conversionType),
-    categoryIdx: index('idx_conversion_events_category').on(table.conversionCategory),
-    valueIdx: index('idx_conversion_events_value').on(table.conversionValue),
-    aiAssistedIdx: index('idx_conversion_events_ai_assisted').on(table.aiAssisted),
-    timestampIdx: index('idx_conversion_events_timestamp').on(table.timestamp),
-  };
-});
+}, (table) => [
+  index('idx_conversion_events_site').on(table.siteId),
+  index('idx_conversion_events_user').on(table.userId),
+  index('idx_conversion_events_session').on(table.sessionId),
+  index('idx_conversion_events_conversation').on(table.conversationId),
+  index('idx_conversion_events_type').on(table.conversionType),
+  index('idx_conversion_events_category').on(table.conversionCategory),
+  index('idx_conversion_events_value').on(table.conversionValue),
+  index('idx_conversion_events_ai_assisted').on(table.aiAssisted),
+  index('idx_conversion_events_timestamp').on(table.timestamp),
+]);
 
 export const performanceMetrics = pgTable('performance_metrics', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -291,14 +283,12 @@ export const performanceMetrics = pgTable('performance_metrics', {
   seoScore: integer('seo_score'), // 0-100
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_performance_metrics_site').on(table.siteId),
-    dateIdx: index('idx_performance_metrics_date').on(table.date),
-    periodIdx: index('idx_performance_metrics_period').on(table.period),
-    siteDateIdx: index('idx_performance_metrics_site_date').on(table.siteId, table.date, table.period),
-  };
-});
+}, (table) => [
+  index('idx_performance_metrics_site').on(table.siteId),
+  index('idx_performance_metrics_date').on(table.date),
+  index('idx_performance_metrics_period').on(table.period),
+  index('idx_performance_metrics_site_date').on(table.siteId, table.date, table.period),
+]);
 
 // Zod schemas for validation
 export const insertSiteAnalyticsSchema = createInsertSchema(siteAnalytics, {

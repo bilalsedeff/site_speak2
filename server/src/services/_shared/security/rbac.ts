@@ -467,7 +467,7 @@ export function requirePermission(
  * Decorator for class methods (TypeScript decorator)
  */
 export function RequirePermission(permission: Permission | Permission[]) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function (_target: any, _propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
     descriptor.value = async function (this: any, ...args: any[]) {

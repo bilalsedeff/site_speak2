@@ -1,9 +1,8 @@
 import { createLogger } from '../../../../shared/utils.js';
-import { pgVectorClient, type NNQuery, type Hit } from '../vector-store/PgVectorClient';
+import { pgVectorClient, type NNQuery } from '../vector-store/PgVectorClient';
 import { embeddingService } from '../../application/services/EmbeddingService';
 import { retrievalCache, type CacheKey } from './RetrievalCache';
 import { rrfRanker, type RankableItem, type RRFResult } from './RRFRanker';
-import { sql } from 'drizzle-orm';
 
 const logger = createLogger({ service: 'hybrid-search' });
 
@@ -91,14 +90,16 @@ export class HybridSearchService {
 
       // Process strategy results
       const successfulResults: SearchStrategyResult[] = [];
-      const failedStrategies: string[] = [];
+      const failedStrategies: SearchStrategy[] = [];
 
       strategyResults.forEach((result, index) => {
         const strategyName = request.strategies[index];
         if (result.status === 'fulfilled') {
           successfulResults.push(result.value);
         } else {
-          failedStrategies.push(strategyName);
+          if (strategyName) {
+            failedStrategies.push(strategyName);
+          }
           logger.error('Search strategy failed', { 
             strategy: strategyName, 
             error: result.reason 
@@ -179,13 +180,21 @@ export class HybridSearchService {
       const query: NNQuery = {
         tenantId: request.tenantId,
         siteId: request.siteId,
-        locale: request.locale,
         embedding,
         k: request.topK * 2, // Get more results for better fusion
-        minScore: request.minScore,
-        filter: request.filters,
         useIndex: request.vectorOptions?.indexType || 'hnsw'
       };
+
+      // Add optional properties only if they exist
+      if (request.locale) {
+        query.locale = request.locale;
+      }
+      if (request.minScore !== undefined) {
+        query.minScore = request.minScore;
+      }
+      if (request.filters) {
+        query.filter = request.filters;
+      }
 
       const hits = await pgVectorClient.nnSearch(query);
       
@@ -195,7 +204,7 @@ export class HybridSearchService {
           id: hit.id,
           content: hit.content,
           url: hit.url,
-          title: hit.title,
+          title: hit.title || '',
           score: hit.score,
           distance: hit.distance,
           metadata: hit.meta,
@@ -217,45 +226,44 @@ export class HybridSearchService {
     const startTime = Date.now();
     
     try {
-      // Use the existing database connection from pgVectorClient
-      const results = await pgVectorClient['sql']`
-        WITH fts_query AS (
-          SELECT plainto_tsquery('english', ${request.query}) as query
-        )
-        SELECT 
-          c.id,
-          c.content,
-          c.metadata,
-          c.chunk_index,
-          d.url,
-          d.title,
-          ts_rank(to_tsvector('english', c.content), fts_query.query) as fts_score
-        FROM kb_chunks c
-        JOIN kb_documents d ON c.document_id = d.id
-        CROSS JOIN fts_query
-        WHERE 
-          c.site_id = ${request.siteId}
-          AND c.tenant_id = ${request.tenantId}
-          ${request.locale ? sql`AND c.locale = ${request.locale}` : sql``}
-          AND to_tsvector('english', c.content) @@ fts_query.query
-          ${request.minScore ? sql`AND ts_rank(to_tsvector('english', c.content), fts_query.query) >= ${request.minScore}` : sql``}
-        ORDER BY fts_score DESC
-        LIMIT ${request.topK * 2}
-      `;
+      // Use hybrid search with text only (no vector component)
+      const queryEmbedding = await embeddingService.generateEmbedding(request.query);
+      
+      const query: NNQuery = {
+        tenantId: request.tenantId,
+        siteId: request.siteId,
+        embedding: queryEmbedding,
+        k: request.topK * 2, // Get more results for better fusion
+        hybrid: { text: request.query, alpha: 0.0 }, // Pure text search (alpha=0)
+        useIndex: 'exact'
+      };
+
+      // Add optional properties only if they exist
+      if (request.locale) {
+        query.locale = request.locale;
+      }
+      if (request.minScore !== undefined) {
+        query.minScore = request.minScore;
+      }
+      if (request.filters) {
+        query.filter = request.filters;
+      }
+
+      const hits = await pgVectorClient.hybridSearch(query);
 
       return {
         strategy: 'fulltext',
-        items: results.map((row: any) => ({
-          id: row.id,
-          content: row.content,
-          url: row.url,
-          title: row.title,
-          score: parseFloat(row.fts_score),
-          metadata: row.metadata || {},
-          chunkIndex: row.chunk_index || 0
+        items: hits.map(hit => ({
+          id: hit.id,
+          content: hit.content,
+          url: hit.url,
+          title: hit.title || '',
+          score: hit.score,
+          metadata: hit.meta,
+          chunkIndex: hit.meta['chunkIndex'] || 0
         })),
         executionTime: Date.now() - startTime,
-        totalFound: results.length
+        totalFound: hits.length
       };
     } catch (error) {
       logger.error('Full-text search execution failed', { error });
@@ -270,81 +278,45 @@ export class HybridSearchService {
     const startTime = Date.now();
     
     try {
-      // Extract query terms
-      const terms = request.query.toLowerCase().split(/\s+/).filter(term => term.length > 2);
-      if (terms.length === 0) {
-        return { strategy: 'bm25', items: [], executionTime: Date.now() - startTime, totalFound: 0 };
+      // For now, use hybrid search with balanced vector/text weighting to approximate BM25
+      // TODO: Implement proper BM25 scoring when advanced text search is needed
+      const queryEmbedding = await embeddingService.generateEmbedding(request.query);
+      
+      const query: NNQuery = {
+        tenantId: request.tenantId,
+        siteId: request.siteId,
+        embedding: queryEmbedding,
+        k: request.topK * 2, // Get more results for better fusion
+        hybrid: { text: request.query, alpha: 0.3 }, // More text-weighted than default
+        useIndex: 'hnsw'
+      };
+
+      // Add optional properties only if they exist
+      if (request.locale) {
+        query.locale = request.locale;
+      }
+      if (request.minScore !== undefined) {
+        query.minScore = request.minScore;
+      }
+      if (request.filters) {
+        query.filter = request.filters;
       }
 
-      // Build BM25-inspired query (simplified version)
-      const results = await pgVectorClient['sql']`
-        WITH query_terms AS (
-          SELECT unnest(${terms}) as term
-        ),
-        term_stats AS (
-          SELECT 
-            term,
-            COUNT(*) as doc_freq
-          FROM query_terms qt
-          CROSS JOIN kb_chunks c
-          WHERE 
-            c.site_id = ${request.siteId}
-            AND c.tenant_id = ${request.tenantId}
-            AND lower(c.content) LIKE '%' || qt.term || '%'
-          GROUP BY term
-        ),
-        chunk_scores AS (
-          SELECT 
-            c.id,
-            c.content,
-            c.metadata,
-            c.chunk_index,
-            d.url,
-            d.title,
-            SUM(
-              CASE 
-                WHEN lower(c.content) LIKE '%' || qt.term || '%' 
-                THEN LN(1.0 + (LENGTH(c.content) - LENGTH(REPLACE(lower(c.content), qt.term, ''))) / LENGTH(qt.term))
-                ELSE 0 
-              END
-            ) as bm25_score
-          FROM kb_chunks c
-          JOIN kb_documents d ON c.document_id = d.id
-          CROSS JOIN query_terms qt
-          WHERE 
-            c.site_id = ${request.siteId}
-            AND c.tenant_id = ${request.tenantId}
-            ${request.locale ? sql`AND c.locale = ${request.locale}` : sql``}
-          GROUP BY c.id, c.content, c.metadata, c.chunk_index, d.url, d.title
-          HAVING SUM(
-            CASE 
-              WHEN lower(c.content) LIKE '%' || qt.term || '%' 
-              THEN 1
-              ELSE 0 
-            END
-          ) > 0
-        )
-        SELECT *
-        FROM chunk_scores
-        WHERE bm25_score > 0
-        ${request.minScore ? sql`AND bm25_score >= ${request.minScore}` : sql``}
-        ORDER BY bm25_score DESC
-        LIMIT ${request.topK * 2}
-      `;
+      const hits = await pgVectorClient.hybridSearch(query);
 
       return {
         strategy: 'bm25',
-        items: results.map((row: any) => ({
-          id: row.id,
-          content: row.content,
-          url: row.url,
-          title: row.title,
-          score: parseFloat(row.bm25_score),
-          metadata: row.metadata || {},
-          chunkIndex: row.chunk_index || 0
+        items: hits.map(hit => ({
+          id: hit.id,
+          content: hit.content,
+          url: hit.url,
+          title: hit.title || '',
+          score: hit.score,
+          metadata: hit.meta,
+          chunkIndex: hit.meta['chunkIndex'] || 0
         })),
         executionTime: Date.now() - startTime,
-        totalFound: results.length
+        totalFound: hits.length
       };
     } catch (error) {
       logger.error('BM25 search execution failed', { error });
@@ -359,56 +331,72 @@ export class HybridSearchService {
     const startTime = Date.now();
     
     try {
-      // Search in structured data (JSON-LD entities, forms, actions)
-      const results = await pgVectorClient['sql']`
-        WITH structured_matches AS (
-          SELECT 
-            c.id,
-            c.content,
-            c.metadata,
-            c.chunk_index,
-            d.url,
-            d.title,
-            CASE 
-              WHEN c.metadata->>'hasStructuredData' = 'true' THEN 2.0
-              WHEN c.metadata->>'hasActions' = 'true' THEN 1.8
-              WHEN c.metadata->>'hasForms' = 'true' THEN 1.6
-              ELSE 1.0
-            END * ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', ${request.query})) as structured_score
-          FROM kb_chunks c
-          JOIN kb_documents d ON c.document_id = d.id
-          WHERE 
-            c.site_id = ${request.siteId}
-            AND c.tenant_id = ${request.tenantId}
-            ${request.locale ? sql`AND c.locale = ${request.locale}` : sql``}
-            AND (
-              c.metadata->>'hasStructuredData' = 'true'
-              OR c.metadata->>'hasActions' = 'true'
-              OR c.metadata->>'hasForms' = 'true'
-            )
-            AND to_tsvector('english', c.content) @@ plainto_tsquery('english', ${request.query})
-        )
-        SELECT *
-        FROM structured_matches
-        WHERE structured_score > 0
-        ${request.minScore ? sql`AND structured_score >= ${request.minScore}` : sql``}
-        ORDER BY structured_score DESC
-        LIMIT ${request.topK * 2}
-      `;
+      // Use hybrid search with filtering for structured data content
+      const queryEmbedding = await embeddingService.generateEmbedding(request.query);
+      
+      const query: NNQuery = {
+        tenantId: request.tenantId,
+        siteId: request.siteId,
+        embedding: queryEmbedding,
+        k: request.topK * 2, // Get more results for better fusion
+        hybrid: { text: request.query, alpha: 0.6 }, // Balanced hybrid search
+        useIndex: 'hnsw'
+      };
+
+      // Add optional properties only if they exist
+      if (request.locale) {
+        query.locale = request.locale;
+      }
+      if (request.minScore !== undefined) {
+        query.minScore = request.minScore;
+      }
+      
+      // Merge structured data filters with existing filters
+      const structuredDataFilter = {
+        ...request.filters,
+        // Filter for content with structured data indicators
+        $or: [
+          { hasStructuredData: true },
+          { hasActions: true },
+          { hasForms: true }
+        ]
+      };
+      query.filter = structuredDataFilter;
+
+      const hits = await pgVectorClient.hybridSearch(query);
+
+      // Apply structured data scoring boost
+      const boostedHits = hits.map(hit => {
+        let boost = 1.0;
+        if (hit.meta['hasStructuredData']) {
+          boost *= 2.0;
+        }
+        if (hit.meta['hasActions']) {
+          boost *= 1.8;
+        }
+        if (hit.meta['hasForms']) {
+          boost *= 1.6;
+        }
+        
+        return {
+          ...hit,
+          score: hit.score * boost
+        };
+      });
 
       return {
         strategy: 'structured',
-        items: results.map((row: any) => ({
-          id: row.id,
-          content: row.content,
-          url: row.url,
-          title: row.title,
-          score: parseFloat(row.structured_score),
-          metadata: row.metadata || {},
-          chunkIndex: row.chunk_index || 0
+        items: boostedHits.map(hit => ({
+          id: hit.id,
+          content: hit.content,
+          url: hit.url,
+          title: hit.title || '',
+          score: hit.score,
+          metadata: hit.meta,
+          chunkIndex: hit.meta['chunkIndex'] || 0
         })),
         executionTime: Date.now() - startTime,
-        totalFound: results.length
+        totalFound: boostedHits.length
       };
     } catch (error) {
       logger.error('Structured data search execution failed', { error });
@@ -428,12 +416,21 @@ export class HybridSearchService {
       items: result.items
     }));
 
-    const options = {
-      weights: fusionOptions?.weights,
-      minScore: fusionOptions?.minScore,
-      maxResults: fusionOptions?.maxResults,
-      minConsensus: fusionOptions?.minConsensus
-    };
+    const options: any = {};
+    
+    // Only add properties if they are not undefined
+    if (fusionOptions?.weights !== undefined) {
+      options.weights = fusionOptions.weights;
+    }
+    if (fusionOptions?.minScore !== undefined) {
+      options.minScore = fusionOptions.minScore;
+    }
+    if (fusionOptions?.maxResults !== undefined) {
+      options.maxResults = fusionOptions.maxResults;
+    }
+    if (fusionOptions?.minConsensus !== undefined) {
+      options.minConsensus = fusionOptions.minConsensus;
+    }
 
     return rrfRanker.fuseRankings(rankings, options);
   }
@@ -449,7 +446,7 @@ export class HybridSearchService {
       id: result.item.id,
       content: result.item.content,
       url: result.item.url,
-      title: result.item.title,
+      title: result.item.title || '',
       relevantSnippet: this.extractRelevantSnippet(result.item.content, request.query),
       score: result.normalizedScore,
       rank: index + 1,
@@ -493,8 +490,8 @@ export class HybridSearchService {
     
     let snippet = content.substring(start, end);
     
-    if (start > 0) snippet = '...' + snippet;
-    if (end < content.length) snippet = snippet + '...';
+    if (start > 0) {snippet = '...' + snippet;}
+    if (end < content.length) {snippet = snippet + '...';}
     
     return snippet;
   }
@@ -514,10 +511,16 @@ export class HybridSearchService {
         locale: request.locale || 'en',
         model: 'hybrid-search',
         k: request.topK,
-        queryHash: retrievalCache.hashEmbedding(queryEmbedding),
-        filter: request.filters,
-        hybridAlpha: request.fusionOptions?.weights?.[0]
+        queryHash: retrievalCache.hashEmbedding(queryEmbedding)
       };
+
+      // Only add optional properties if they exist
+      if (request.filters) {
+        cacheKey.filter = request.filters;
+      }
+      if (request.fusionOptions?.weights?.[0] !== undefined) {
+        cacheKey.hybridAlpha = request.fusionOptions.weights[0];
+      }
 
       return await retrievalCache.get<HybridSearchResult>(cacheKey);
     } catch (error) {
@@ -544,18 +547,29 @@ export class HybridSearchService {
         locale: request.locale || 'en',
         model: 'hybrid-search',
         k: request.topK,
-        queryHash: retrievalCache.hashEmbedding(queryEmbedding),
-        filter: request.filters,
-        hybridAlpha: request.fusionOptions?.weights?.[0]
+        queryHash: retrievalCache.hashEmbedding(queryEmbedding)
       };
+
+      // Only add optional properties if they exist
+      if (request.filters) {
+        cacheKey.filter = request.filters;
+      }
+      if (request.fusionOptions?.weights?.[0] !== undefined) {
+        cacheKey.hybridAlpha = request.fusionOptions.weights[0];
+      }
+
+      const cacheOptions: any = {};
+      if (request.cacheOptions.ttl !== undefined) {
+        cacheOptions.ttl = request.cacheOptions.ttl;
+      }
+      if (request.cacheOptions.staleWhileRevalidate !== undefined) {
+        cacheOptions.swr = request.cacheOptions.staleWhileRevalidate;
+      }
 
       await retrievalCache.set(cacheKey, {
         ...result,
         cacheInfo: { ...result.cacheInfo, cached: true }
-      }, {
-        ttl: request.cacheOptions.ttl,
-        swr: request.cacheOptions.staleWhileRevalidate
-      });
+      }, cacheOptions);
     } catch (error) {
       logger.error('Failed to cache result', { error });
     }
@@ -601,7 +615,7 @@ export class HybridSearchService {
           id: item.id,
           content: item.content,
           url: item.url,
-          title: item.title,
+          title: item.title ?? '',
           relevantSnippet: this.extractRelevantSnippet(item.content, request.query),
           score: item.score,
           rank: index + 1,

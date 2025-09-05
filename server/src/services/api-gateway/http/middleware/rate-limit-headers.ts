@@ -49,7 +49,7 @@ export class MemoryRateLimitStore implements RateLimitStore {
   
   async get(key: string): Promise<{ totalHits: number; resetTime: Date } | undefined> {
     const entry = this.hits.get(key);
-    if (!entry) return undefined;
+    if (!entry) {return undefined;}
     
     // Clean expired entries
     if (entry.resetTime <= new Date()) {
@@ -110,7 +110,7 @@ export class RedisRateLimitStore implements RateLimitStore {
     
     const [count, ttl] = await multi.exec();
     
-    if (!count[1] || ttl[1] <= 0) return undefined;
+    if (!count[1] || ttl[1] <= 0) {return undefined;}
     
     const resetTime = new Date(Date.now() + (ttl[1] * 1000));
     return { totalHits: parseInt(count[1]), resetTime };
@@ -151,8 +151,8 @@ export const keyGenerators = {
   tenant: (req: Request) => req.user?.tenantId ? `tenant:${req.user.tenantId}` : `ip:${req.ip}`,
   combined: (req: Request) => {
     const parts = [req.ip];
-    if (req.user?.tenantId) parts.push(`tenant:${req.user.tenantId}`);
-    if (req.user?.id) parts.push(`user:${req.user.id}`);
+    if (req.user?.tenantId) {parts.push(`tenant:${req.user.tenantId}`);}
+    if (req.user?.id) {parts.push(`user:${req.user.id}`);}
     return parts.join('|');
   }
 };

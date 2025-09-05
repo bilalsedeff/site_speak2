@@ -1,12 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { createLogger } from '../../../_shared/telemetry/logger';
-import { createPublishingPipeline } from '../../publishing/app/PublishingPipeline';
+import { createLogger } from '../../../services/_shared/telemetry/logger';
 import { createArtifactStoreFromEnv } from '../../publishing/adapters/ArtifactStore';
 import { createCDNProviderFromEnv } from '../../publishing/adapters/CDNProvider';
 import { EventBus } from '../../../services/_shared/events/eventBus';
-import { siteContractService } from '../application/services/SiteContractService';
-import type { DeploymentIntent, BuildParams, PublishRequest } from '../../publishing/app/PublishingPipeline';
+import { createPublishingPipeline, type PublishRequest } from '../../publishing/app/PublishingPipeline';
 
 const logger = createLogger({ service: 'publishing-controller' });
 
@@ -51,7 +49,7 @@ export class PublishingController {
   /**
    * Publish a site using the enhanced publishing pipeline
    */
-  async publishSite(req: Request, res: Response, next: NextFunction) {
+  async publishSite(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = req.user!;
       const { siteId } = req.params;
@@ -68,17 +66,41 @@ export class PublishingController {
       // TODO: Load actual site from repository
       // TODO: Verify user has access to site
       
-      // Mock site data (replace with actual site loading)
-      const site = await this.loadSiteData(siteId, user.tenantId);
+      // Validate required parameters
+      if (!siteId) {
+        res.status(400).json({
+          error: 'Site ID is required',
+          correlationId: req.correlationId,
+        });
+        return;
+      }
+
+      if (!user.tenantId) {
+        res.status(400).json({
+          error: 'User tenant ID is required',
+          correlationId: req.correlationId,
+        });
+        return;
+      }
+      
+      // TODO: Load actual site from repository and verify user has access
+      // await this.loadSiteData(siteId, user.tenantId);
 
       // Build publish request
       const publishRequest: PublishRequest = {
         siteId,
         tenantId: user.tenantId,
         deploymentIntent: data.deploymentIntent,
-        commitSha: data.commitSha,
-        buildParams: data.buildParams,
-        previousDeploymentId: data.previousDeploymentId,
+        ...(data.commitSha && { commitSha: data.commitSha }),
+        ...(data.buildParams && { 
+          buildParams: {
+            environment: data.buildParams.environment,
+            ...(data.buildParams.features && { features: data.buildParams.features }),
+            ...(data.buildParams.customDomain && { customDomain: data.buildParams.customDomain }),
+            ...(data.buildParams.buildOptions && { buildOptions: data.buildParams.buildOptions }),
+          }
+        }),
+        ...(data.previousDeploymentId && { previousDeploymentId: data.previousDeploymentId }),
       };
 
       // Execute publishing pipeline
@@ -123,7 +145,7 @@ export class PublishingController {
       logger.error('Site publishing failed', {
         error,
         userId: req.user?.id,
-        siteId: req.params.siteId,
+        siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
       next(error);
@@ -178,8 +200,8 @@ export class PublishingController {
       logger.error('Get deployment status failed', {
         error,
         userId: req.user?.id,
-        siteId: req.params.siteId,
-        deploymentId: req.params.deploymentId,
+        siteId: req.params['siteId'],
+        deploymentId: req.params['deploymentId'],
         correlationId: req.correlationId,
       });
       next(error);
@@ -221,7 +243,7 @@ export class PublishingController {
       logger.error('Deployment rollback failed', {
         error,
         userId: req.user?.id,
-        siteId: req.params.siteId,
+        siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
       next(error);
@@ -235,8 +257,8 @@ export class PublishingController {
     try {
       const user = req.user!;
       const { siteId } = req.params;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const offset = parseInt(req.query.offset as string) || 0;
+      const limit = parseInt(req.query['limit'] as string) || 20;
+      const offset = parseInt(req.query['offset'] as string) || 0;
 
       logger.info('Getting deployment history', {
         userId: user.id,
@@ -295,7 +317,7 @@ export class PublishingController {
       logger.error('Get deployment history failed', {
         error,
         userId: req.user?.id,
-        siteId: req.params.siteId,
+        siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
       next(error);
@@ -337,105 +359,10 @@ export class PublishingController {
     });
   }
 
-  private async loadSiteData(siteId: string, tenantId: string): Promise<any> {
-    // TODO: Replace with actual site repository call
-    // This is a mock implementation
-    return {
-      id: siteId,
-      name: `Site ${siteId}`,
-      description: 'A SiteSpeak generated website',
-      tenantId,
-      templateId: 'modern-business',
-      configuration: {
-        theme: {
-          primaryColor: '#3B82F6',
-          secondaryColor: '#10B981',
-          fontFamily: 'Inter',
-        },
-        seo: {
-          title: `Site ${siteId} - Professional Services`,
-          description: 'Professional website built with SiteSpeak',
-          keywords: ['business', 'services', 'professional'],
-        },
-        analytics: { enabled: true },
-        voice: { enabled: true, personality: 'professional', language: 'en' },
-      },
-      content: {
-        pages: [
-          {
-            id: 'home',
-            name: 'Home',
-            slug: '/',
-            title: 'Welcome to Our Business',
-            content: {
-              sections: [
-                { 
-                  type: 'hero', 
-                  title: 'Professional Services', 
-                  content: 'We help businesses succeed',
-                  config: { title: 'Welcome', subtitle: 'Professional services for your business' }
-                },
-                { 
-                  type: 'services', 
-                  title: 'Our Services', 
-                  content: 'Consulting and support services' 
-                },
-              ],
-            },
-            isHomePage: true,
-            isPublished: true,
-            lastModified: new Date(),
-          },
-          {
-            id: 'about',
-            name: 'About',
-            slug: '/about',
-            title: 'About Us',
-            content: {
-              sections: [
-                { 
-                  type: 'content', 
-                  title: 'Our Story', 
-                  content: 'We are a professional services company...' 
-                },
-              ],
-            },
-            isHomePage: false,
-            isPublished: true,
-            lastModified: new Date(),
-          },
-          {
-            id: 'contact',
-            name: 'Contact',
-            slug: '/contact',
-            title: 'Contact Us',
-            content: {
-              forms: [
-                {
-                  id: 'contact-form',
-                  name: 'Contact Form',
-                  fields: [
-                    { name: 'name', type: 'text', label: 'Full Name', required: true },
-                    { name: 'email', type: 'email', label: 'Email', required: true },
-                    { name: 'message', type: 'textarea', label: 'Message', required: true },
-                  ],
-                },
-              ],
-            },
-            isHomePage: false,
-            isPublished: true,
-            lastModified: new Date(),
-          },
-        ],
-        components: [],
-        assets: [],
-      },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      isPublished: true,
-      getUrl: () => `https://${siteId}.sitespeak.com`,
-    };
-  }
+  // TODO: Implement site data loading
+  // private async loadSiteData(siteId: string, tenantId: string): Promise<Site> {
+  //   // Load site from repository and verify user access
+  // }
 
 }
 

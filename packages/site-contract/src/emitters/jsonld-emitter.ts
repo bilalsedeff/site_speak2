@@ -85,7 +85,8 @@ export class JsonLdEmitter {
     }
 
     // Calculate coverage statistics
-    const pagesWithStructuredData = [...new Set(entities.map(e => e.page))].length
+    const uniquePages = new Set(entities.map(e => e.page))
+    const pagesWithStructuredData = uniquePages.size
     const totalPages = Object.keys(pages).length
     const coveragePercentage = totalPages > 0 ? (pagesWithStructuredData / totalPages) * 100 : 0
 
@@ -127,7 +128,7 @@ export class JsonLdEmitter {
 
     // Find all components that can emit JSON-LD
     for (const [componentName, contract] of Object.entries(components)) {
-      if (!contract.metadata.jsonld) continue
+      if (!contract.metadata.jsonld) {continue}
 
       // Find instances of this component on the page
       const instances = this.findComponentInstances(document, contract)
@@ -203,37 +204,37 @@ export class JsonLdEmitter {
 
     // Extract common properties
     if (element.textContent) {
-      props.text = element.textContent.trim()
+      props['text'] = element.textContent.trim()
     }
 
     // Extract from specific elements
     const titleEl = element.querySelector('h1, h2, h3, h4, h5, h6, [data-title]')
     if (titleEl) {
-      props.title = titleEl.textContent?.trim()
+      props['title'] = titleEl.textContent?.trim()
     }
 
     const descEl = element.querySelector('p, [data-description]')
     if (descEl) {
-      props.description = descEl.textContent?.trim()
+      props['description'] = descEl.textContent?.trim()
     }
 
     const imgEl = element.querySelector('img')
     if (imgEl) {
-      props.image = imgEl.src
-      props.imageAlt = imgEl.alt
+      props['image'] = imgEl.src
+      props['imageAlt'] = imgEl.alt
     }
 
     const linkEl = element.querySelector('a')
     if (linkEl) {
-      props.url = linkEl.href
+      props['url'] = linkEl.href
     }
 
     // Extract microdata
     if (element.hasAttribute('itemtype')) {
-      props.itemType = element.getAttribute('itemtype')
+      props['itemType'] = element.getAttribute('itemtype')
     }
     if (element.hasAttribute('itemprop')) {
-      props.itemProp = element.getAttribute('itemprop')
+      props['itemProp'] = element.getAttribute('itemprop')
     }
 
     return props
@@ -280,24 +281,32 @@ export class JsonLdEmitter {
 
     // Group entities by type for optimal output
     const entitiesByType = entities.reduce((acc, entity) => {
-      if (!acc[entity['@type']]) {
-        acc[entity['@type']] = []
+      const entityType = entity['@type']
+      if (!acc[entityType]) {
+        acc[entityType] = []
       }
-      acc[entity['@type']].push(entity)
+      acc[entityType]!.push(entity)
       return acc
     }, {} as Record<string, JsonLdEntity[]>)
 
     // Generate blocks for each type
     for (const [type, typeEntities] of Object.entries(entitiesByType)) {
+      if (typeEntities.length === 0) {
+        continue // Skip empty arrays
+      }
+      
       if (typeEntities.length === 1) {
         // Single entity
-        blocks.push({
-          page: pageUrl,
-          type,
-          content: typeEntities[0].data,
-          position: 'head',
-          minified: false,
-        })
+        const firstEntity = typeEntities[0]
+        if (firstEntity) {
+          blocks.push({
+            page: pageUrl,
+            type,
+            content: firstEntity.data,
+            position: 'head',
+            minified: false,
+          })
+        }
       } else {
         // Multiple entities - create an array or individual blocks
         if (this.shouldGroupEntities(type)) {
@@ -406,7 +415,7 @@ export class JsonLdEmitter {
   }
 
   private validateProduct(data: Record<string, any>, issues: JsonLdIssue[]): void {
-    if (!data.name) {
+    if (!data['name']) {
       issues.push({
         severity: 'error',
         property: 'name',
@@ -416,7 +425,7 @@ export class JsonLdEmitter {
       })
     }
 
-    if (!data.offers && !data.price) {
+    if (!data['offers'] && !data['price']) {
       issues.push({
         severity: 'warning',
         property: 'offers',
@@ -428,7 +437,7 @@ export class JsonLdEmitter {
   }
 
   private validateEvent(data: Record<string, any>, issues: JsonLdIssue[]): void {
-    if (!data.name) {
+    if (!data['name']) {
       issues.push({
         severity: 'error',
         property: 'name',
@@ -438,7 +447,7 @@ export class JsonLdEmitter {
       })
     }
 
-    if (!data.startDate) {
+    if (!data['startDate']) {
       issues.push({
         severity: 'error',
         property: 'startDate',
@@ -448,7 +457,7 @@ export class JsonLdEmitter {
       })
     }
 
-    if (!data.location) {
+    if (!data['location']) {
       issues.push({
         severity: 'warning',
         property: 'location',
@@ -460,7 +469,7 @@ export class JsonLdEmitter {
   }
 
   private validateOrganization(data: Record<string, any>, issues: JsonLdIssue[]): void {
-    if (!data.name) {
+    if (!data['name']) {
       issues.push({
         severity: 'error',
         property: 'name',
@@ -470,7 +479,7 @@ export class JsonLdEmitter {
       })
     }
 
-    if (!data.url) {
+    if (!data['url']) {
       issues.push({
         severity: 'warning',
         property: 'url',
@@ -484,7 +493,7 @@ export class JsonLdEmitter {
   private validateLocalBusiness(data: Record<string, any>, issues: JsonLdIssue[]): void {
     this.validateOrganization(data, issues)
 
-    if (!data.address) {
+    if (!data['address']) {
       issues.push({
         severity: 'warning',
         property: 'address',
@@ -496,7 +505,7 @@ export class JsonLdEmitter {
   }
 
   private validateArticle(data: Record<string, any>, issues: JsonLdIssue[]): void {
-    if (!data.headline) {
+    if (!data['headline']) {
       issues.push({
         severity: 'error',
         property: 'headline',
@@ -506,7 +515,7 @@ export class JsonLdEmitter {
       })
     }
 
-    if (!data.datePublished) {
+    if (!data['datePublished']) {
       issues.push({
         severity: 'warning',
         property: 'datePublished',
@@ -516,7 +525,7 @@ export class JsonLdEmitter {
       })
     }
 
-    if (!data.author) {
+    if (!data['author']) {
       issues.push({
         severity: 'warning',
         property: 'author',
@@ -528,7 +537,7 @@ export class JsonLdEmitter {
   }
 
   private validateFAQ(data: Record<string, any>, issues: JsonLdIssue[]): void {
-    if (!data.mainEntity || !Array.isArray(data.mainEntity)) {
+    if (!data['mainEntity'] || !Array.isArray(data['mainEntity'])) {
       issues.push({
         severity: 'error',
         property: 'mainEntity',
@@ -547,7 +556,7 @@ export class JsonLdEmitter {
     const type = data['@type']
 
     // Check for image requirements
-    if (['Product', 'Event', 'Article', 'BlogPosting'].includes(type) && !data.image) {
+    if (['Product', 'Event', 'Article', 'BlogPosting'].includes(type) && !data['image']) {
       issues.push({
         severity: 'warning',
         property: 'image',

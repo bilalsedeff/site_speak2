@@ -63,53 +63,7 @@ interface EditorState {
   voiceTarget: string | null
 }
 
-export interface EditorHistory {
-  past: EditorComponent[][]
-  present: EditorComponent[]
-  future: EditorComponent[][]
-}
-
-interface EditorState {
-  // Canvas state
-  components: EditorComponent[]
-  selectedComponentIds: string[]
-  hoveredComponentId: string | null
-  
-  // History for undo/redo
-  history: EditorHistory
-  canUndo: boolean
-  canRedo: boolean
-  
-  // View state
-  zoom: number
-  canvasOffset: { x: number; y: number }
-  showGrid: boolean
-  showRulers: boolean
-snapToGrid: boolean
-  gridSize: number
-  
-  // Panels
-  leftPanelWidth: number
-  rightPanelWidth: number
-  isLeftPanelOpen: boolean
-  isRightPanelOpen: boolean
-  
-  // Mode
-  mode: 'design' | 'preview' | 'responsive'
-  device: 'desktop' | 'tablet' | 'mobile'
-  
-  // Clipboard
-  clipboard: EditorComponent[]
-  
-  // Drag and drop
-  isDragging: boolean
-  draggedComponent: EditorComponent | null
-  dropZone: string | null
-  
-  // Voice editing
-  isVoiceEditing: boolean
-  voiceTarget: string | null
-}
+// (EditorState is defined above; duplicate removed)
 
 const initialState: EditorState = {
   components: [],

@@ -302,6 +302,7 @@ export class AIController {
    */
   async getIndexingStatus(req: Request, res: Response, next: NextFunction) {
     try {
+      // TODO: Implement user-based access control for site indexing
       const _user = req.user!; // Reserved for future access control
       const { siteId } = req.params;
 

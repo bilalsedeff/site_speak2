@@ -83,7 +83,8 @@ export class EmbeddingService {
         let validIndex = 0;
         
         for (let i = 0; i < request.texts.length; i++) {
-          if (request.texts[i].trim().length > 0) {
+          const text = request.texts[i];
+          if (text && text.trim().length > 0) {
             const embedding = embeddings && embeddings[validIndex];
             if (embedding) {
               fullEmbeddings.push(embedding);
@@ -93,7 +94,8 @@ export class EmbeddingService {
             }
           } else {
             // Return zero embedding for empty texts
-            fullEmbeddings.push(new Array(embeddings?.[0]?.length || 1536).fill(0));
+            const embeddingLength = (embeddings && embeddings[0]) ? embeddings[0].length : 1536;
+            fullEmbeddings.push(new Array(embeddingLength).fill(0));
           }
         }
         

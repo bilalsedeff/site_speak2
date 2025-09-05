@@ -328,8 +328,8 @@ export class UniversalAgentGraph {
     
     // Clarification routing
     workflow.addConditionalEdges('checkClarification', (state: UniversalAgentStateType) => {
-      if (state.error) return 'handleError';
-      if (state.needsClarification) return 'askClarification';
+      if (state.error) {return 'handleError';}
+      if (state.needsClarification) {return 'askClarification';}
       return 'planFunctions';
     });
     
@@ -338,8 +338,8 @@ export class UniversalAgentGraph {
     
     // Confirmation routing
     workflow.addConditionalEdges('executeSpeculative', (state: UniversalAgentStateType) => {
-      if (state.error) return 'handleError';
-      if (state.needsConfirmation) return 'confirmActions';
+      if (state.error) {return 'handleError';}
+      if (state.needsConfirmation) {return 'confirmActions';}
       return 'executeFunctions';
     });
     
@@ -348,7 +348,7 @@ export class UniversalAgentGraph {
     
     // Loop or finalize based on results
     workflow.addConditionalEdges('observeResults', (state: UniversalAgentStateType) => {
-      if (state.error) return 'handleError';
+      if (state.error) {return 'handleError';}
       
       // Check if we need more steps (incomplete results, errors, etc.)
       const lastExecution = state.executedTools[state.executedTools.length - 1];

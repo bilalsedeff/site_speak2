@@ -309,6 +309,9 @@ export class ActionDispatchController {
       
       // Create clean options object for exactOptionalPropertyTypes
       // TODO: Fix interface mismatch - IframeOptions vs widget embed options
+      // TODO: Use parsedIframeOptions to configure iframe properly
+      logger.debug('Parsed iframe options', { options: parsedIframeOptions });
+      
       const iframeOptions = {
         position: 'bottom-right' as const,
         theme: 'auto' as const,

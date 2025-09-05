@@ -3,8 +3,8 @@
  * Following Frontend Source-of-Truth: Shadow DOM isolation, postMessage bridge
  */
 
-import { VoiceWidgetApp } from './app/VoiceWidgetApp'
-import { ActionsBridge } from '@sitespeak/actions-bridge'
+import { VoiceWidgetApp } from './app/VoiceWidgetApp' // TODO: Implement VoiceWidgetApp
+import { ActionsBridge } from '@sitespeak/actions-bridge' // TODO: Implement ActionsBridge
 
 interface EmbedConfig {
   apiEndpoint?: string
@@ -134,7 +134,7 @@ class VoiceWidgetManager {
    * Inject widget styles into Shadow DOM
    */
   private async injectStyles(): Promise<void> {
-    if (!this.shadowRoot) return
+    if (!this.shadowRoot) {return}
 
     const style = document.createElement('style')
     style.textContent = `
@@ -411,15 +411,15 @@ function initSiteSpeak(config: EmbedConfig): void {
 // Auto-initialize from script tag data attributes
 function autoInit(): void {
   const script = document.currentScript as HTMLScriptElement
-  if (!script) return
+  if (!script) {return}
 
   const config: EmbedConfig = {
-    tenantId: script.dataset.tenantId || '',
-    apiEndpoint: script.dataset.apiEndpoint,
-    theme: (script.dataset.theme as any) || 'system',
-    position: (script.dataset.position as any) || 'bottom-right',
-    color: script.dataset.color,
-    size: (script.dataset.size as any) || 'md',
+    tenantId: script.dataset['tenantId'] || '',
+    apiEndpoint: script.dataset['apiEndpoint'],
+    theme: (script.dataset['theme'] as any) || 'system',
+    position: (script.dataset['position'] as any) || 'bottom-right',
+    color: script.dataset['color'],
+    size: (script.dataset['size'] as any) || 'md',
   }
 
   if (config.tenantId) {

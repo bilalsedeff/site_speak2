@@ -5,7 +5,7 @@
  * for automated site content indexing and refresh operations.
  */
 
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../services/_shared/telemetry/logger';
 import { EventBus } from '../../../services/_shared/events/eventBus';
 import type { ArtifactStore } from '../adapters/ArtifactStore';
 import type { ContractGenerationResult } from '../../sites/application/services/SiteContractService';

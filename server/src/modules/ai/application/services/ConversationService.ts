@@ -369,10 +369,14 @@ Key guidelines:
    */
   validateToolCall(toolCall: ToolCall, _toolDefinition: ToolDefinition): { valid: boolean; error?: string } {
     try {
-      const _args = JSON.parse(toolCall.function.arguments);
+      const args = JSON.parse(toolCall.function.arguments);
       
       // TODO: Implement proper JSON schema validation based on toolDefinition.function.parameters
-      // For now, just check if arguments can be parsed
+      // For now, just check if arguments can be parsed successfully
+      logger.debug('Tool call arguments parsed successfully', { 
+        toolName: toolCall.function.name,
+        argKeys: Object.keys(args) 
+      });
       
       return { valid: true };
     } catch (error) {

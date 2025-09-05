@@ -5,16 +5,12 @@
  * Provides a single entry point for publishing infrastructure setup.
  */
 
-import { createLogger } from '../../_shared/telemetry/logger';
+import { createLogger } from '../../services/_shared/telemetry/logger';
 import { EventBus } from '../../services/_shared/events/eventBus';
-import { createPublishingPipeline } from './app/PublishingPipeline';
-import { createArtifactStoreFromEnv } from './adapters/ArtifactStore';
-import { createCDNProviderFromEnv } from './adapters/CDNProvider';
-import { createKnowledgeBaseIntegration } from './integration/KnowledgeBaseIntegration';
-import type { PublishingPipeline } from './app/PublishingPipeline';
-import type { ArtifactStore } from './adapters/ArtifactStore';
-import type { CDNProvider } from './adapters/CDNProvider';
-import type { KnowledgeBaseIntegration } from './integration/KnowledgeBaseIntegration';
+import { createPublishingPipeline, type PublishingPipeline } from './app/PublishingPipeline';
+import { createArtifactStoreFromEnv, type ArtifactStore } from './adapters/ArtifactStore';
+import { createCDNProviderFromEnv, type CDNProvider } from './adapters/CDNProvider';
+import { createKnowledgeBaseIntegration, type KnowledgeBaseIntegration } from './integration/KnowledgeBaseIntegration';
 
 const logger = createLogger({ service: 'publishing-service-loader' });
 

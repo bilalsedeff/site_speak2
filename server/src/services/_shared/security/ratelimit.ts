@@ -9,7 +9,6 @@ import { Request, Response, NextFunction } from 'express';
 import Redis from 'ioredis';
 import { cfg } from '../config/index.js';
 import { logger } from '../telemetry/logger.js';
-import { TenantRequest } from './tenancy.js';
 
 /**
  * Rate limit configuration
@@ -39,7 +38,7 @@ export interface RateLimitResult {
  * Rate limit store interface
  */
 export interface RateLimitStore {
-  increment(key: string, windowMs: number): Promise<{ current: number; resetTime: number }>;
+  increment(key: string, windowMs: number, max?: number): Promise<{ current: number; resetTime: number }>;
   decrement?(key: string): Promise<void>;
   reset?(key: string): Promise<void>;
   get?(key: string): Promise<{ current: number; resetTime: number } | null>;
@@ -91,12 +90,15 @@ export class RedisRateLimitStore implements RateLimitStore {
     `;
 
     try {
-      this.scriptSha = await this.redis.script('LOAD', script);
+      const sha = await this.redis.script('LOAD', script);
+      // Type guard for Redis script loading result
+      this.scriptSha = typeof sha === 'string' ? sha : null;
       logger.debug('Rate limit Lua script loaded', { sha: this.scriptSha });
     } catch (error) {
       logger.error('Failed to load rate limit script', {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
+      this.scriptSha = null;
     }
   }
 
@@ -131,7 +133,7 @@ export class RedisRateLimitStore implements RateLimitStore {
           result = [currentCount + 1, currentTime + windowMs];
         } else {
           const oldest = await this.redis.zrange(key, 0, 0, 'WITHSCORES');
-          const resetTime = oldest.length > 1 ? 
+          const resetTime = oldest.length > 1 && oldest[1] ? 
             (parseInt(oldest[1]) + windowMs) : 
             (currentTime + windowMs);
           result = [currentCount, resetTime];
@@ -184,7 +186,7 @@ export class RedisRateLimitStore implements RateLimitStore {
       const count = await this.redis.zcard(key);
       const oldest = await this.redis.zrange(key, 0, 0, 'WITHSCORES');
       
-      if (oldest.length > 1) {
+      if (oldest.length > 1 && oldest[1]) {
         const resetTime = parseInt(oldest[1]) + cfg.RATE_LIMIT_WINDOW_MS;
         return { current: count, resetTime };
       }
@@ -356,10 +358,24 @@ export const rateLimitService = new RateLimitService();
  */
 export const keyGenerators = {
   byIP: (req: Request) => `ip:${req.ip}`,
-  byTenant: (req: TenantRequest) => `tenant:${req.tenant?.tenantId || 'anonymous'}`,
-  byUser: (req: any) => `user:${req.user?.id || req.ip}`,
-  byUserAndEndpoint: (req: any) => `user:${req.user?.id || req.ip}:${req.route?.path || req.path}`,
-  byTenantAndEndpoint: (req: TenantRequest) => `tenant:${req.tenant?.tenantId || 'anonymous'}:${req.route?.path || req.path}`,
+  byTenant: (req: Request) => {
+    const tenant = (req as any).tenant;
+    return `tenant:${tenant?.tenantId || 'anonymous'}`;
+  },
+  byUser: (req: Request) => {
+    const user = (req as any).user;
+    return `user:${user?.id || req.ip}`;
+  },
+  byUserAndEndpoint: (req: Request) => {
+    const user = (req as any).user;
+    const route = (req as any).route;
+    return `user:${user?.id || req.ip}:${route?.path || req.path}`;
+  },
+  byTenantAndEndpoint: (req: Request) => {
+    const tenant = (req as any).tenant;
+    const route = (req as any).route;
+    return `tenant:${tenant?.tenantId || 'anonymous'}:${route?.path || req.path}`;
+  },
 };
 
 /**
@@ -367,21 +383,16 @@ export const keyGenerators = {
  */
 export function createRateLimiter(config: RateLimitConfig) {
   const {
-    windowMs = cfg.RATE_LIMIT_WINDOW_MS,
     max = cfg.RATE_LIMIT_MAX,
     keyGenerator = keyGenerators.byIP,
     skipSuccessfulRequests = cfg.RATE_LIMIT_SKIP_SUCCESSFUL_REQUESTS,
     skipFailedRequests = false,
   } = config;
 
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const key = keyGenerator(req);
-      const result = await rateLimitService.checkLimit(key, {
-        windowMs,
-        max,
-        ...config,
-      });
+      const result = await rateLimitService.checkLimit(key, config);
 
       // Set rate limit headers
       res.set({
@@ -400,18 +411,19 @@ export function createRateLimiter(config: RateLimitConfig) {
           path: req.path,
         });
 
-        return res.status(429).json({
+        res.status(429).json({
           error: 'Too Many Requests',
           code: 'RATE_LIMIT_EXCEEDED',
           message: `Rate limit exceeded. Try again after ${new Date(result.resetTime).toISOString()}`,
           retryAfter: Math.ceil((result.resetTime - Date.now()) / 1000),
         });
+        return;
       }
 
       // Handle response to potentially decrement counter
       if (skipSuccessfulRequests || skipFailedRequests) {
-        const originalEnd = res.end;
-        res.end = function(this: any, ...args: any[]) {
+        const originalEnd = res.end.bind(res);
+        res.end = function(chunk?: any, encoding?: BufferEncoding | (() => void), cb?: () => void) {
           const shouldDecrement = 
             (skipSuccessfulRequests && res.statusCode >= 200 && res.statusCode < 300) ||
             (skipFailedRequests && res.statusCode >= 400);
@@ -422,7 +434,7 @@ export function createRateLimiter(config: RateLimitConfig) {
             });
           }
 
-          originalEnd.apply(this, args);
+          return originalEnd(chunk, encoding as BufferEncoding, cb);
         };
       }
 

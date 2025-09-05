@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../../services/_shared/telemetry/logger';
 
 const logger = createLogger({ service: 'robots-compliance' });
 
@@ -286,7 +286,7 @@ export class RobotsComplianceChecker {
       }
 
       const [key, ...valueParts] = line.split(':');
-      if (valueParts.length === 0) continue;
+      if (valueParts.length === 0) {continue;}
       
       const value = valueParts.join(':').trim();
       const lowerKey = key.toLowerCase().trim();
@@ -336,8 +336,8 @@ export class RobotsComplianceChecker {
    * Check if path matches robots rule pattern
    */
   private pathMatches(path: string, pattern: string): boolean {
-    if (!pattern) return false;
-    if (pattern === '/') return path === '/';
+    if (!pattern) {return false;}
+    if (pattern === '/') {return path === '/';}
     
     // Handle wildcards
     if (pattern.includes('*')) {

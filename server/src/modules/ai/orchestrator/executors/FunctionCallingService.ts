@@ -19,7 +19,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createLogger } from '../../../../shared/utils.js';
 import { config } from '../../../../infrastructure/config';
 import { SiteAction } from '../../../../shared/types';
-import type { ActionDispatchService } from '../../../application/services/ActionDispatchService';
+import type { ActionDispatchService } from '../../application/services/ActionDispatchService';
 
 const logger = createLogger({ service: 'function-calling' });
 
@@ -580,9 +580,9 @@ Return JSON in this exact format:
   // Helper methods
   
   private shouldRequireConfirmation(action: SiteAction, riskLevel: string): boolean {
-    if (action.confirmation) return true;
-    if (riskLevel === 'high') return true;
-    if (action.sideEffecting === 'unsafe') return true;
+    if (action.confirmation) {return true;}
+    if (riskLevel === 'high') {return true;}
+    if (action.sideEffecting === 'unsafe') {return true;}
     return false;
   }
 

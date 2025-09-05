@@ -7,7 +7,7 @@
  */
 
 import { chromium, Browser, BrowserContext, Page, Response } from 'playwright';
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../../services/_shared/telemetry/logger';
 
 const logger = createLogger({ service: 'playwright-adapter' });
 
@@ -91,7 +91,7 @@ export class PlaywrightAdapter {
    * Initialize Playwright browser and context
    */
   async initialize(): Promise<void> {
-    if (this.isInitialized) return;
+    if (this.isInitialized) {return;}
 
     try {
       logger.info('Initializing Playwright browser');
@@ -458,10 +458,10 @@ export class PlaywrightAdapter {
   private classifyError(error: any): 'timeout' | 'navigation' | 'javascript' | 'network' | 'unknown' {
     const message = error?.message?.toLowerCase() || '';
     
-    if (message.includes('timeout')) return 'timeout';
-    if (message.includes('navigation') || message.includes('navigate')) return 'navigation';
-    if (message.includes('javascript') || message.includes('script')) return 'javascript';
-    if (message.includes('network') || message.includes('connection')) return 'network';
+    if (message.includes('timeout')) {return 'timeout';}
+    if (message.includes('navigation') || message.includes('navigate')) {return 'navigation';}
+    if (message.includes('javascript') || message.includes('script')) {return 'javascript';}
+    if (message.includes('network') || message.includes('connection')) {return 'network';}
     
     return 'unknown';
   }

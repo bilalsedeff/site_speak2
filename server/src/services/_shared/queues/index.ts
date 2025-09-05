@@ -12,7 +12,7 @@ export {
   shutdownQueues,
   checkQueueHealth,
   registerJobSchema,
-} from './factory';
+} from './factory.js';
 
 // Re-export conventions
 export {
@@ -39,7 +39,7 @@ export type {
 export type { Queue, Worker, Job } from 'bullmq';
 
 import { Queue, Worker } from 'bullmq';
-import { makeQueue, shutdownQueues } from './factory';
+import { makeQueue, makeWorker, shutdownQueues } from './factory';
 import { QueueNames, QueueConfigs, registerAllJobSchemas } from './conventions';
 import { logger } from '../telemetry/logger';
 

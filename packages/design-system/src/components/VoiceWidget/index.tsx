@@ -380,13 +380,13 @@ export const VoiceWidget = React.forwardRef<HTMLDivElement, VoiceWidgetProps>(
 
     // Start voice recording
     const startListening = useCallback(async () => {
-      if (!voiceState.isConnected || voiceState.isListening) return
+      if (!voiceState.isConnected || voiceState.isListening) {return}
 
       try {
         // Request permission if needed
         if (!voiceState.hasPermission) {
           const granted = await requestMicrophonePermission()
-          if (!granted) return
+          if (!granted) {return}
         }
 
         // Get microphone stream
@@ -534,7 +534,7 @@ export const VoiceWidget = React.forwardRef<HTMLDivElement, VoiceWidgetProps>(
 
     // Handle outside click
     useEffect(() => {
-      if (!minimizeOnClickOutside) return
+      if (!minimizeOnClickOutside) {return}
 
       const handleClickOutside = (event: MouseEvent) => {
         if (shadowHostRef.current && !shadowHostRef.current.contains(event.target as Node)) {
@@ -570,7 +570,7 @@ export const VoiceWidget = React.forwardRef<HTMLDivElement, VoiceWidgetProps>(
 
     // Render waveform visualization
     const renderWaveform = () => {
-      if (!showWaveform) return null
+      if (!showWaveform) {return null}
 
       return (
         <div className="flex items-center justify-center space-x-1 h-8 my-4">

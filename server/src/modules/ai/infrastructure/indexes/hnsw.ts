@@ -62,7 +62,7 @@ export class HNSWIndexManager {
     tableName: string,
     columnName: string,
     indexName: string,
-    config: HNSWConfig = HNSWIndexManager.PRESETS['balanced'].config,
+    config: HNSWConfig = HNSWIndexManager.PRESETS['balanced']?.config || { m: 16, efConstruction: 64, efSearch: 100 },
     concurrent: boolean = true
   ): Promise<void> {
     const { m = 16, efConstruction = 64 } = config;
@@ -180,9 +180,9 @@ export class HNSWIndexManager {
       const [workersResult] = await this.sql`SHOW max_parallel_maintenance_workers`;
 
       return {
-        efSearch: parseInt(efSearchResult['hnsw_ef_search'] || '100'),
-        maintenanceWorkMem: workMemResult['maintenance_work_mem'],
-        maxParallelMaintenanceWorkers: parseInt(workersResult['max_parallel_maintenance_workers']),
+        efSearch: parseInt(efSearchResult?.['hnsw_ef_search'] || '100'),
+        maintenanceWorkMem: workMemResult?.['maintenance_work_mem'] || '4MB',
+        maxParallelMaintenanceWorkers: parseInt(workersResult?.['max_parallel_maintenance_workers'] || '2'),
       };
     } catch (error) {
       logger.error('Failed to get current HNSW parameters', { error });
@@ -246,7 +246,7 @@ export class HNSWIndexManager {
 
       // Get current maintenance_work_mem
       const [memResult] = await this.sql`SHOW maintenance_work_mem`;
-      const workMem = memResult['maintenance_work_mem'];
+      const workMem = memResult?.['maintenance_work_mem'] || '4MB';
 
       logger.info('Index creation memory validation', {
         tableName,
@@ -257,7 +257,7 @@ export class HNSWIndexManager {
       });
 
       // Warn if maintenance_work_mem might be too low
-      const workMemBytes = this.parseMemoryString(workMem);
+      const workMemBytes = this.parseMemoryString(workMem || '4MB');
       const estimatedIndexMem = (tableStats?.['row_count'] || 0) * (config.m || 16) * 4; // Rough estimate
 
       if (workMemBytes < estimatedIndexMem) {
@@ -276,11 +276,16 @@ export class HNSWIndexManager {
   /**
    * Parse PostgreSQL memory string to bytes
    */
-  private parseMemoryString(memStr: string): number {
+  private parseMemoryString(memStr: string | undefined): number {
+    if (!memStr) {
+      return 0;
+    }
     const match = memStr.match(/^(\d+)(kB|MB|GB)?$/);
-    if (!match) {return 0;}
+    if (!match) {
+      return 0;
+    }
 
-    const value = parseInt(match[1]);
+    const value = parseInt(match[1] || '0');
     const unit = match[2] || '';
 
     switch (unit) {
@@ -369,7 +374,7 @@ export class HNSWIndexManager {
       
       // Return safe defaults
       return {
-        recommended: HNSWIndexManager.PRESETS['balanced'].config,
+        recommended: HNSWIndexManager.PRESETS['balanced']?.config || { m: 16, efConstruction: 64, efSearch: 100 },
         reasoning: ['Error analyzing data: using balanced preset as fallback'],
       };
     }

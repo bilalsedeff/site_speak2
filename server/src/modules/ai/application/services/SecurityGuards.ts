@@ -141,7 +141,7 @@ export class SecurityGuards {
         riskLevel: 'high',
         issues,
         requiresConfirmation: false,
-        rateLimitInfo: rateLimitResult.rateLimitInfo,
+        ...(rateLimitResult.rateLimitInfo ? { rateLimitInfo: rateLimitResult.rateLimitInfo } : {}),
       };
     }
 
@@ -231,8 +231,8 @@ export class SecurityGuards {
       riskLevel,
       issues,
       requiresConfirmation,
-      sanitizedParameters,
-      rateLimitInfo: rateLimitResult.rateLimitInfo,
+      ...(sanitizedParameters ? { sanitizedParameters } : {}),
+      ...(rateLimitResult.rateLimitInfo ? { rateLimitInfo: rateLimitResult.rateLimitInfo } : {}),
     };
   }
 

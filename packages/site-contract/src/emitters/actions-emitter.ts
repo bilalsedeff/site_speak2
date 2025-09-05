@@ -40,7 +40,7 @@ export class ActionsEmitter {
     for (const [componentName, contract] of Object.entries(components)) {
       // Get base actions for this component
       const baseActions = getComponentActions(componentName)
-      if (baseActions.length === 0) continue
+      if (baseActions.length === 0) {continue}
 
       // Convert to contract format and enhance with security
       const componentActions: ComponentActionContract[] = baseActions.map(action => {

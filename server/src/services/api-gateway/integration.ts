@@ -283,7 +283,7 @@ async function performComprehensiveHealthCheck(): Promise<{
   try {
     const { checkDatabaseHealth } = await import('../../infrastructure/database');
     components['database'] = await checkDatabaseHealth();
-    if (components['database'].healthy) healthyCount++;
+    if (components['database'].healthy) {healthyCount++;}
     totalChecks++;
   } catch (error) {
     components['database'] = { healthy: false, error: 'Database health check failed' };
@@ -299,7 +299,7 @@ async function performComprehensiveHealthCheck(): Promise<{
       activeSessions: voiceStatus.activeSessions,
       performance: voiceStatus.performance
     };
-    if (components['voice'].healthy) healthyCount++;
+    if (components['voice'].healthy) {healthyCount++;}
     totalChecks++;
     
     // Voice performance metrics
@@ -320,7 +320,7 @@ async function performComprehensiveHealthCheck(): Promise<{
     const { knowledgeBaseService } = await import('../../modules/ai/application/services/KnowledgeBaseService');
     const kbHealth = await knowledgeBaseService.healthCheck();
     components['knowledgeBase'] = kbHealth;
-    if (kbHealth.healthy) healthyCount++;
+    if (kbHealth.healthy) {healthyCount++;}
     totalChecks++;
   } catch (error) {
     components['knowledgeBase'] = { healthy: false, error: 'KB health check failed' };
@@ -333,7 +333,7 @@ async function performComprehensiveHealthCheck(): Promise<{
     healthy: !!process.env['OPENAI_API_KEY'],
     configured: !!process.env['OPENAI_API_KEY']
   };
-  if (components['openai'].healthy) healthyCount++;
+  if (components['openai'].healthy) {healthyCount++;}
   totalChecks++;
 
   // Memory health
@@ -345,7 +345,7 @@ async function performComprehensiveHealthCheck(): Promise<{
     heapTotal: memUsage.heapTotal,
     rss: memUsage.rss
   };
-  if (memoryHealthy) healthyCount++;
+  if (memoryHealthy) {healthyCount++;}
   totalChecks++;
 
   // Overall performance metrics

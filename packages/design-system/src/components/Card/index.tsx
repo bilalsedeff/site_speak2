@@ -70,9 +70,9 @@ const Card = React.forwardRef<HTMLDivElement, CardComponentProps>(
 
     // Structured data attributes
     const structuredDataAttributes: Record<string, any> = {}
-    if (itemType) structuredDataAttributes['itemType'] = itemType
-    if (itemProp) structuredDataAttributes['itemProp'] = itemProp
-    if (itemScope) structuredDataAttributes['itemScope'] = itemScope
+    if (itemType) {structuredDataAttributes['itemType'] = itemType}
+    if (itemProp) {structuredDataAttributes['itemProp'] = itemProp}
+    if (itemScope) {structuredDataAttributes['itemScope'] = itemScope}
 
     return (
       <div

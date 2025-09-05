@@ -1,5 +1,5 @@
 import { JSDOM } from 'jsdom';
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../../services/_shared/telemetry/logger';
 
 const logger = createLogger({ service: 'form-extractor' });
 
@@ -199,7 +199,7 @@ export class FormExtractor {
    */
   private extractSubmitButtonData(element: HTMLElement, index: number): SubmitButton | null {
     const text = this.getElementText(element);
-    if (!text) return null;
+    if (!text) {return null;}
 
     return {
       text,
@@ -248,8 +248,8 @@ export class FormExtractor {
    * Generate form ID
    */
   private generateFormId(form: HTMLFormElement, index: number): string {
-    if (form.id) return form.id;
-    if (form.name) return form.name;
+    if (form.id) {return form.id;}
+    if (form.name) {return form.name;}
     if (form.className) {
       const mainClass = form.className.split(' ')[0];
       return `form-${mainClass}-${index}`;
@@ -357,7 +357,7 @@ export class FormExtractor {
     
     // Try aria-label or aria-labelledby
     const ariaLabel = element.getAttribute('aria-label');
-    if (ariaLabel) return ariaLabel.trim();
+    if (ariaLabel) {return ariaLabel.trim();}
     
     const ariaLabelledBy = element.getAttribute('aria-labelledby');
     if (ariaLabelledBy) {
@@ -369,7 +369,7 @@ export class FormExtractor {
     
     // Try placeholder as last resort
     const placeholder = element.getAttribute('placeholder');
-    if (placeholder) return placeholder;
+    if (placeholder) {return placeholder;}
     
     return undefined;
   }
@@ -560,7 +560,7 @@ export class FormExtractor {
       path.unshift(selector);
       current = current.parentElement;
       
-      if (path.length >= 5) break;
+      if (path.length >= 5) {break;}
     }
     
     return path.join(' > ');
@@ -573,9 +573,9 @@ export class FormExtractor {
     let confidence = 0.6; // Base confidence
     
     // Boost for semantic attributes
-    if (form.id) confidence += 0.1;
-    if (form.name) confidence += 0.1;
-    if (form.action) confidence += 0.1;
+    if (form.id) {confidence += 0.1;}
+    if (form.name) {confidence += 0.1;}
+    if (form.action) {confidence += 0.1;}
     
     // Boost for field quality
     const labeledFields = fields.filter(f => f.label).length;
@@ -598,9 +598,9 @@ export class FormExtractor {
   private calculateFieldConfidence(element: HTMLElement): number {
     let confidence = 0.7; // Base confidence
     
-    if (this.getFieldLabel(element)) confidence += 0.1;
-    if (element.getAttribute('name')) confidence += 0.1;
-    if (this.hasValidationAttributes(element)) confidence += 0.1;
+    if (this.getFieldLabel(element)) {confidence += 0.1;}
+    if (element.getAttribute('name')) {confidence += 0.1;}
+    if (this.hasValidationAttributes(element)) {confidence += 0.1;}
     
     return Math.min(1.0, confidence);
   }
@@ -636,11 +636,11 @@ export class FormExtractor {
   private classifySubmitButton(text: string): string {
     const lowText = text.toLowerCase();
     
-    if (lowText.includes('submit') || lowText.includes('send')) return 'submit';
-    if (lowText.includes('search') || lowText.includes('find')) return 'search';
-    if (lowText.includes('subscribe') || lowText.includes('sign up')) return 'subscribe';
-    if (lowText.includes('login') || lowText.includes('sign in')) return 'login';
-    if (lowText.includes('register') || lowText.includes('create account')) return 'register';
+    if (lowText.includes('submit') || lowText.includes('send')) {return 'submit';}
+    if (lowText.includes('search') || lowText.includes('find')) {return 'search';}
+    if (lowText.includes('subscribe') || lowText.includes('sign up')) {return 'subscribe';}
+    if (lowText.includes('login') || lowText.includes('sign in')) {return 'login';}
+    if (lowText.includes('register') || lowText.includes('create account')) {return 'register';}
     
     return 'submit';
   }

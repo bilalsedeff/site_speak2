@@ -11,7 +11,7 @@
  * - Generic HTTP cache purging
  */
 
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../services/_shared/telemetry/logger';
 
 const logger = createLogger({ service: 'cdn-provider' });
 

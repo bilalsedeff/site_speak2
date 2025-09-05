@@ -79,6 +79,7 @@ export class MetricsService {
   private requestCounts = new Map<string, number>();
   private responseTimes: number[] = [];
   private errorCounts = new Map<string, number>();
+  // TODO: Use for application start time metrics (vs process uptime)
   private _startTime = Date.now(); // Application start time for future use
   private eventLoopMonitor: ReturnType<typeof monitorEventLoopDelay>;
   private isDraining = false;
@@ -512,6 +513,7 @@ export class MetricsService {
   private async getDiskUsage(): Promise<{ available: number; used: number; total: number }> {
     try {
       // Simple disk usage estimation - for production, use a proper disk usage library
+      // TODO: Implement actual disk usage calculation using _stats
       const _stats = await fs.promises.stat(process.cwd());
       
       // Return placeholder values for now - in production, use a library like 'node-disk-info'

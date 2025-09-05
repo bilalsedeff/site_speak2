@@ -249,7 +249,7 @@ export function generateAriaAttributes(
   customAttributes?: Record<string, any>
 ): Record<string, any> {
   const requirements = getAriaRequirements(componentName)
-  if (!requirements) return customAttributes || {}
+  if (!requirements) {return customAttributes || {}}
 
   const attrs: Record<string, any> = { ...customAttributes }
 

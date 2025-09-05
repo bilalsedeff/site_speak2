@@ -4,7 +4,7 @@ The AI Orchestrator module implements sophisticated multi-step task processing u
 
 ## Architecture
 
-```
+```plaintext
 orchestrator/
 ├── graphs/           # LangGraph state machines
 │   └── UniversalAgent.graph.ts     # Main complex task orchestrator
@@ -22,13 +22,15 @@ orchestrator/
 The main state machine for complex multi-step tasks following the source-of-truth workflow:
 
 **State Flow:**
-```
+
+```plaintext
 understandIntent → retrieveKnowledge → checkClarification → planFunctions 
      ↓                                                              ↓
 finalize ← observeResults ← executeFunctions ← confirmActions ← [decision]
 ```
 
 **Features:**
+
 - Stateful conversation with slot frames for complex intents
 - Speculative action execution to hide latency
 - Human-in-the-loop confirmation gates for side-effects
@@ -37,6 +39,7 @@ finalize ← observeResults ← executeFunctions ← confirmActions ← [decisio
 - Voice-first interaction patterns with barge-in support
 
 **Example Usage:**
+
 ```typescript
 const universalAgent = createUniversalAgentGraph(siteId, {
   conversationFlowManager,
@@ -60,12 +63,14 @@ const result = await universalAgent.processConversation({
 Implements slot-frame dialog management for extracting structured information from natural language:
 
 **Slot Extractors:**
+
 - **Temporal**: "this summer" → June-August date range with hemisphere detection
 - **Spatial**: "by the sea" + "near me" → venue feature matching with geolocation
-- **Quantitative**: "2 tickets" → {quantity: 2, itemType: "tickets"} 
+- **Quantitative**: "2 tickets" → {quantity: 2, itemType: "tickets"}
 - **Categorical**: "EDM/House" → electronic music genre classification
 
 **Key Methods:**
+
 - `parseUserIntent()`: LLM-based intent extraction with slot normalization
 - `generateClarificationQuestion()`: Creates targeted follow-up questions
 - `updateSlotFrame()`: Incrementally builds conversation state
@@ -76,17 +81,20 @@ Implements slot-frame dialog management for extracting structured information fr
 Enhanced OpenAI function calling with enterprise safety and reliability:
 
 **Features:**
+
 - Zod schema validation for all function calls
 - Risk assessment with confirmation gates (low/medium/high risk levels)
 - Retry logic with exponential backoff and idempotency
 - Integration with ActionDispatchService for actual execution
 
 **Risk Levels:**
+
 - **Low**: Navigation, search, view operations
 - **Medium**: Form submissions, data modifications
 - **High**: Purchase, booking, irreversible actions
 
 **Example:**
+
 ```typescript
 const functionPlan = await functionCallingService.planFunctionCalls(
   "Add 2 tickets to cart",
@@ -132,15 +140,18 @@ if (isComplex) {
 All components emit comprehensive telemetry:
 
 **Voice Metrics:**
+
 - `voice.first_response_ms`: Time to first audible response
 - `voice.asr_partial`: ASR streaming latency
 - `voice.tts_started`: TTS streaming start time
 
 **Retrieval Metrics:**
+
 - `retrieval.hybrid_search`: Vector + FTS + rerank timing
 - `rag.quality_check`: Hit rate and freshness metrics
 
 **Tool Execution Metrics:**
+
 - `ai.tool_call_completed`: Individual tool performance
 - `ai.tool_chain_completed`: Multi-step task coordination
 
@@ -156,7 +167,8 @@ Based on the source-of-truth SLA requirements:
 ## Complex Task Examples
 
 ### 1. Event Booking with Multiple Constraints
-```
+
+```plaintext
 Input: "Find me EDM/House concerts by the sea near me this summer and add 2 tickets to cart"
 
 Slot Frame Extraction:
@@ -171,7 +183,8 @@ Flow: search → filter by location/genre/time → clarify ticket type → add t
 ```
 
 ### 2. Multi-step Commerce
-```
+
+```plaintext
 Input: "Show me Italian restaurants with outdoor seating and book a table for 4 tonight"
 
 Slot Frame Extraction:
@@ -198,15 +211,16 @@ Use the test patterns from the source-of-truth document:
 ### Adding New Slot Extractors
 
 1. Extend the slot extractor in `ConversationFlowManager.ts`:
+
 ```typescript
 private extractCustomSlot(text: string): SlotValue | null {
   // Pattern matching and normalization logic
 }
 ```
 
-2. Update the slot frame schema with new slot types
-3. Add clarification question templates
-4. Update analytics tracking for new slot types
+-2. Update the slot frame schema with new slot types
+-3. Add clarification question templates
+-4. Update analytics tracking for new slot types
 
 ### Adding New Tool Categories
 
@@ -232,6 +246,7 @@ The system provides comprehensive observability through:
 - **Slot frame tracking** for conversation quality
 
 Monitor key metrics:
+
 - Task completion rates by complexity
 - Slot extraction accuracy
 - Clarification frequency

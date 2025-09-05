@@ -86,7 +86,7 @@ export class SiteContract {
    */
   isUrlAllowed(url: string, userAgent: string = '*'): boolean {
     const rules = this.robots.rules.get(userAgent) || this.robots.rules.get('*');
-    if (!rules) return true;
+    if (!rules) {return true;}
 
     const path = new URL(url).pathname;
 
@@ -144,9 +144,9 @@ export class SiteContract {
     const warnings: string[] = [];
 
     // Required fields validation
-    if (!this.baseUrl) errors.push('Base URL is required');
-    if (!this.siteId) errors.push('Site ID is required');
-    if (!this.tenantId) errors.push('Tenant ID is required');
+    if (!this.baseUrl) {errors.push('Base URL is required');}
+    if (!this.siteId) {errors.push('Site ID is required');}
+    if (!this.tenantId) {errors.push('Tenant ID is required');}
 
     // Sitemap validation
     if (this.sitemap.exists && this.sitemap.entries.length === 0) {

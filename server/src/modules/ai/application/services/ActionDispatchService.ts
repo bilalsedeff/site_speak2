@@ -68,6 +68,7 @@ export class ActionDispatchService {
 
   constructor(
     private actionExecutor: ActionExecutorService,
+    // TODO: Use for dynamic action validation during dispatch
     private _manifestGenerator: ActionManifestGenerator,
     private widgetBridge: WidgetActionBridge
   ) {}

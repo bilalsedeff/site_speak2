@@ -146,7 +146,7 @@ export function validateQueryParams(schema: Record<string, {
       if (rules.type) {
         switch (rules.type) {
           case 'number':
-            if (isNaN(Number(stringValue))) {
+            { if (isNaN(Number(stringValue))) {
               errors.push(`Parameter ${param} must be a number`);
               continue;
             }
@@ -157,7 +157,7 @@ export function validateQueryParams(schema: Record<string, {
             if (rules.max !== undefined && numValue > rules.max) {
               errors.push(`Parameter ${param} must be <= ${rules.max}`);
             }
-            break;
+            break; }
             
           case 'boolean':
             if (!['true', 'false', '1', '0'].includes(stringValue.toLowerCase())) {

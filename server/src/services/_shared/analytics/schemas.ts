@@ -44,7 +44,6 @@ export const BaseEventSchema = z.object({
 });
 
 export type BaseEvent = z.infer<typeof BaseEventSchema>;
-export { BaseEvent };
 
 /**
  * Voice UX Event Schemas
@@ -296,7 +295,6 @@ export const EventBatchSchema = z.object({
 });
 
 export type EventBatch = z.infer<typeof EventBatchSchema>;
-export { EventBatch };
 
 /**
  * Validation helper functions

@@ -5,7 +5,7 @@
  * non-durable local pub/sub within the same process.
  */
 
-import EventEmitter from 'events';
+import { EventEmitter } from 'events';
 import { logger } from '../telemetry/logger.js';
 import { withSpan } from '../telemetry/otel.js';
 
@@ -212,11 +212,12 @@ export class EventBus extends EventEmitter {
     const subscriptions: Record<string, number> = {};
     const onceSubscriptions: Record<string, number> = {};
 
-    for (const [eventType, handlers] of this.subscriptions.entries()) {
+    // Convert to arrays to avoid iterator issues
+    for (const [eventType, handlers] of Array.from(this.subscriptions.entries())) {
       subscriptions[eventType] = handlers.size;
     }
 
-    for (const [eventType, handlers] of this.onceSubscriptions.entries()) {
+    for (const [eventType, handlers] of Array.from(this.onceSubscriptions.entries())) {
       onceSubscriptions[eventType] = handlers.size;
     }
 

@@ -60,20 +60,18 @@ export const conversations = pgTable('conversations', {
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    siteIdx: index('idx_conversations_site').on(table.siteId),
-    sessionIdx: index('idx_conversations_session').on(table.sessionId),
-    userIdx: index('idx_conversations_user').on(table.userId),
-    voiceSessionIdx: index('idx_conversations_voice_session').on(table.voiceSessionId),
-    statusIdx: index('idx_conversations_status').on(table.status),
-    startedAtIdx: index('idx_conversations_started').on(table.startedAt),
-    lastMessageIdx: index('idx_conversations_last_message').on(table.lastMessageAt),
-    categoryIdx: index('idx_conversations_category').on(table.category),
-    priorityIdx: index('idx_conversations_priority').on(table.priority),
-    resolvedIdx: index('idx_conversations_resolved').on(table.resolved),
-  };
-});
+}, (table) => [
+  index('idx_conversations_site').on(table.siteId),
+  index('idx_conversations_session').on(table.sessionId),
+  index('idx_conversations_user').on(table.userId),
+  index('idx_conversations_voice_session').on(table.voiceSessionId),
+  index('idx_conversations_status').on(table.status),
+  index('idx_conversations_started').on(table.startedAt),
+  index('idx_conversations_last_message').on(table.lastMessageAt),
+  index('idx_conversations_category').on(table.category),
+  index('idx_conversations_priority').on(table.priority),
+  index('idx_conversations_resolved').on(table.resolved),
+]);
 
 export const conversationTurns = pgTable('conversation_turns', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -132,17 +130,15 @@ export const conversationTurns = pgTable('conversation_turns', {
   processedAt: timestamp('processed_at', { withTimezone: true }),
   
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    conversationIdx: index('idx_conversation_turns_conversation').on(table.conversationId),
-    roleIdx: index('idx_conversation_turns_role').on(table.role),
-    typeIdx: index('idx_conversation_turns_type').on(table.type),
-    timestampIdx: index('idx_conversation_turns_timestamp').on(table.timestamp),
-    turnNumberIdx: index('idx_conversation_turns_number').on(table.conversationId, table.turnNumber),
-    sentimentIdx: index('idx_conversation_turns_sentiment').on(table.sentiment),
-    flaggedIdx: index('idx_conversation_turns_flagged').on(table.flagged),
-  };
-});
+}, (table) => [
+  index('idx_conversation_turns_conversation').on(table.conversationId),
+  index('idx_conversation_turns_role').on(table.role),
+  index('idx_conversation_turns_type').on(table.type),
+  index('idx_conversation_turns_timestamp').on(table.timestamp),
+  index('idx_conversation_turns_number').on(table.conversationId, table.turnNumber),
+  index('idx_conversation_turns_sentiment').on(table.sentiment),
+  index('idx_conversation_turns_flagged').on(table.flagged),
+]);
 
 export const conversationIntents = pgTable('conversation_intents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -170,16 +166,14 @@ export const conversationIntents = pgTable('conversation_intents', {
   context: jsonb('context').default({}),
   
   timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => {
-  return {
-    conversationIdx: index('idx_conversation_intents_conversation').on(table.conversationId),
-    turnIdx: index('idx_conversation_intents_turn').on(table.turnId),
-    intentIdx: index('idx_conversation_intents_intent').on(table.intent),
-    confidenceIdx: index('idx_conversation_intents_confidence').on(table.confidence),
-    resolvedIdx: index('idx_conversation_intents_resolved').on(table.resolved),
-    timestampIdx: index('idx_conversation_intents_timestamp').on(table.timestamp),
-  };
-});
+}, (table) => [
+  index('idx_conversation_intents_conversation').on(table.conversationId),
+  index('idx_conversation_intents_turn').on(table.turnId),
+  index('idx_conversation_intents_intent').on(table.intent),
+  index('idx_conversation_intents_confidence').on(table.confidence),
+  index('idx_conversation_intents_resolved').on(table.resolved),
+  index('idx_conversation_intents_timestamp').on(table.timestamp),
+]);
 
 export const conversationActions = pgTable('conversation_actions', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -222,17 +216,15 @@ export const conversationActions = pgTable('conversation_actions', {
   requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
   executedAt: timestamp('executed_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
-}, (table) => {
-  return {
-    conversationIdx: index('idx_conversation_actions_conversation').on(table.conversationId),
-    turnIdx: index('idx_conversation_actions_turn').on(table.turnId),
-    actionNameIdx: index('idx_conversation_actions_name').on(table.actionName),
-    actionTypeIdx: index('idx_conversation_actions_type').on(table.actionType),
-    statusIdx: index('idx_conversation_actions_status').on(table.status),
-    requestedAtIdx: index('idx_conversation_actions_requested').on(table.requestedAt),
-    riskLevelIdx: index('idx_conversation_actions_risk').on(table.riskLevel),
-  };
-});
+}, (table) => [
+  index('idx_conversation_actions_conversation').on(table.conversationId),
+  index('idx_conversation_actions_turn').on(table.turnId),
+  index('idx_conversation_actions_name').on(table.actionName),
+  index('idx_conversation_actions_type').on(table.actionType),
+  index('idx_conversation_actions_status').on(table.status),
+  index('idx_conversation_actions_requested').on(table.requestedAt),
+  index('idx_conversation_actions_risk').on(table.riskLevel),
+]);
 
 // Zod schemas for validation
 export const insertConversationSchema = createInsertSchema(conversations, {

@@ -14,7 +14,7 @@ import type { SiteAction } from '../../../../../shared/types/index.js';egistry
  * Integrates with existing ActionExecutorService without duplication.
  */
 
-import { createLogger } from '../../../../../shared/utils.js';
+import { createLogger } from '../../../shared/utils.js';
 import { 
   ToolDefinition, 
   ToolContext, 

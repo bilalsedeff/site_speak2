@@ -10,6 +10,10 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, '../shared'),
+      '@sitespeak/design-system': path.resolve(__dirname, '../packages/design-system/src'),
+      '@sitespeak/site-contract': path.resolve(__dirname, '../packages/site-contract/src'),
+      '@sitespeak/editor-engine': path.resolve(__dirname, '../packages/editor-engine/src'),
+      '@sitespeak/voice-widget': path.resolve(__dirname, '../packages/voice-widget/src'),
     },
   },
 

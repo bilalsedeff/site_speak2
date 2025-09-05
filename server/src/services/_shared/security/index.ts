@@ -88,6 +88,8 @@ import { logger } from '../telemetry/logger.js';
 import { extractBearerToken, validateAccessToken } from './auth.js';
 import { enforceTenancy } from './tenancy.js';
 import { rbacService } from './rbac.js';
+import { createRateLimiter } from './ratelimit.js';
+import { apiSecurityHeaders, securityHeaders } from './headers.js';
 
 /**
  * Complete authentication middleware
@@ -193,12 +195,16 @@ export function createSecurityMiddleware(options: {
 
   // Security headers (should be first)
   if (headers) {
-    middlewares.push(securityMiddleware.api());
+    middlewares.push(apiSecurityHeaders());
   }
 
   // Rate limiting (should be early)
   if (rateLimit) {
-    middlewares.push(rateLimiters.api);
+    const rateLimitMiddleware = createRateLimiter({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100 // limit each IP to 100 requests per windowMs
+    });
+    middlewares.push(rateLimitMiddleware);
   }
 
   // Authentication
@@ -288,7 +294,7 @@ export function checkSecurityHealth(): {
  */
 export const createSecurityService = () => ({
   rbac: rbacService,
-  rateLimit: rateLimitService,
+  rateLimit: createRateLimiter,
   middleware: {
     auth: authenticate,
     tenancy: enforceTenancy,

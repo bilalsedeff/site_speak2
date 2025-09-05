@@ -112,7 +112,7 @@ export function makeQueue(
     });
   });
 
-  queue.on('active', (job: Job) => {
+  queue.on('active' as any, (job: Job) => {
     logger.info(`Job ${job.id} started in queue ${name}`, {
       jobId: job.id,
       queue: name,
@@ -120,7 +120,7 @@ export function makeQueue(
     });
   });
 
-  queue.on('completed', (job: Job, result: any) => {
+  queue.on('completed' as any, (job: Job, result: any) => {
     logger.info(`Job ${job.id} completed in queue ${name}`, {
       jobId: job.id,
       queue: name,
@@ -130,7 +130,7 @@ export function makeQueue(
     });
   });
 
-  queue.on('failed', (job: Job | undefined, error: Error) => {
+  queue.on('failed' as any, (job: Job | undefined, error: Error) => {
     logger.error(`Job ${job?.id || 'unknown'} failed in queue ${name}`, {
       jobId: job?.id,
       queue: name,
@@ -141,7 +141,7 @@ export function makeQueue(
     });
   });
 
-  queue.on('stalled', (jobId: string) => {
+  queue.on('stalled' as any, (jobId: string) => {
     logger.warn(`Job ${jobId} stalled in queue ${name}`, {
       jobId,
       queue: name,

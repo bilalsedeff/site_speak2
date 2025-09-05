@@ -1,5 +1,4 @@
-import { z } from 'zod';
-import type { ZodError, ZodSchema } from 'zod';
+import { z, type ZodError, type ZodSchema } from 'zod';
 
 /**
  * Generic validation result type

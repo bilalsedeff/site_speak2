@@ -62,7 +62,7 @@ export class RRFRanker {
 
     // Process each ranking system
     rankings.forEach((ranking, systemIndex) => {
-      const systemWeight = normalizedWeights[systemIndex];
+      const systemWeight = normalizedWeights[systemIndex] || 0;
       const systemName = ranking.systemName || `system_${systemIndex}`;
       
       ranking.items.forEach((item, rank) => {
@@ -106,8 +106,8 @@ export class RRFRanker {
 
     // Normalize scores if requested
     if (this.normalizeScores && results.length > 0) {
-      const maxScore = results[0].rrfScore;
-      const minScore = results[results.length - 1].rrfScore;
+      const maxScore = results[0]?.rrfScore || 0;
+      const minScore = results[results.length - 1]?.rrfScore || 0;
       const scoreRange = maxScore - minScore;
 
       results.forEach(result => {
@@ -130,7 +130,8 @@ export class RRFRanker {
 
     // Apply consensus filtering (must appear in at least N systems)
     if (options.minConsensus !== undefined) {
-      results = results.filter(r => r.appearsInSystems >= options.minConsensus);
+      const minConsensus = options.minConsensus;
+      results = results.filter(r => r.appearsInSystems >= minConsensus);
     }
 
     // Limit results
@@ -180,8 +181,8 @@ export class RRFRanker {
 
     return this.fuseRankings(rankings, {
       weights: [vectorWeight, ftsWeight],
-      minScore: options.minScore,
-      maxResults: options.maxResults,
+      ...(options.minScore !== undefined && { minScore: options.minScore }),
+      ...(options.maxResults !== undefined && { maxResults: options.maxResults }),
       minConsensus: 1 // At least one system must have the item
     });
   }
@@ -195,7 +196,7 @@ export class RRFRanker {
   ): ConsensusAnalysis {
     // Get top K from each system
     const topKSets = rankings.map(ranking => 
-      new Set(ranking.items.slice(0, topK).map(item => item.id))
+      new Set(ranking.items?.slice(0, topK).map(item => item.id) || [])
     );
 
     // Calculate pairwise overlaps
@@ -208,14 +209,14 @@ export class RRFRanker {
 
     for (let i = 0; i < rankings.length - 1; i++) {
       for (let j = i + 1; j < rankings.length; j++) {
-        const set1 = topKSets[i];
-        const set2 = topKSets[j];
-        const intersection = new Set([...set1].filter(x => set2.has(x)));
+        const set1 = topKSets[i] || new Set();
+        const set2 = topKSets[j] || new Set();
+        const intersection = new Set([...set1].filter(x => set2?.has(x)));
         const union = new Set([...set1, ...set2]);
         
         pairwiseOverlaps.push({
-          system1: rankings[i].systemName || `system_${i}`,
-          system2: rankings[j].systemName || `system_${j}`,
+          system1: rankings[i]?.systemName || `system_${i}`,
+          system2: rankings[j]?.systemName || `system_${j}`,
           overlap: intersection.size,
           jaccard: intersection.size / union.size
         });
@@ -225,7 +226,7 @@ export class RRFRanker {
     // Calculate overall consensus (items in multiple systems)
     const itemCounts = new Map<string, number>();
     rankings.forEach(ranking => {
-      ranking.items.slice(0, topK).forEach(item => {
+      ranking.items?.slice(0, topK).forEach(item => {
         itemCounts.set(item.id, (itemCounts.get(item.id) || 0) + 1);
       });
     });

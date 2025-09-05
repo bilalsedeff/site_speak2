@@ -1,5 +1,5 @@
 import { JSDOM } from 'jsdom';
-import { createLogger } from '../../../_shared/telemetry/logger';
+import { createLogger } from '../../../../services/_shared/telemetry/logger';
 
 const logger = createLogger({ service: 'action-extractor' });
 
@@ -147,7 +147,7 @@ export class ActionExtractor {
    */
   private createActionFromButton(element: HTMLElement, index: number, url: string): ExtractedAction | null {
     const text = this.getElementText(element);
-    if (!text) return null;
+    if (!text) {return null;}
 
     const type = element.getAttribute('type') || 'button';
     const form = element.closest('form');
@@ -214,7 +214,7 @@ export class ActionExtractor {
     const submitButton = element.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
     const label = submitButton ? this.getElementText(submitButton as HTMLElement) : 'Submit Form';
     
-    if (!label) return null;
+    if (!label) {return null;}
 
     return {
       id: this.generateActionId('form', index, element),
@@ -246,7 +246,7 @@ export class ActionExtractor {
    */
   private createActionFromCustomElement(element: HTMLElement, index: number, url: string): ExtractedAction | null {
     const actionData = element.getAttribute('data-action') || element.getAttribute('data-sitespeak-action');
-    if (!actionData) return null;
+    if (!actionData) {return null;}
 
     try {
       const parsedAction = JSON.parse(actionData);
@@ -352,7 +352,7 @@ export class ActionExtractor {
       current = current.parentElement;
       
       // Limit depth to avoid overly long selectors
-      if (path.length >= 5) break;
+      if (path.length >= 5) {break;}
     }
     
     return path.join(' > ');
@@ -364,8 +364,8 @@ export class ActionExtractor {
   private classifyButtonAction(text: string, type: string): string {
     const lowText = text.toLowerCase();
     
-    if (type === 'submit') return 'form-submit';
-    if (type === 'reset') return 'form-reset';
+    if (type === 'submit') {return 'form-submit';}
+    if (type === 'reset') {return 'form-reset';}
     
     // Classify by text content
     if (lowText.includes('buy') || lowText.includes('purchase') || lowText.includes('add to cart')) {
@@ -394,10 +394,10 @@ export class ActionExtractor {
     const lowText = text.toLowerCase();
     const lowHref = href.toLowerCase();
     
-    if (lowHref.includes('mailto:')) return 'email-link';
-    if (lowHref.includes('tel:')) return 'phone-link';
-    if (lowHref.includes('download') || lowText.includes('download')) return 'download-link';
-    if (this.isExternalUrl(href)) return 'external-link';
+    if (lowHref.includes('mailto:')) {return 'email-link';}
+    if (lowHref.includes('tel:')) {return 'phone-link';}
+    if (lowHref.includes('download') || lowText.includes('download')) {return 'download-link';}
+    if (this.isExternalUrl(href)) {return 'external-link';}
     
     return 'navigation-link';
   }
@@ -409,11 +409,11 @@ export class ActionExtractor {
     const lowLabel = label.toLowerCase();
     const action = form.action?.toLowerCase() || '';
     
-    if (lowLabel.includes('contact') || action.includes('contact')) return 'contact-form';
-    if (lowLabel.includes('search') || action.includes('search')) return 'search-form';
-    if (lowLabel.includes('newsletter') || lowLabel.includes('subscribe')) return 'newsletter-form';
-    if (lowLabel.includes('login') || action.includes('login')) return 'login-form';
-    if (lowLabel.includes('register') || lowLabel.includes('signup')) return 'registration-form';
+    if (lowLabel.includes('contact') || action.includes('contact')) {return 'contact-form';}
+    if (lowLabel.includes('search') || action.includes('search')) {return 'search-form';}
+    if (lowLabel.includes('newsletter') || lowLabel.includes('subscribe')) {return 'newsletter-form';}
+    if (lowLabel.includes('login') || action.includes('login')) {return 'login-form';}
+    if (lowLabel.includes('register') || lowLabel.includes('signup')) {return 'registration-form';}
     
     return 'general-form';
   }
@@ -536,20 +536,20 @@ export class ActionExtractor {
   private getElementText(element: HTMLElement): string {
     // Try aria-label first
     const ariaLabel = element.getAttribute('aria-label');
-    if (ariaLabel) return ariaLabel.trim();
+    if (ariaLabel) {return ariaLabel.trim();}
     
     // Try title attribute
     const title = element.getAttribute('title');
-    if (title) return title.trim();
+    if (title) {return title.trim();}
     
     // Try text content
     const textContent = element.textContent?.trim();
-    if (textContent) return textContent;
+    if (textContent) {return textContent;}
     
     // Try value for input elements
     if (element.tagName.toLowerCase() === 'input') {
       const value = (element as HTMLInputElement).value;
-      if (value) return value.trim();
+      if (value) {return value.trim();}
     }
     
     return '';
