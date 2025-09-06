@@ -142,6 +142,11 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         }
 
         const tokenData = await response.json()
+        
+        if (!tokenData.data) {
+          throw new Error('Invalid token response format')
+        }
+        
         const { token, websocketUrl } = tokenData.data
 
         // Connect to WebSocket with authentication token
