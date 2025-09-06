@@ -4,7 +4,7 @@
 console.log('📁 Loading server/index.ts...');
 
 // Import and start the server
-import('./src/index.ts').then((module) => {
+import('./src/index.ts').then((_module) => {
   console.log('✅ Server module loaded, starting...');
   // The server will start automatically when imported
 }).catch((error) => {

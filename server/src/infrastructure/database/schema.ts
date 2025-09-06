@@ -320,3 +320,137 @@ export const conversationMessagesRelations = relations(conversationMessages, ({ 
   site: one(sites, { fields: [conversationMessages.siteId], references: [sites.id] }),
   tenant: one(tenants, { fields: [conversationMessages.tenantId], references: [tenants.id] }),
 }));
+
+// Voice Sessions (specific for voice interactions)
+export const voiceSessions = pgTable('voice_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: varchar('session_id', { length: 100 }).notNull().unique(),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  
+  // Session status and lifecycle
+  status: varchar('status', { length: 20 }).notNull().default('initializing'),
+  
+  // Language and locale settings
+  language: varchar('language', { length: 5 }).notNull().default('en'),
+  locale: varchar('locale', { length: 10 }).notNull().default('en-US'),
+  
+  // Voice configuration
+  configuration: json('configuration').notNull().default({
+    sttProvider: 'whisper',
+    ttsProvider: 'openai',
+    voice: { name: 'alloy', speed: 1.0, pitch: 1.0, volume: 1.0 },
+    audio: { sampleRate: 24000, channels: 1, format: 'wav', noiseReduction: true },
+    behavior: { interruptible: true, pauseThreshold: 1500, maxSilence: 5000, confirmationRequired: false }
+  }),
+  
+  // Session metadata
+  metadata: json('metadata').default({}),
+  userAgent: text('user_agent'),
+  ipAddress: varchar('ip_address', { length: 45 }),
+  device: varchar('device', { length: 20 }),
+  browser: varchar('browser', { length: 50 }),
+  
+  // Connection and quality information
+  connectionType: varchar('connection_type', { length: 20 }).default('websocket'),
+  microphonePermission: boolean('microphone_permission').default(false),
+  speakerSupport: boolean('speaker_support').default(true),
+  
+  // Quality metrics
+  audioQuality: json('audio_quality').default({
+    inputLevel: 0, outputLevel: 0, latency: 0, jitter: 0, packetLoss: 0, signalToNoise: 0
+  }),
+  
+  // Session statistics
+  totalInteractions: integer('total_interactions').default(0),
+  totalDuration: integer('total_duration').default(0),
+  averageResponseTime: decimal('average_response_time', { precision: 10, scale: 2 }).default('0'),
+  
+  // Session lifecycle timestamps
+  startedAt: timestamp('started_at').notNull().defaultNow(),
+  endedAt: timestamp('ended_at'),
+  lastActivityAt: timestamp('last_activity_at').notNull().defaultNow(),
+  
+  // Error tracking
+  lastError: text('last_error'),
+  errorCount: integer('error_count').default(0),
+  
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  sessionIdIdx: index('voice_sessions_session_id_idx').on(table.sessionId),
+  siteIdx: index('voice_sessions_site_idx').on(table.siteId),
+  userIdx: index('voice_sessions_user_idx').on(table.userId),
+  statusIdx: index('voice_sessions_status_idx').on(table.status),
+  startedIdx: index('voice_sessions_started_idx').on(table.startedAt),
+  activityIdx: index('voice_sessions_activity_idx').on(table.lastActivityAt),
+}));
+
+// Voice Interactions
+export const voiceInteractions = pgTable('voice_interactions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => voiceSessions.id, { onDelete: 'cascade' }),
+  turnId: varchar('turn_id', { length: 100 }).notNull(),
+  
+  // Interaction type and status
+  type: varchar('type', { length: 20 }).notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('received'),
+  
+  // User input
+  input: json('input').default({}),
+  
+  // Assistant output
+  output: json('output').default({}),
+  
+  // Processing metadata
+  processing: json('processing').default({}),
+  
+  // Intent and context
+  detectedIntent: varchar('detected_intent', { length: 100 }),
+  intentConfidence: decimal('intent_confidence', { precision: 3, scale: 2 }),
+  entities: json('entities').default([]),
+  context: json('context').default({}),
+  
+  // Tool usage
+  toolsCalled: json('tools_called').default([]),
+  actionsExecuted: json('actions_executed').default([]),
+  
+  // Quality metrics
+  userSatisfaction: integer('user_satisfaction'),
+  qualityScore: decimal('quality_score', { precision: 3, scale: 2 }),
+  
+  // Error information
+  error: text('error'),
+  errorDetails: json('error_details').default({}),
+  
+  // Processing timestamps
+  receivedAt: timestamp('received_at').notNull().defaultNow(),
+  processedAt: timestamp('processed_at'),
+  completedAt: timestamp('completed_at'),
+  
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  sessionIdx: index('voice_interactions_session_idx').on(table.sessionId),
+  turnIdx: index('voice_interactions_turn_idx').on(table.turnId),
+  typeIdx: index('voice_interactions_type_idx').on(table.type),
+  statusIdx: index('voice_interactions_status_idx').on(table.status),
+  intentIdx: index('voice_interactions_intent_idx').on(table.detectedIntent),
+  receivedIdx: index('voice_interactions_received_idx').on(table.receivedAt),
+}));
+
+// Voice Sessions Relations
+export const voiceSessionsRelations = relations(voiceSessions, ({ one, many }) => ({
+  site: one(sites, { fields: [voiceSessions.siteId], references: [sites.id] }),
+  user: one(users, { fields: [voiceSessions.userId], references: [users.id] }),
+  interactions: many(voiceInteractions),
+}));
+
+export const voiceInteractionsRelations = relations(voiceInteractions, ({ one }) => ({
+  session: one(voiceSessions, { fields: [voiceInteractions.sessionId], references: [voiceSessions.id] }),
+}));
+
+// Voice types
+export type VoiceSession = typeof voiceSessions.$inferSelect;
+export type NewVoiceSession = typeof voiceSessions.$inferInsert;
+export type VoiceInteraction = typeof voiceInteractions.$inferSelect;
+export type NewVoiceInteraction = typeof voiceInteractions.$inferInsert;

@@ -68,6 +68,7 @@ export class OpusFramer extends EventEmitter {
   private stats: FrameStats;
   private encodingTimes: number[] = [];
   private frameSizes: number[] = [];
+  private opusEncoder: any = null; // Lazy-loaded Opus encoder
 
   // Frame timing
   private frameSize: number; // Samples per frame
@@ -118,12 +119,18 @@ export class OpusFramer extends EventEmitter {
   /**
    * Stop the Opus framer
    */
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.isActive) {return;}
 
     this.isActive = false;
     this.frameBuffer = [];
     this.pendingFrames.clear();
+    
+    // Cleanup Opus encoder
+    if (this.opusEncoder && this.opusEncoder.cleanup) {
+      await this.opusEncoder.cleanup();
+      this.opusEncoder = null;
+    }
     
     logger.info('OpusFramer stopped', { stats: this.stats });
   }
@@ -238,9 +245,8 @@ export class OpusFramer extends EventEmitter {
     const sequence = this.frameSequence++;
 
     try {
-      // TODO: Implement actual Opus encoding
-      // For now, simulate encoding with compressed PCM
-      const opusData = await this.simulateOpusEncoding(pcmData);
+      // Use real Opus encoding
+      const opusData = await this.encodeWithOpus(pcmData);
 
       const frame: OpusFrame = {
         data: opusData,
@@ -287,11 +293,62 @@ export class OpusFramer extends EventEmitter {
   }
 
   /**
-   * Simulate Opus encoding (replace with actual encoder)
+   * Real Opus encoding using production encoder
+   */
+  private async encodeWithOpus(pcmData: Int16Array): Promise<ArrayBuffer> {
+    if (!this.opusEncoder) {
+      // Lazy initialize encoder
+      const { OpusEncoder, createVoiceOpusConfig } = await import('./OpusEncoder.js');
+      const config = createVoiceOpusConfig();
+      
+      // Override with our frame config
+      config.sampleRate = this.config.sampleRate;
+      config.channels = this.config.channels;
+      config.frameSize = this.frameSize;
+      config.bitrate = this.config.bitrate;
+      config.complexity = this.config.complexity;
+      config.enableFEC = this.config.enableFEC;
+      config.enableDTX = this.config.enableDTX;
+      
+      this.opusEncoder = new OpusEncoder(config);
+      
+      // Wait for encoder to initialize
+      if (!this.opusEncoder.isReady()) {
+        await new Promise<void>((resolve) => {
+          this.opusEncoder!.once('initialized', resolve);
+          
+          // Timeout after 5 seconds
+          setTimeout(() => {
+            logger.warn('Opus encoder initialization timeout, using fallback');
+            resolve();
+          }, 5000);
+        });
+      }
+    }
+
+    try {
+      const encodedFrame = await this.opusEncoder.encode(pcmData);
+      
+      if (encodedFrame) {
+        return encodedFrame.data.buffer.slice(
+          encodedFrame.data.byteOffset,
+          encodedFrame.data.byteOffset + encodedFrame.data.byteLength
+        );
+      } else {
+        // Fallback to mock encoding if real encoder fails
+        logger.warn('Opus encoder failed, falling back to mock');
+        return this.simulateOpusEncoding(pcmData);
+      }
+    } catch (error) {
+      logger.error('Opus encoding error, falling back to mock', { error });
+      return this.simulateOpusEncoding(pcmData);
+    }
+  }
+
+  /**
+   * Fallback mock encoding for when real encoder is not available
    */
   private async simulateOpusEncoding(pcmData: Int16Array): Promise<ArrayBuffer> {
-    // TODO: Replace with actual Opus encoder (node-opus, wasm-opus, etc.)
-    
     // Simple compression simulation: downsample and pack
     const compressionRatio = 0.1; // Opus typically achieves ~10:1 for speech
     const outputSize = Math.floor(pcmData.byteLength * compressionRatio);

@@ -245,6 +245,18 @@ export function makeWorker<T = any, R = any>(
 // Use delayed jobs and cron patterns directly in queues instead
 
 /**
+ * Global registry for queue/worker instances for graceful shutdown
+ */
+const globalInstances = new Set<Queue | Worker>();
+
+/**
+ * Register queue/worker instance for graceful shutdown
+ */
+export function registerQueueInstance(instance: Queue | Worker): void {
+  globalInstances.add(instance);
+}
+
+/**
  * Graceful shutdown helper for all BullMQ instances
  */
 export async function shutdownQueues(

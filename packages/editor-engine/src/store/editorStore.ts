@@ -161,12 +161,16 @@ export const useEditorStore = create<EditorStore>()(
     // Actions
     undo: () => {
       // TODO: Implement undo/redo with history stack
-      console.log('Undo not implemented yet')
+      if (process.env['NODE_ENV'] === 'development') {
+        console.warn('Undo not implemented yet')
+      }
     },
 
     redo: () => {
       // TODO: Implement undo/redo with history stack
-      console.log('Redo not implemented yet')
+      if (process.env['NODE_ENV'] === 'development') {
+        console.warn('Redo not implemented yet')
+      }
     },
 
     clearCanvas: () =>

@@ -2,23 +2,20 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createLogger } from '../../../shared/utils.js';
 import { voiceProcessingService } from '../application/services/VoiceProcessingService';
+import { voiceAnalyticsService } from '../application/VoiceAnalyticsService';
+import { jwtService } from '../../../infrastructure/auth/jwt.js';
 
 const logger = createLogger({ service: 'voice-controller' });
 
 // Extend Express Request to include file upload (from multer)
 interface RequestWithFile extends Request {
-  file?: {
-    fieldname: string;
-    originalname: string;
-    encoding: string;
-    mimetype: string;
-    size: number;
-    buffer: Buffer;
-  };
+  file?: Express.Multer.File | undefined;
 }
 
 // Request schemas
 const ProcessAudioSchema = z.object({
+  sessionId: z.string().uuid().optional(),
+  siteId: z.string().uuid().optional(),
   language: z.string().optional(),
   prompt: z.string().optional(),
 });
@@ -29,6 +26,13 @@ const GenerateSpeechSchema = z.object({
   model: z.enum(['tts-1', 'tts-1-hd']).default('tts-1'),
   speed: z.number().min(0.25).max(4.0).default(1.0),
   format: z.enum(['mp3', 'opus', 'aac', 'flac']).default('mp3'),
+  sessionId: z.string().uuid().optional(),
+  siteId: z.string().uuid().optional(),
+});
+
+const GenerateVoiceTokenSchema = z.object({
+  siteId: z.string().uuid(),
+  locale: z.string().optional(),
 });
 
 export class VoiceController {
@@ -80,8 +84,37 @@ export class VoiceController {
       // Analyze voice for sentiment/emotion
       const analysis = await voiceProcessingService.analyzeVoice(result.transcript);
 
-      // TODO: Update tenant voice usage
-      // TODO: Save interaction to database
+      // Record interaction in database if sessionId provided
+      if (data.sessionId) {
+        try {
+          await voiceAnalyticsService.recordInteraction({
+            sessionId: data.sessionId,
+            turnId: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+            type: 'question',
+            transcript: result.transcript,
+            confidence: result.confidence || 0.8,
+            processingTime: 0, // TODO: Measure actual processing time
+            intent: analysis.intent || 'speech_to_text',
+            intentConfidence: analysis.confidence || 0.85,
+            toolsUsed: [],
+            qualityScore: result.confidence || 0.8,
+            userId: user.id
+          });
+        } catch (error) {
+          logger.warn('Failed to record voice interaction', { error, sessionId: data.sessionId });
+        }
+      }
+
+      // Update tenant voice usage
+      try {
+        await voiceAnalyticsService.updateTenantUsage(user.tenantId, {
+          minutesUsed: (result.duration || 0) / 60,
+          requestsUsed: 1,
+          interactionType: 'stt'
+        });
+      } catch (error) {
+        logger.warn('Failed to update tenant voice usage', { error, tenantId: user.tenantId });
+      }
 
       res.json({
         success: true,
@@ -130,8 +163,36 @@ export class VoiceController {
         format: data.format,
       });
 
-      // TODO: Update tenant voice usage
-      // TODO: Save interaction to database
+      // Record interaction in database if sessionId provided
+      if (data.sessionId) {
+        try {
+          await voiceAnalyticsService.recordInteraction({
+            sessionId: data.sessionId,
+            turnId: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+            type: 'command',
+            responseText: data.text,
+            processingTime: 0, // TODO: Measure actual processing time
+            intent: 'text_to_speech',
+            intentConfidence: 1.0,
+            toolsUsed: [],
+            qualityScore: 1.0,
+            userId: user.id
+          });
+        } catch (error) {
+          logger.warn('Failed to record voice interaction', { error, sessionId: data.sessionId });
+        }
+      }
+
+      // Update tenant voice usage
+      try {
+        await voiceAnalyticsService.updateTenantUsage(user.tenantId, {
+          minutesUsed: (result.duration || 0) / 60,
+          requestsUsed: 1,
+          interactionType: 'tts'
+        });
+      } catch (error) {
+        logger.warn('Failed to update tenant voice usage', { error, tenantId: user.tenantId });
+      }
 
       // Set appropriate headers
       res.setHeader('Content-Type', `audio/${data.format}`);
@@ -344,6 +405,49 @@ export class VoiceController {
     } catch (error) {
       logger.error('Voice processing test failed', {
         error,
+        correlationId: req.correlationId,
+      });
+      next(error);
+    }
+  }
+
+  /**
+   * Generate voice session token for WebSocket authentication
+   */
+  async generateVoiceToken(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const data = GenerateVoiceTokenSchema.parse(req.body);
+
+      logger.info('Generating voice session token', {
+        userId: user.id,
+        tenantId: user.tenantId,
+        siteId: data.siteId,
+        correlationId: req.correlationId,
+      });
+
+      // Generate voice-specific token
+      const voiceToken = jwtService.generateVoiceToken({
+        tenantId: user.tenantId,
+        siteId: data.siteId,
+        userId: user.id,
+        locale: data.locale || 'en-US',
+      });
+
+      res.json({
+        success: true,
+        data: {
+          token: voiceToken,
+          expiresIn: '1h',
+          websocketUrl: process.env['NODE_ENV'] === 'production' 
+            ? `wss://${req.get('host')}/voice` 
+            : 'ws://localhost:5000/voice',
+        },
+      });
+    } catch (error) {
+      logger.error('Voice token generation failed', {
+        error,
+        userId: req.user?.id,
         correlationId: req.correlationId,
       });
       next(error);

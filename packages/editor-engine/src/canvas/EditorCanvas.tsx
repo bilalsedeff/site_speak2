@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useRef } from 'react'
+import { useMemo, useCallback, useRef, useEffect, MouseEvent } from 'react'
 import { DndProvider, useDrop } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -80,7 +80,7 @@ export function EditorCanvas({
 
   // Handle canvas click (deselect)
   const handleCanvasClick = useCallback(
-    (event: React.MouseEvent) => {
+    (event: MouseEvent) => {
       if (event.target === event.currentTarget) {
         selectInstance(null)
         onInstanceSelect?.(null)
@@ -91,7 +91,7 @@ export function EditorCanvas({
 
   // Handle instance click
   const handleInstanceClick = useCallback(
-    (instanceId: string, event: React.MouseEvent) => {
+    (instanceId: string, event: MouseEvent) => {
       event.stopPropagation()
       selectInstance(instanceId)
       onInstanceSelect?.(instanceId)
@@ -109,7 +109,7 @@ export function EditorCanvas({
   )
 
   // Handle delete key
-  React.useEffect(() => {
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Delete' && selectedInstanceId) {
         removeInstance(selectedInstanceId)

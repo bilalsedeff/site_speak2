@@ -198,7 +198,7 @@ export class VoiceWebSocketServer extends EventEmitter {
     this.metrics.activeConnections++;
 
     const auth = (req as any).auth as WsAuth;
-    const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     
     const session: VoiceSession = {
       id: sessionId,

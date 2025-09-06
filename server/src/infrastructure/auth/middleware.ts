@@ -354,3 +354,4 @@ export function authErrorHandler() {
 // Export aliases for backward compatibility
 export const authenticateRequest = authenticate;
 export const requireAdminAccess = () => requireRole('admin');
+export const authMiddleware = authenticate();

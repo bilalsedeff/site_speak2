@@ -1,7 +1,6 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createLogger } from '../../../../shared/utils.js';
-import { config } from '../../../../infrastructure/config';
-import jwt from 'jsonwebtoken';
+import { jwtService, type VoiceJWTPayload } from '../../../../infrastructure/auth/jwt.js';
 
 const logger = createLogger({ service: 'voice-websocket' });
 
@@ -164,18 +163,23 @@ export class VoiceWebSocketHandler {
     }
 
     try {
-      const decoded = jwt.verify(token, config.JWT_SECRET) as any;
+      const decoded: VoiceJWTPayload = jwtService.verifyVoiceToken(token as string);
       
       if (!decoded.tenantId || !decoded.siteId) {
         throw new Error('Invalid token: missing required claims');
       }
 
-      return {
+      const wsAuth: WsAuth = {
         tenantId: decoded.tenantId,
         siteId: decoded.siteId,
-        userId: decoded.userId,
         locale: decoded.locale || 'en-US',
       };
+
+      if (decoded.userId) {
+        wsAuth.userId = decoded.userId;
+      }
+
+      return wsAuth;
     } catch (error) {
       throw new Error(`Token verification failed: ${error instanceof Error ? error.message : 'Unknown'}`);
     }
@@ -596,19 +600,62 @@ export class VoiceWebSocketHandler {
   /**
    * Notify that an action has been executed (required by VoiceNotificationHandler interface)
    */
-  public async notifyActionExecuted(data: unknown): Promise<void> {
-    // TODO: Broadcast action execution to relevant voice sessions
-    logger.info('Action executed notification', { data });
+  public async notifyActionExecuted(data: {
+    siteId: string;
+    sessionId?: string;
+    action: string;
+    result: any;
+    sideEffects: Array<{
+      type: 'navigation' | 'form_submission' | 'api_call' | 'dom_change';
+      description: string;
+      data: any;
+    }>;
+  }): Promise<void> {
+    logger.info('Broadcasting action execution notification', { 
+      action: data.action,
+      siteId: data.siteId,
+      sessionId: data.sessionId,
+      sideEffectsCount: data.sideEffects.length
+    });
     
-    // For now, broadcast to all active sessions
+    // Broadcast to relevant sessions - either specific session or all sessions for the site
+    let notifiedSessions = 0;
+    
     for (const session of this.sessions.values()) {
-      if (session.isActive) {
-        this.sendEvent(session, {
-          type: 'agent_tool',
-          data: { type: 'action_executed', result: data }
-        });
+      if (!session.isActive) {continue;}
+      
+      // Notify specific session if provided, or all sessions for the same site
+      const shouldNotify = data.sessionId 
+        ? session.id === data.sessionId
+        : session.auth.siteId === data.siteId;
+      
+      if (shouldNotify) {
+        try {
+          this.sendEvent(session, {
+            type: 'agent_tool',
+            data: { 
+              type: 'action_executed',
+              action: data.action,
+              result: data.result,
+              sideEffects: data.sideEffects,
+              timestamp: new Date().toISOString()
+            }
+          });
+          notifiedSessions++;
+        } catch (error) {
+          logger.error('Failed to notify session about action execution', {
+            sessionId: session.id,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
       }
     }
+    
+    logger.debug('Action execution notification completed', {
+      action: data.action,
+      notifiedSessions,
+      totalActiveSessions: this.metrics.activeConnections
+    });
   }
 
   /**

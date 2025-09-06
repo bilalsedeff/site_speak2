@@ -191,41 +191,84 @@ router.post('/reindex',
         correlationId: req.correlationId
       });
 
-      // Import reindexing service
-      const { createQueueService } = await import('../../../_shared/queues');
+      // Import queue service and conventions
+      const { 
+        createQueueService, 
+        JobTypes, 
+        generateIdempotencyKey,
+        RetryPolicies,
+        JobPriority
+      } = await import('../../../_shared/queues');
       const queueService = createQueueService();
 
-      // Create reindex job
+      // Generate idempotency key for job deduplication
+      const idempotencyKey = generateIdempotencyKey(
+        JobTypes.CRAWLER_INDEX_SITE,
+        tenantId,
+        siteId || 'all-sites',
+        mode
+      );
+
+      // Check for existing running jobs to prevent duplicates
+      const existingJobs = await queueService.queues.crawler.getJobs(['active', 'waiting', 'delayed']);
+      const duplicateJob = existingJobs.find(job => 
+        job.data.idempotencyKey === idempotencyKey
+      );
+
+      if (duplicateJob) {
+        logger.info('Duplicate reindex job found, returning existing job', {
+          tenantId,
+          existingJobId: duplicateJob.id,
+          idempotencyKey,
+          correlationId: req.correlationId
+        });
+
+        return res.json({
+          success: true,
+          data: {
+            jobId: duplicateJob.id,
+            status: 'duplicate',
+            message: 'Reindex job already in progress'
+          }
+        });
+      }
+
+      // Create properly structured job payload
       const jobData = {
         tenantId,
         siteId,
-        mode,
-        priority,
-        options: {
+        userId,
+        traceId: req.correlationId,
+        idempotencyKey,
+        priority: priority === 'high' ? JobPriority.HIGH : 
+                 priority === 'low' ? JobPriority.LOW : JobPriority.NORMAL,
+        metadata: {
+          mode,
           crawlDepth: options?.crawlDepth || 3,
-          respectRobots: options?.respectRobots ?? true,
+          respectRobotsTxt: options?.respectRobots ?? true,
           followExternalLinks: options?.followExternalLinks ?? false,
           extractImages: options?.extractImages ?? true,
           triggeredBy: userId,
           correlationId: req.correlationId
-        }
+        },
+        // Add crawler-specific fields to match CrawlerIndexSiteSchema
+        url: siteId ? `https://${siteId}.sitespeak.com` : '', // TODO: Get actual site URL
+        depth: options?.crawlDepth || 3,
+        respectRobotsTxt: options?.respectRobots ?? true
       };
 
-      // Check for existing running jobs to prevent duplicates
-      // TODO: Implement proper job deduplication with queue service
-      
-      // Skip duplicate check for now - implement when queue service is properly integrated
+      // Use proper retry policy based on priority
+      const retryPolicy = priority === 'high' ? RetryPolicies.FAST : 
+                         priority === 'low' ? RetryPolicies.HEAVY : 
+                         RetryPolicies.STANDARD;
 
-      // Schedule the reindex job
-      const job = await queueService.queues.crawler.add('kb-reindex', jobData, {
-        priority: priority === 'high' ? 10 : priority === 'low' ? 1 : 5,
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 30000 // 30 seconds
-        },
+      // Schedule the reindex job with proper job type
+      const job = await queueService.queues.crawler.add(JobTypes.CRAWLER_INDEX_SITE, jobData, {
+        ...retryPolicy,
+        priority: jobData.priority,
         removeOnComplete: 50,
-        removeOnFail: 20
+        removeOnFail: 20,
+        jobId: idempotencyKey, // Use idempotency key as job ID for uniqueness
       });
 
       logger.info('Knowledge base reindex job scheduled', {
@@ -259,7 +302,7 @@ router.post('/reindex',
         correlationId: req.correlationId
       });
 
-      res.problemDetail({
+      return res.problemDetail({
         title: 'Reindex Failed',
         status: 500,
         detail: 'An error occurred while scheduling the reindex job',
@@ -300,7 +343,10 @@ router.get('/status',
       // Initialize services
       const knowledgeBaseRepository = new KnowledgeBaseRepositoryImpl();
       const knowledgeBaseService = createKnowledgeBaseService(knowledgeBaseRepository);
-      // const queueServiceInstance = createQueueService(); // TODO: Implement queue service integration
+      
+      // Initialize queue service for status checking
+      const { createQueueService, checkQueueHealth } = await import('../../../_shared/queues');
+      const queueServiceInstance = createQueueService();
 
       // Get parallel status checks
       const [kbStats, indexStats, crawlStatus, queueStats] = await Promise.allSettled([
@@ -320,13 +366,12 @@ router.get('/status',
           };
         }),
         knowledgeBaseService.getLastCrawlInfo(tenantId),
-        Promise.resolve({ 
-          waitingJobs: 0, 
-          activeJobs: 0,
-          active: 0,
-          waiting: 0,
-          failed: 0
-        }) // queueServiceInstance.getQueueStats(['kb-reindex', 'kb-crawl'])
+        // Get real queue statistics
+        checkQueueHealth(queueServiceInstance.queues.crawler).then(crawlerHealth => ({
+          ...crawlerHealth,
+          waitingJobs: crawlerHealth.waiting,
+          activeJobs: crawlerHealth.active,
+        }))
       ]);
 
       // Format response

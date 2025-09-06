@@ -172,7 +172,7 @@ const uiSlice = createSlice({
     
     // Notifications
     addNotification: (state, action: PayloadAction<Omit<UIState['notifications'][0], 'id'>>) => {
-      const id = Date.now().toString() + Math.random().toString(36).substr(2, 9)
+      const id = Date.now().toString() + Math.random().toString(36).slice(2, 11)
       state.notifications.push({
         id,
         duration: 5000, // Default 5 seconds

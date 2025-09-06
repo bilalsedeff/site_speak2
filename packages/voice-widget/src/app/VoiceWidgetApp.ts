@@ -53,6 +53,13 @@ export class VoiceWidgetApp {
   private session: VoiceSession;
   private eventListeners: Map<string, EventListener> = new Map();
   private animationFrame: number | null = null;
+  
+  // Real-time voice processing
+  private websocket: WebSocket | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private audioStream: MediaStream | null = null;
+  private audioChunks: Blob[] = [];
+  private isConnected = false;
 
   constructor(config: VoiceWidgetAppConfig) {
     this.config = config;
@@ -352,18 +359,42 @@ export class VoiceWidgetApp {
 
   private async startListening(): Promise<void> {
     try {
+      // Connect to voice WebSocket if not connected
+      if (!this.isConnected) {
+        await this.connectToVoiceService();
+      }
+      
       // Request microphone permission
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
+          autoGainControl: true,
+          sampleRate: 48000
         } 
       });
       
-      // TODO: Use stream for actual audio processing
-      // For now, clean up the stream
-      stream.getTracks().forEach(track => track.stop());
+      this.audioStream = stream;
+      
+      // Setup MediaRecorder for audio capture
+      const mimeType = this.getSupportedMimeType();
+      this.mediaRecorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 16000
+      });
+      
+      this.audioChunks = [];
+      
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.audioChunks.push(event.data);
+          this.sendAudioChunk(event.data);
+        }
+      };
+      
+      this.mediaRecorder.onstop = () => {
+        this.processAudioChunks();
+      };
       
       this.updateSession({ 
         state: 'listening',
@@ -373,15 +404,10 @@ export class VoiceWidgetApp {
         finalTranscript: ''
       });
       
-      this.log('Started listening');
+      // Start recording with time slicing for real-time streaming
+      this.mediaRecorder.start(100); // 100ms chunks
       
-      // TODO: Start actual voice recognition
-      // For now, simulate with setTimeout
-      setTimeout(() => {
-        this.updateSession({
-          partialTranscript: 'Hello, how can I help you...'
-        });
-      }, 1000);
+      this.log('Started listening with real audio processing');
       
     } catch (error) {
       this.handleError(error instanceof Error ? error.message : 'Microphone access denied');
@@ -389,27 +415,33 @@ export class VoiceWidgetApp {
   }
 
   private stopListening(): void {
+    // Stop MediaRecorder
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      this.mediaRecorder.stop();
+    }
+    
+    // Stop audio tracks
+    if (this.audioStream) {
+      this.audioStream.getTracks().forEach(track => track.stop());
+      this.audioStream = null;
+    }
+    
     this.updateSession({
       state: 'processing',
       isRecording: false,
       finalTranscript: this.session.partialTranscript
     });
     
-    this.log('Stopped listening, processing...');
+    this.log('Stopped listening, processing audio...');
     
-    // TODO: Send to voice API
-    // For now, simulate processing
-    setTimeout(() => {
-      this.updateSession({
-        state: 'speaking',
-        response: 'I understand you said: ' + this.session.finalTranscript
-      });
-      
-      // Auto-return to idle after speaking
-      setTimeout(() => {
-        this.resetSession();
-      }, 3000);
-    }, 2000);
+    // Send end-of-turn signal to WebSocket
+    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+      this.websocket.send(JSON.stringify({
+        type: 'end_turn',
+        sessionId: this.session.id,
+        timestamp: Date.now()
+      }));
+    }
   }
 
   private stopSpeaking(): void {
@@ -436,6 +468,188 @@ export class VoiceWidgetApp {
     this.session = this.createInitialSession();
     this.updateUI();
     this.log('Session reset');
+  }
+  
+  /**
+   * Connect to the voice WebSocket service
+   */
+  private async connectToVoiceService(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const wsUrl = `${this.config.config.wsEndpoint}/voice/stream?sessionId=${this.session.id}&siteId=${this.config.config.siteId}&tenantId=${this.config.config.tenantId}`;
+      
+      this.websocket = new WebSocket(wsUrl);
+      
+      this.websocket.onopen = () => {
+        this.isConnected = true;
+        this.log('Connected to voice service');
+        resolve();
+      };
+      
+      this.websocket.onerror = (error) => {
+        this.log(`WebSocket error: ${error}`);
+        reject(new Error('Failed to connect to voice service'));
+      };
+      
+      this.websocket.onmessage = (event) => {
+        this.handleVoiceMessage(JSON.parse(event.data));
+      };
+      
+      this.websocket.onclose = () => {
+        this.isConnected = false;
+        this.log('Disconnected from voice service');
+      };
+      
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        if (!this.isConnected) {
+          reject(new Error('WebSocket connection timeout'));
+        }
+      }, 5000);
+    });
+  }
+  
+  /**
+   * Handle messages from the voice WebSocket service
+   */
+  private handleVoiceMessage(message: any): void {
+    switch (message.type) {
+      case 'partial_asr':
+        this.updateSession({
+          partialTranscript: message.text
+        });
+        break;
+        
+      case 'final_asr':
+        this.updateSession({
+          finalTranscript: message.text,
+          state: 'processing'
+        });
+        break;
+        
+      case 'agent_delta':
+        // Stream response text
+        this.updateSession({
+          state: 'speaking',
+          response: (this.session.response || '') + (message.data?.text || '')
+        });
+        break;
+        
+      case 'agent_final':
+        this.updateSession({
+          state: 'idle',
+          response: message.data?.text || this.session.response
+        });
+        // Auto-reset after final response
+        setTimeout(() => {
+          this.resetSession();
+        }, 2000);
+        break;
+        
+      case 'agent_tool':
+        // Handle tool execution
+        if (message.data?.tool_name) {
+          this.updateSession({
+            actions: [...this.session.actions, {
+              id: crypto.randomUUID(),
+              name: message.data.tool_name,
+              status: 'executing' as const,
+              description: message.data.description || `Executing ${message.data.tool_name}`
+            }]
+          });
+        }
+        break;
+        
+      case 'error':
+        this.handleError(message.message || 'Voice processing error');
+        break;
+        
+      case 'vad':
+        // Voice Activity Detection - update audio level
+        this.updateSession({
+          audioLevel: message.level || 0
+        });
+        break;
+        
+      default:
+        this.log(`Unknown voice message type: ${message.type}`);
+    }
+  }
+  
+  /**
+   * Send audio chunk to the WebSocket service
+   */
+  private async sendAudioChunk(audioBlob: Blob): Promise<void> {
+    if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    
+    try {
+      // Convert blob to ArrayBuffer
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      
+      // Send as binary message
+      const message = {
+        type: 'audio_chunk',
+        sessionId: this.session.id,
+        timestamp: Date.now(),
+        format: 'webm', // or the actual format from MediaRecorder
+        sampleRate: 48000
+      };
+      
+      // Send metadata first
+      this.websocket.send(JSON.stringify(message));
+      
+      // Then send audio data
+      this.websocket.send(arrayBuffer);
+    } catch (error) {
+      this.log(`Error sending audio chunk: ${error}`);
+    }
+  }
+  
+  /**
+   * Process accumulated audio chunks when recording stops
+   */
+  private async processAudioChunks(): Promise<void> {
+    if (this.audioChunks.length === 0) {
+      return;
+    }
+    
+    try {
+      // Combine all audio chunks
+      const combinedBlob = new Blob(this.audioChunks, { type: this.audioChunks[0]?.type || 'audio/webm' });
+      
+      // Send final audio if needed
+      await this.sendAudioChunk(combinedBlob);
+      
+      this.log(`Processed ${this.audioChunks.length} audio chunks`);
+      
+      // Clear chunks
+      this.audioChunks = [];
+      
+    } catch (error) {
+      this.log(`Error processing audio chunks: ${error}`);
+    }
+  }
+  
+  /**
+   * Get supported MIME type for MediaRecorder
+   */
+  private getSupportedMimeType(): string {
+    const types = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus'
+    ];
+    
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        return type;
+      }
+    }
+    
+    // Fallback to default
+    return 'audio/webm';
   }
 
   private updateSession(updates: Partial<VoiceSession>): void {

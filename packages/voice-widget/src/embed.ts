@@ -141,10 +141,12 @@ class VoiceWidgetManager {
     // Setup event listeners
     this.setupEventListeners()
 
-    console.log('SiteSpeak Voice Widget initialized', {
-      version: window.SiteSpeak?.version,
-      config: this.config,
-    })
+    if (process.env['NODE_ENV'] === 'development' || this.config.debugMode) {
+      console.log('SiteSpeak Voice Widget initialized', {
+        version: window.SiteSpeak?.version,
+        config: this.config,
+      })
+    }
   }
 
   /**
@@ -319,7 +321,9 @@ class VoiceWidgetManager {
     // Listen for page navigation (for SPA support)
     window.addEventListener('popstate', () => {
       this.app?.handleNavigationChange()
-      console.log('[VoiceWidget] Navigation changed to:', window.location.href)
+      if (process.env['NODE_ENV'] === 'development' || this.config.debugMode) {
+        console.log('[VoiceWidget] Navigation changed to:', window.location.href)
+      }
     })
 
     // Listen for visibility changes

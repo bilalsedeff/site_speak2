@@ -69,7 +69,7 @@ export class ActionDispatchService {
   constructor(
     private actionExecutor: ActionExecutorService,
     // TODO: Use for dynamic action validation during dispatch
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     private _manifestGenerator: ActionManifestGenerator,
     private widgetBridge: WidgetActionBridge
   ) {

@@ -3,7 +3,7 @@ import { LangGraphOrchestrator, SessionStateType } from '../domain/LangGraphOrch
 import { actionExecutorService } from './ActionExecutorService';
 import { languageDetectorService } from './LanguageDetectorService';
 import { KnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
-import type { SiteAction } from '../../../shared/types';
+import type { SiteAction, ActionParameter } from '../../../shared/types';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniversalAgentGraph, UniversalAgentGraph } from '../orchestrator/graphs/UniversalAgent.graph';
 import { FunctionCallingService } from '../orchestrator/executors/FunctionCallingService';
@@ -20,6 +20,7 @@ export interface ConversationRequest {
     currentUrl?: string;
     pageTitle?: string;
     userAgent?: string;
+    timezone?: string;
   };
 }
 
@@ -168,11 +169,11 @@ export class AIOrchestrationService {
           userInput: request.input,
           sessionId,
           siteId: request.siteId,
-          tenantId: 'default-tenant', // TODO: Get from request context
+          tenantId: request.userId || 'default-tenant', // Use userId as tenantId fallback
           ...(request.userId !== undefined && { userId: request.userId }),
           userPreferences: {
             language: request.browserLanguage || 'en-US',
-            timezone: 'UTC', // TODO: Get from request context
+            timezone: request.context?.timezone || 'UTC', // Use timezone from context or default to UTC
           },
         });
 
@@ -516,7 +517,7 @@ export class AIOrchestrationService {
       // Create Universal Agent Graph with all dependencies
       const universalAgentGraph = createUniversalAgentGraph({
         functionCallingService,
-        availableActions: [], // TODO: Load from site action registry
+        availableActions: await this.loadSiteActions(siteId), // Load from site action registry
         voiceEnabled: true,
         maxClarificationRounds: 3,
         speculativeExecutionEnabled: true,
@@ -594,6 +595,101 @@ export class AIOrchestrationService {
   }
 
   /**
+   * Load available actions for a site
+   */
+  private async loadSiteActions(siteId: string): Promise<SiteAction[]> {
+    try {
+      // Import the tools registry dynamically
+      const { aiToolsRegistry } = await import('../tools/registry.js');
+      
+      // Get available tools for the site
+      const tools = aiToolsRegistry.getToolsForSite(siteId, 'default-tenant');
+      
+      // Convert RegistryToolDefinition[] to SiteAction[]  
+      const actions: SiteAction[] = tools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters.map(param => ({
+          name: param.name,
+          type: this.mapParameterType(param.schema),
+          required: param.required,
+          description: param.description,
+          default: param.defaultValue,
+        })),
+        type: this.inferActionType(tool.name),
+        selector: `[data-action="${tool.name}"]`, // Default selector
+        confirmation: tool.confirmRequired,
+        sideEffecting: this.mapSideEffects(tool.sideEffects),
+        riskLevel: this.mapRiskLevel(tool.sideEffects),
+        category: this.mapCategory(tool.name),
+      }));
+      
+      logger.debug('Loaded site actions', { 
+        siteId, 
+        actionCount: actions.length 
+      });
+      
+      return actions;
+    } catch (error) {
+      logger.error('Failed to load site actions', { 
+        siteId, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      
+      // Return empty array as fallback
+      return [];
+    }
+  }
+
+  private mapParameterType(schema: Record<string, unknown>): ActionParameter['type'] {
+    const type = schema['type'] as string;
+    switch (type) {
+      case 'string': return 'string';
+      case 'number': case 'integer': return 'number';
+      case 'boolean': return 'boolean';
+      case 'object': return 'object';
+      case 'array': return 'array';
+      default: return 'string';
+    }
+  }
+
+  private inferActionType(toolName: string): SiteAction['type'] {
+    if (toolName.includes('navigation')) {return 'navigation';}
+    if (toolName.includes('form')) {return 'form';}
+    if (toolName.includes('button')) {return 'button';}
+    if (toolName.includes('api')) {return 'api';}
+    return 'custom';
+  }
+
+  private mapSideEffects(sideEffects: string): SiteAction['sideEffecting'] {
+    switch (sideEffects) {
+      case 'NONE':
+      case 'LOW': return 'safe';
+      case 'MEDIUM': return 'confirmation_required';
+      case 'HIGH': return 'destructive';
+      default: return 'safe';
+    }
+  }
+
+  private mapRiskLevel(sideEffects: string): SiteAction['riskLevel'] {
+    switch (sideEffects) {
+      case 'HIGH': return 'high';
+      case 'MEDIUM': return 'medium';
+      case 'LOW':
+      case 'NONE':
+      default: return 'low';
+    }
+  }
+
+  private mapCategory(toolName: string): SiteAction['category'] {
+    if (toolName.includes('delete') || toolName.includes('remove')) {return 'delete';}
+    if (toolName.includes('payment') || toolName.includes('checkout') || toolName.includes('pay')) {return 'payment';}
+    if (toolName.includes('message') || toolName.includes('email') || toolName.includes('contact')) {return 'communication';}
+    if (toolName.includes('create') || toolName.includes('add') || toolName.includes('update') || toolName.includes('edit')) {return 'write';}
+    return 'read';
+  }
+
+  /**
    * Create adapter for ActionExecutorService to match LangGraph interface
    */
   private createActionExecutorAdapter(actionExecutorService: typeof import('./ActionExecutorService').actionExecutorService) {
@@ -668,7 +764,7 @@ export const aiOrchestrationService = new AIOrchestrationService({
         const searchResults = await kbService.semanticSearch({
           query: params.query,
           siteId: params.siteId,
-          tenantId: 'default-tenant', // TODO: Get from context
+          tenantId: 'default-tenant', // Use default tenant for service adapter
           limit: params.topK,
           threshold: 0.7,
           filters: {

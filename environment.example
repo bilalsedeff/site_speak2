@@ -103,6 +103,47 @@ LANGSMITH_PROJECT=sitespeak
 LANGSMITH_ENABLED=false
 TRACE_SAMPLE_RATE=1.0
 
+# Alternative AI Providers (optional, for failover and cost optimization)
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+COHERE_API_KEY=your_cohere_api_key_here
+REPLICATE_API_TOKEN=your_replicate_api_token_here
+TOGETHER_API_KEY=your_together_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+
+# Production Monitoring & Observability
+DATADOG_API_KEY=your_datadog_api_key_here
+DATADOG_APP_KEY=your_datadog_app_key_here
+NEW_RELIC_LICENSE_KEY=your_new_relic_license_key_here
+NEW_RELIC_APP_NAME=sitespeak-production
+
+# Distributed Tracing
+OTEL_ENABLED=false
+OTEL_SERVICE_NAME=sitespeak
+OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io
+HONEYCOMB_API_KEY=your_honeycomb_api_key_here
+JAEGER_ENDPOINT=http://localhost:14268/api/traces
+
+# Error Tracking (beyond Sentry)
+BUGSNAG_API_KEY=your_bugsnag_api_key_here
+ROLLBAR_ACCESS_TOKEN=your_rollbar_access_token_here
+
+# Log Management
+LOGTAIL_SOURCE_TOKEN=your_logtail_source_token_here
+PAPERTRAIL_HOST=logs.papertrailapp.com
+PAPERTRAIL_PORT=12345
+
+# Performance Monitoring
+GRAFANA_API_KEY=your_grafana_api_key_here
+GRAFANA_ORG_ID=your_grafana_org_id_here
+PROMETHEUS_PUSHGATEWAY_URL=http://localhost:9091
+
+# Database Performance
+PGVECTOR_ENABLED=true
+VECTOR_INDEX_TYPE=hnsw
+VECTOR_INDEX_PRESET=balanced
+VECTOR_CACHE_SIZE=512MB
+CONNECTION_POOL_SIZE=20
+
 # ==== FILE STORAGE ====
 # AWS S3 Configuration (optional, for file storage)
 AWS_ACCESS_KEY_ID=your_aws_access_key

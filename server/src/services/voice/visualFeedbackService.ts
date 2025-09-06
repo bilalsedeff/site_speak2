@@ -238,7 +238,7 @@ export class VisualFeedbackService extends EventEmitter {
   highlightElement(selector: string, options: Partial<ActionHighlight> = {}, sessionId?: string): string {
     if (!this.isActive) {return '';}
 
-    const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const highlight: ActionHighlight = {
       selector,
       type: options.type || 'glow',
@@ -368,7 +368,7 @@ export class VisualFeedbackService extends EventEmitter {
   showErrorToast(toast: Omit<ErrorToast, 'id'>, sessionId?: string): string {
     if (!this.isActive) {return '';}
 
-    const toastId = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const toastId = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const errorToast: ErrorToast = {
       id: toastId,
       ...toast,

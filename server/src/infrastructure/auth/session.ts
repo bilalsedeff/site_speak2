@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'crypto';
 import { createLogger } from '../../shared/utils.js';
 import type { RedisClientType } from 'redis';
@@ -37,8 +36,275 @@ export interface SessionStore {
 }
 
 /**
+ * Redis-backed session store for production
+ */
+export class RedisSessionStore implements SessionStore {
+  private redisClient: RedisClientType;
+  private keyPrefix = 'session:';
+  private userKeyPrefix = 'user_sessions:';
+  private sessionTTL = 7 * 24 * 60 * 60; // 7 days in seconds
+
+  constructor(redisClient: RedisClientType) {
+    this.redisClient = redisClient;
+  }
+
+  async create(data: CreateSessionRequest): Promise<UserSession> {
+    const session: UserSession = {
+      id: randomUUID(),
+      userId: data.userId,
+      tenantId: data.tenantId,
+      createdAt: new Date(),
+      lastActivityAt: new Date(),
+      ipAddress: data.ipAddress,
+      userAgent: data.userAgent,
+      isActive: true,
+      metadata: data.metadata || {},
+    };
+
+    try {
+      // Store session data
+      const sessionKey = this.keyPrefix + session.id;
+      const userSessionsKey = this.userKeyPrefix + data.userId;
+
+      // Use pipeline for atomic operations
+      const pipeline = this.redisClient.multi();
+      pipeline.hSet(sessionKey, {
+        id: session.id,
+        userId: session.userId,
+        tenantId: session.tenantId,
+        createdAt: session.createdAt.toISOString(),
+        lastActivityAt: session.lastActivityAt.toISOString(),
+        ipAddress: session.ipAddress,
+        userAgent: session.userAgent,
+        isActive: session.isActive.toString(),
+        metadata: JSON.stringify(session.metadata),
+      });
+      pipeline.expire(sessionKey, this.sessionTTL);
+      pipeline.sAdd(userSessionsKey, session.id);
+      pipeline.expire(userSessionsKey, this.sessionTTL);
+
+      await pipeline.exec();
+
+      logger.info('Session created', {
+        sessionId: session.id,
+        userId: data.userId,
+        tenantId: data.tenantId,
+      });
+
+      return session;
+    } catch (error) {
+      logger.error('Failed to create session', { error, userId: data.userId });
+      throw error;
+    }
+  }
+
+  async get(sessionId: string): Promise<UserSession | null> {
+    try {
+      const sessionKey = this.keyPrefix + sessionId;
+      const sessionData = await this.redisClient.hGetAll(sessionKey);
+
+      if (!sessionData || Object.keys(sessionData).length === 0) {
+        return null;
+      }
+
+      // Update last activity
+      await this.updateActivity(sessionId);
+
+      return {
+        id: sessionData['id'] || '',
+        userId: sessionData['userId'] || '',
+        tenantId: sessionData['tenantId'] || '',
+        createdAt: new Date(sessionData['createdAt'] || ''),
+        lastActivityAt: new Date(sessionData['lastActivityAt'] || ''),
+        ipAddress: sessionData['ipAddress'] || '',
+        userAgent: sessionData['userAgent'] || '',
+        isActive: sessionData['isActive'] === 'true',
+        metadata: sessionData['metadata'] ? JSON.parse(sessionData['metadata']) : {},
+      };
+    } catch (error) {
+      logger.error('Failed to get session', { error, sessionId });
+      return null;
+    }
+  }
+
+  async update(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | null> {
+    try {
+      const sessionKey = this.keyPrefix + sessionId;
+      const exists = await this.redisClient.exists(sessionKey);
+      
+      if (!exists) {
+        return null;
+      }
+
+      const updateData: Record<string, string> = {};
+      
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value !== undefined) {
+          if (key === 'metadata') {
+            updateData[key] = JSON.stringify(value);
+          } else if (value instanceof Date) {
+            updateData[key] = value.toISOString();
+          } else if (typeof value === 'boolean') {
+            updateData[key] = value.toString();
+          } else {
+            updateData[key] = String(value);
+          }
+        }
+      });
+
+      updateData['lastActivityAt'] = new Date().toISOString();
+
+      await this.redisClient.hSet(sessionKey, updateData);
+      await this.redisClient.expire(sessionKey, this.sessionTTL);
+
+      logger.debug('Session updated', { sessionId, updates: Object.keys(updateData) });
+
+      return await this.get(sessionId);
+    } catch (error) {
+      logger.error('Failed to update session', { error, sessionId });
+      throw error;
+    }
+  }
+
+  async delete(sessionId: string): Promise<boolean> {
+    try {
+      const sessionKey = this.keyPrefix + sessionId;
+      const sessionData = await this.redisClient.hGetAll(sessionKey);
+      
+      if (!sessionData || !sessionData['userId']) {
+        return false;
+      }
+
+      const userId = sessionData['userId'];
+      const userSessionsKey = this.userKeyPrefix + userId;
+
+      // Remove from both session store and user sessions set
+      const pipeline = this.redisClient.multi();
+      pipeline.del(sessionKey);
+      pipeline.sRem(userSessionsKey, sessionId);
+
+      await pipeline.exec();
+
+      logger.info('Session deleted', { sessionId, userId });
+      return true;
+    } catch (error) {
+      logger.error('Failed to delete session', { error, sessionId });
+      return false;
+    }
+  }
+
+  async deleteByUserId(userId: string): Promise<number> {
+    try {
+      const userSessionsKey = this.userKeyPrefix + userId;
+      const sessionIds = await this.redisClient.sMembers(userSessionsKey);
+      
+      if (sessionIds.length === 0) {
+        return 0;
+      }
+
+      const pipeline = this.redisClient.multi();
+      
+      // Delete all session keys
+      sessionIds.forEach(sessionId => {
+        pipeline.del(this.keyPrefix + sessionId);
+      });
+      
+      // Clear user sessions set
+      pipeline.del(userSessionsKey);
+
+      await pipeline.exec();
+
+      logger.info('All user sessions deleted', { userId, count: sessionIds.length });
+      return sessionIds.length;
+    } catch (error) {
+      logger.error('Failed to delete user sessions', { error, userId });
+      return 0;
+    }
+  }
+
+  async updateActivity(sessionId: string): Promise<boolean> {
+    try {
+      const sessionKey = this.keyPrefix + sessionId;
+      const exists = await this.redisClient.exists(sessionKey);
+      
+      if (!exists) {
+        return false;
+      }
+
+      await this.redisClient.hSet(sessionKey, 'lastActivityAt', new Date().toISOString());
+      await this.redisClient.expire(sessionKey, this.sessionTTL);
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to update session activity', { error, sessionId });
+      return false;
+    }
+  }
+
+  async cleanup(): Promise<number> {
+    try {
+      // Redis TTL handles cleanup automatically, but we can do manual cleanup if needed
+      let deletedCount = 0;
+      let cursor = '0';
+      
+      do {
+        const result = await this.redisClient.scan(cursor, {
+          MATCH: this.keyPrefix + '*',
+          COUNT: 100,
+        });
+        
+        cursor = result.cursor;
+        const keys = result.keys;
+        
+        for (const key of keys) {
+          const ttl = await this.redisClient.ttl(key);
+          if (ttl === -1) { // Key exists but has no TTL
+            await this.redisClient.expire(key, this.sessionTTL);
+          } else if (ttl === -2) { // Key doesn't exist
+            deletedCount++;
+          }
+        }
+      } while (cursor !== '0');
+
+      if (deletedCount > 0) {
+        logger.info('Session cleanup completed', { deletedCount });
+      }
+
+      return deletedCount;
+    } catch (error) {
+      logger.error('Failed to cleanup sessions', { error });
+      return 0;
+    }
+  }
+
+  async getActiveSessions(userId: string): Promise<UserSession[]> {
+    try {
+      const userSessionsKey = this.userKeyPrefix + userId;
+      const sessionIds = await this.redisClient.sMembers(userSessionsKey);
+      
+      if (sessionIds.length === 0) {
+        return [];
+      }
+
+      const sessions: UserSession[] = [];
+      
+      for (const sessionId of sessionIds) {
+        const session = await this.get(sessionId);
+        if (session && session.isActive) {
+          sessions.push(session);
+        }
+      }
+
+      return sessions.sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
+    } catch (error) {
+      logger.error('Failed to get active sessions', { error, userId });
+      return [];
+    }
+  }
+}
+
+/**
  * In-memory session store for development
- * TODO: Replace with Redis-backed store for production
  */
 export class InMemorySessionStore implements SessionStore {
   private sessions = new Map<string, UserSession>();
@@ -54,18 +320,18 @@ export class InMemorySessionStore implements SessionStore {
       ipAddress: data.ipAddress,
       userAgent: data.userAgent,
       isActive: true,
-      ...(data.metadata !== undefined && { metadata: data.metadata }),
+      metadata: data.metadata || {},
     };
 
     this.sessions.set(session.id, session);
-    
+
     // Track user sessions
     if (!this.userSessions.has(data.userId)) {
       this.userSessions.set(data.userId, new Set());
     }
     this.userSessions.get(data.userId)!.add(session.id);
 
-    logger.info('Session created', {
+    logger.info('In-memory session created', {
       sessionId: session.id,
       userId: data.userId,
       tenantId: data.tenantId,
@@ -76,50 +342,55 @@ export class InMemorySessionStore implements SessionStore {
 
   async get(sessionId: string): Promise<UserSession | null> {
     const session = this.sessions.get(sessionId);
-    return session && session.isActive ? session : null;
+    return session || null;
   }
 
   async update(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | null> {
     const session = this.sessions.get(sessionId);
-    if (!session) {return null;}
+    if (!session) {
+      return null;
+    }
 
-    const updatedSession = { ...session, ...updates };
+    const updatedSession = {
+      ...session,
+      ...updates,
+      lastActivityAt: new Date(),
+    };
+
     this.sessions.set(sessionId, updatedSession);
     
-    logger.debug('Session updated', {
-      sessionId,
-      updates: Object.keys(updates),
-    });
-
+    logger.debug('In-memory session updated', { sessionId });
     return updatedSession;
   }
 
   async delete(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
-    if (!session) {return false;}
+    if (!session) {
+      return false;
+    }
 
+    const { userId } = session;
+    
     this.sessions.delete(sessionId);
     
     // Remove from user sessions
-    const userSessionIds = this.userSessions.get(session.userId);
-    if (userSessionIds) {
-      userSessionIds.delete(sessionId);
-      if (userSessionIds.size === 0) {
-        this.userSessions.delete(session.userId);
+    const userSessionSet = this.userSessions.get(userId);
+    if (userSessionSet) {
+      userSessionSet.delete(sessionId);
+      if (userSessionSet.size === 0) {
+        this.userSessions.delete(userId);
       }
     }
 
-    logger.info('Session deleted', {
-      sessionId,
-      userId: session.userId,
-    });
-
+    logger.info('In-memory session deleted', { sessionId, userId });
     return true;
   }
 
   async deleteByUserId(userId: string): Promise<number> {
     const sessionIds = this.userSessions.get(userId);
-    if (!sessionIds) {return 0;}
+    if (!sessionIds || sessionIds.size === 0) {
+      return 0;
+    }
 
     let count = 0;
     for (const sessionId of sessionIds) {
@@ -130,21 +401,17 @@ export class InMemorySessionStore implements SessionStore {
 
     this.userSessions.delete(userId);
 
-    logger.info('All user sessions deleted', {
-      userId,
-      count,
-    });
-
+    logger.info('All in-memory user sessions deleted', { userId, count });
     return count;
   }
 
   async updateActivity(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
-    if (!session || !session.isActive) {return false;}
+    if (!session) {
+      return false;
+    }
 
     session.lastActivityAt = new Date();
-    this.sessions.set(sessionId, session);
-    
     return true;
   }
 
@@ -174,255 +441,6 @@ export class InMemorySessionStore implements SessionStore {
 
     for (const sessionId of sessionIds) {
       const session = this.sessions.get(sessionId);
-      if (session && session.isActive) {
-        sessions.push(session);
-      }
-    }
-
-    return sessions.sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
-  }
-}
-
-/**
- * Redis-backed session store for production
- * TODO: Implement when Redis integration is added
- */
-export class RedisSessionStore implements SessionStore {
-  private readonly SESSION_PREFIX = 'session:';
-  private readonly USER_SESSIONS_PREFIX = 'user_sessions:';
-  private readonly SESSION_TTL = 24 * 60 * 60; // 24 hours in seconds
-
-  constructor(private redisClient: RedisClientType) {}
-
-  async create(data: CreateSessionRequest): Promise<UserSession> {
-    const session: UserSession = {
-      id: randomUUID(),
-      userId: data.userId,
-      tenantId: data.tenantId,
-      createdAt: new Date(),
-      lastActivityAt: new Date(),
-      ipAddress: data.ipAddress,
-      userAgent: data.userAgent,
-      isActive: true,
-      ...(data.metadata !== undefined && { metadata: data.metadata }),
-    };
-
-    const sessionKey = `${this.SESSION_PREFIX}${session.id}`;
-    const userSessionsKey = `${this.USER_SESSIONS_PREFIX}${data.userId}`;
-
-    // Store session data
-    await this.redisClient.hSet(sessionKey, {
-      id: session.id,
-      userId: session.userId,
-      tenantId: session.tenantId,
-      createdAt: session.createdAt.toISOString(),
-      lastActivityAt: session.lastActivityAt.toISOString(),
-      ipAddress: session.ipAddress,
-      userAgent: session.userAgent,
-      isActive: session.isActive.toString(),
-      metadata: session.metadata ? JSON.stringify(session.metadata) : '',
-    });
-
-    // Set TTL for session
-    await this.redisClient.expire(sessionKey, this.SESSION_TTL);
-
-    // Add session to user's active sessions set
-    await this.redisClient.sAdd(userSessionsKey, session.id);
-    await this.redisClient.expire(userSessionsKey, this.SESSION_TTL);
-
-    logger.info('Redis session created', {
-      sessionId: session.id,
-      userId: data.userId,
-      tenantId: data.tenantId,
-    });
-
-    return session;
-  }
-
-  async get(sessionId: string): Promise<UserSession | null> {
-    const sessionKey = `${this.SESSION_PREFIX}${sessionId}`;
-    const sessionData = await this.redisClient.hGetAll(sessionKey);
-
-    if (!sessionData['id'] || sessionData['isActive'] !== 'true') {
-      return null;
-    }
-
-    const session: UserSession = {
-      id: sessionData['id']!,
-      userId: sessionData['userId']!,
-      tenantId: sessionData['tenantId']!,
-      createdAt: new Date(sessionData['createdAt']!),
-      lastActivityAt: new Date(sessionData['lastActivityAt']!),
-      ipAddress: sessionData['ipAddress']!,
-      userAgent: sessionData['userAgent']!,
-      isActive: sessionData['isActive'] === 'true',
-      metadata: sessionData['metadata'] ? JSON.parse(sessionData['metadata']) : undefined,
-    };
-
-    return session;
-  }
-
-  async update(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | null> {
-    const sessionKey = `${this.SESSION_PREFIX}${sessionId}`;
-    const existingSession = await this.get(sessionId);
-    
-    if (!existingSession) {
-      return null;
-    }
-
-    const updatedSession = { ...existingSession, ...updates };
-    
-    // Update Redis hash with new values
-    const updateData: Record<string, string> = {};
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value !== undefined) {
-        if (value instanceof Date) {
-          updateData[key] = value.toISOString();
-        } else if (typeof value === 'object') {
-          updateData[key] = JSON.stringify(value);
-        } else {
-          updateData[key] = value.toString();
-        }
-      }
-    });
-
-    if (Object.keys(updateData).length > 0) {
-      await this.redisClient.hSet(sessionKey, updateData);
-    }
-
-    logger.debug('Redis session updated', {
-      sessionId,
-      updates: Object.keys(updates),
-    });
-
-    return updatedSession;
-  }
-
-  async delete(sessionId: string): Promise<boolean> {
-    const session = await this.get(sessionId);
-    if (!session) {
-      return false;
-    }
-
-    const sessionKey = `${this.SESSION_PREFIX}${sessionId}`;
-    const userSessionsKey = `${this.USER_SESSIONS_PREFIX}${session.userId}`;
-
-    // Remove session data
-    await this.redisClient.del(sessionKey);
-    
-    // Remove from user's active sessions
-    await this.redisClient.sRem(userSessionsKey, sessionId);
-
-    logger.info('Redis session deleted', {
-      sessionId,
-      userId: session.userId,
-    });
-
-    return true;
-  }
-
-  async deleteByUserId(userId: string): Promise<number> {
-    const userSessionsKey = `${this.USER_SESSIONS_PREFIX}${userId}`;
-    const sessionIds = await this.redisClient.sMembers(userSessionsKey);
-
-    if (sessionIds.length === 0) {
-      return 0;
-    }
-
-    let count = 0;
-    for (const sessionId of sessionIds) {
-      const sessionKey = `${this.SESSION_PREFIX}${sessionId}`;
-      const deleted = await this.redisClient.del(sessionKey);
-      if (deleted > 0) {
-        count++;
-      }
-    }
-
-    // Clear user's sessions set
-    await this.redisClient.del(userSessionsKey);
-
-    logger.info('All Redis user sessions deleted', {
-      userId,
-      count,
-    });
-
-    return count;
-  }
-
-  async updateActivity(sessionId: string): Promise<boolean> {
-    const sessionKey = `${this.SESSION_PREFIX}${sessionId}`;
-    const exists = await this.redisClient.exists(sessionKey);
-    
-    if (!exists) {
-      return false;
-    }
-
-    await this.redisClient.hSet(sessionKey, {
-      lastActivityAt: new Date().toISOString(),
-    });
-
-    // Refresh TTL
-    await this.redisClient.expire(sessionKey, this.SESSION_TTL);
-
-    return true;
-  }
-
-  async cleanup(): Promise<number> {
-    // Redis handles TTL automatically, but we can clean up orphaned user session sets
-    const userSessionsPattern = `${this.USER_SESSIONS_PREFIX}*`;
-    const userSessionKeys = [];
-    
-    // Scan for all user session keys
-    let cursor = '0';
-    do {
-      const result = await this.redisClient.scan(cursor, {
-        MATCH: userSessionsPattern,
-        COUNT: 100,
-      });
-      cursor = result.cursor.toString();
-      userSessionKeys.push(...result.keys);
-    } while (cursor !== '0');
-
-    let cleanedCount = 0;
-
-    for (const userSessionKey of userSessionKeys) {
-      const sessionIds = await this.redisClient.sMembers(userSessionKey);
-      const validSessionIds = [];
-
-      for (const sessionId of sessionIds) {
-        const sessionKey = `${this.SESSION_PREFIX}${sessionId}`;
-        const exists = await this.redisClient.exists(sessionKey);
-        if (exists) {
-          validSessionIds.push(sessionId);
-        } else {
-          cleanedCount++;
-        }
-      }
-
-      // Update user sessions set with only valid sessions
-      if (validSessionIds.length !== sessionIds.length) {
-        await this.redisClient.del(userSessionKey);
-        if (validSessionIds.length > 0) {
-          await this.redisClient.sAdd(userSessionKey, validSessionIds);
-          await this.redisClient.expire(userSessionKey, this.SESSION_TTL);
-        }
-      }
-    }
-
-    if (cleanedCount > 0) {
-      logger.info('Redis session cleanup completed', { cleanedCount });
-    }
-
-    return cleanedCount;
-  }
-
-  async getActiveSessions(userId: string): Promise<UserSession[]> {
-    const userSessionsKey = `${this.USER_SESSIONS_PREFIX}${userId}`;
-    const sessionIds = await this.redisClient.sMembers(userSessionsKey);
-    const sessions: UserSession[] = [];
-
-    for (const sessionId of sessionIds) {
-      const session = await this.get(sessionId);
       if (session && session.isActive) {
         sessions.push(session);
       }
@@ -494,5 +512,46 @@ export class SessionManager {
   }
 }
 
+/**
+ * Create session manager with appropriate store based on environment
+ */
+function createSessionManager(): SessionManager {
+  const redisUrl = process.env['REDIS_URL'];
+  const nodeEnv = process.env['NODE_ENV'];
+  
+  if (nodeEnv === 'production' && redisUrl) {
+    // In production with Redis URL, use Redis store
+    const { createClient } = require('redis');
+    const redisClient = createClient({ url: redisUrl });
+    
+    // Handle Redis connection
+    redisClient.on('error', (err: Error) => {
+      logger.error('Redis client error', { error: err });
+    });
+    
+    redisClient.on('connect', () => {
+      logger.info('Redis session store connected');
+    });
+    
+    // Connect to Redis
+    redisClient.connect().catch((err: Error) => {
+      logger.error('Failed to connect to Redis, falling back to in-memory store', { error: err });
+      return new SessionManager(new InMemorySessionStore());
+    });
+    
+    const redisStore = new RedisSessionStore(redisClient);
+    logger.info('Using Redis session store for production');
+    return new SessionManager(redisStore);
+  } else {
+    // Development or when Redis is not available
+    logger.warn('Using in-memory session store', {
+      nodeEnv,
+      hasRedisUrl: !!redisUrl,
+      reason: nodeEnv !== 'production' ? 'development environment' : 'Redis URL not configured'
+    });
+    return new SessionManager(new InMemorySessionStore());
+  }
+}
+
 // Export singleton instance
-export const sessionManager = new SessionManager();
+export const sessionManager = createSessionManager();

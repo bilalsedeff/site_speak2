@@ -264,7 +264,7 @@ export function AIChat({
           </div>
           <div className="flex-1" />
           <div className={cn(
-            "w-2 h-2 rounded-full transition-colors duration-[var(--motion-fast)]",
+            "w-2 h-2 rounded-full transition-colors duration-&lsqb;var(--motion-fast)&rsqb;",
             isConnected ? "bg-green-500" : "bg-red-500"
           )}
           aria-label={isConnected ? "Connected" : "Disconnected"}

@@ -686,28 +686,84 @@ export class WidgetActionBridge {
     return converted;
   }
 
-  private async executeNavigation(action: EnhancedSiteAction, _args: Record<string, any>): Promise<any> {
-    // This would typically send navigation commands to the browser
-    // TODO: Use _args for navigation parameters like query strings, form data, etc.
-    return {
+  private async executeNavigation(action: EnhancedSiteAction, args: Record<string, any>): Promise<any> {
+    // Build navigation target with query parameters and form data
+    let target = action.metadata?.['url'] || action.selector;
+    
+    // Handle query parameters
+    if (args['queryParams'] && typeof args['queryParams'] === 'object') {
+      const params = new URLSearchParams(args['queryParams']);
+      target += target.includes('?') ? `&${params.toString()}` : `?${params.toString()}`;
+    }
+    
+    // Handle specific navigation arguments
+    const navigationData = {
       type: 'navigation',
       action: action.name,
-      target: action.metadata?.['url'] || action.selector,
+      target,
+      method: args['method'] || 'pushState', // pushState, replace, href
+      scrollToTop: args['scrollToTop'] !== false,
+      highlightElement: args['highlightElement'] || action.selector,
+      formData: args['formData'] || null, // For POST navigation
+      replaceHistory: args['replaceHistory'] || false,
       success: true,
     };
+    
+    logger.debug('Navigation action prepared', {
+      actionName: action.name,
+      target,
+      hasQueryParams: !!args['queryParams'],
+      hasFormData: !!args['formData']
+    });
+    
+    return navigationData;
   }
 
   private async executeFormAction(
     action: EnhancedSiteAction,
     args: Record<string, any>,
-    _context: ActionContext
+    context: ActionContext
   ): Promise<any> {
-    // This would handle form submissions
-    // TODO: Use _context for user authentication and session validation
+    // Validate user authentication and session
+    if (!context.userId && action.metadata?.['requiresAuth']) {
+      throw new Error('User authentication required for this form action');
+    }
+    
+    // Validate session freshness (within last 30 minutes)
+    const sessionAge = Date.now() - context.timestamp.getTime();
+    if (sessionAge > 30 * 60 * 1000) {
+      throw new Error('Session expired. Please refresh and try again.');
+    }
+    
+    // Prepare form submission data with security context
+    const formData = {
+      ...args,
+      // Add security fields
+      _token: context.sessionId, // CSRF-like protection
+      _tenant: context.tenantId,
+      _timestamp: context.timestamp.toISOString(),
+    };
+    
+    logger.info('Form action prepared with security context', {
+      actionName: action.name,
+      fieldCount: Object.keys(formData).length,
+      userId: context.userId,
+      tenantId: context.tenantId,
+      requiresAuth: action.metadata?.['requiresAuth']
+    });
+    
     return {
       type: 'form_submission',
       action: action.name,
-      fields: Object.keys(args),
+      selector: action.selector,
+      method: action.metadata?.['method'] || 'POST',
+      formData: formData,
+      validation: {
+        userId: context.userId,
+        tenantId: context.tenantId,
+        sessionId: context.sessionId,
+        timestamp: context.timestamp.toISOString()
+      },
       success: true,
     };
   }

@@ -24,7 +24,11 @@ export interface TenantRepository {
    */
   update(id: string, updates: {
     name?: string;
+    plan?: 'free' | 'starter' | 'professional' | 'enterprise';
     settings?: Partial<Tenant['settings']>;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    billingEmail?: string;
   }): Promise<Tenant | null>;
 
   /**

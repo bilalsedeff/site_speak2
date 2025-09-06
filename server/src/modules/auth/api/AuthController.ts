@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
-import bcrypt from 'bcryptjs';
-import { randomUUID } from 'crypto';
 
 import { createLogger } from '../../../shared/utils.js';
-import { jwtService, sessionManager } from '../../../infrastructure/auth';
+import { AuthService } from '../application/AuthService';
+import { UserRepositoryImpl } from '../../../infrastructure/repositories/UserRepositoryImpl';
+import { TenantRepositoryImpl } from '../../../infrastructure/repositories/TenantRepositoryImpl';
+import { db } from '../../../infrastructure/database';
+import { sessionManager } from '../../../infrastructure/auth';
 import type { 
   LoginRequest, 
   RegisterRequest, 
@@ -13,6 +15,11 @@ import type {
 } from '../application/schemas';
 
 const logger = createLogger({ service: 'auth-controller' });
+
+// Initialize repositories and service
+const userRepository = new UserRepositoryImpl(db);
+const tenantRepository = new TenantRepositoryImpl(db);
+const authService = new AuthService(userRepository, tenantRepository);
 
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction) {
@@ -24,64 +31,22 @@ export class AuthController {
         correlationId: req.correlationId,
       });
 
-      // TODO: Check if user already exists
-      // TODO: Create user and tenant in database
-      // TODO: Send welcome email
-      
-      // For now, mock the registration process
-      const userId = randomUUID();
-      const tenantId = randomUUID();
-      // TODO: Use hashedPassword when implementing database user creation
-      const _hashedPassword = await bcrypt.hash(data.password, 12);
-      void _hashedPassword; // Will be used for database user creation
-
-      // Create session
-      const session = await sessionManager.createSession({
-        userId,
-        tenantId,
+      // Use real authentication service
+      const result = await authService.register(data, {
         ipAddress: req.ip || '0.0.0.0',
         userAgent: req.get('User-Agent') || 'Unknown',
-        metadata: {
-          registrationMethod: 'email',
-          acceptedTerms: data.acceptTerms,
-        },
-      });
-
-      // Generate tokens
-      const tokenPair = jwtService.generateTokenPair({
-        userId,
-        tenantId,
-        role: 'owner',
-        email: data.email,
-        sessionId: session.id,
       });
 
       logger.info('User registered successfully', {
-        userId,
-        tenantId,
+        userId: result.user.id,
+        tenantId: result.tenant.id,
         email: data.email,
         correlationId: req.correlationId,
       });
 
       res.status(201).json({
         success: true,
-        data: {
-          user: {
-            id: userId,
-            email: data.email,
-            name: data.name,
-            role: 'owner',
-            tenantId,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            preferences: {},
-          },
-          tokens: tokenPair,
-          session: {
-            id: session.id,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-          },
-        },
+        data: result,
         message: 'Registration successful',
       });
     } catch (error) {
@@ -103,84 +68,51 @@ export class AuthController {
         correlationId: req.correlationId,
       });
 
-      // TODO: Find user by email
-      // TODO: Verify password
-      // TODO: Update last login timestamp
+      // Use real authentication service
+      const result = await authService.login(data, {
+        ipAddress: req.ip || '0.0.0.0',
+        userAgent: req.get('User-Agent') || 'Unknown',
+      });
+
+      logger.info('User logged in successfully', {
+        userId: result.user.id,
+        tenantId: result.tenant.id,
+        email: data.email,
+        correlationId: req.correlationId,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+        message: 'Login successful',
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Login failed';
       
-      // For now, mock the login process
-      if (data.email === 'test@sitespeak.com' && data.password === 'password123') {
-        const userId = randomUUID();
-        const tenantId = randomUUID();
-
-        // Create session
-        const session = await sessionManager.createSession({
-          userId,
-          tenantId,
-          ipAddress: req.ip || '0.0.0.0',
-          userAgent: req.get('User-Agent') || 'Unknown',
-          metadata: {
-            loginMethod: 'email',
-            rememberMe: data.rememberMe,
-          },
-        });
-
-        // Generate tokens
-        const tokenPair = jwtService.generateTokenPair({
-          userId,
-          tenantId,
-          role: 'owner',
-          email: data.email,
-          sessionId: session.id,
-        });
-
-        logger.info('User logged in successfully', {
-          userId,
-          tenantId,
-          email: data.email,
-          correlationId: req.correlationId,
-        });
-
-        res.json({
-          success: true,
-          data: {
-            user: {
-              id: userId,
-              email: data.email,
-              name: 'Test User',
-              role: 'owner',
-              tenantId,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              preferences: {},
-            },
-            tokens: tokenPair,
-            session: {
-              id: session.id,
-              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            },
-          },
-          message: 'Login successful',
-        });
-      } else {
-        logger.warn('Login failed - invalid credentials', {
-          email: data.email,
+      if (errorMessage.includes('Invalid email or password') || 
+          errorMessage.includes('Account is deactivated') ||
+          errorMessage.includes('Account access is restricted')) {
+        
+        logger.warn('Login failed - authentication error', {
+          email: req.body?.email,
+          error: errorMessage,
           correlationId: req.correlationId,
         });
 
         res.status(401).json({
           success: false,
-          error: 'Invalid email or password',
-          code: 'INVALID_CREDENTIALS',
+          error: errorMessage,
+          code: 'AUTHENTICATION_FAILED',
           correlationId: req.correlationId,
         });
+      } else {
+        logger.error('Login failed - server error', {
+          error,
+          email: req.body?.email,
+          correlationId: req.correlationId,
+        });
+        next(error);
       }
-    } catch (error) {
-      logger.error('Login failed', {
-        error,
-        email: req.body?.email,
-        correlationId: req.correlationId,
-      });
-      next(error);
     }
   }
 
@@ -216,7 +148,8 @@ export class AuthController {
     try {
       const user = req.user!;
       
-      const deletedCount = await sessionManager.deleteAllUserSessions(user.id);
+      // Use real authentication service
+      const deletedCount = await authService.logoutAll(user.id);
       
       logger.info('All user sessions logged out', {
         userId: user.id,
@@ -245,32 +178,16 @@ export class AuthController {
     try {
       const data: RefreshTokenRequest = req.body;
       
-      // Verify refresh token
-      const payload = jwtService.verifyRefreshToken(data.refreshToken);
-      
-      // TODO: Check if session is still valid
-      // TODO: Get user from database
-      
-      // Generate new access token
-      const newAccessToken = jwtService.generateAccessToken({
-        userId: payload.userId,
-        tenantId: payload.tenantId,
-        role: 'owner', // TODO: Get from database
-        email: 'test@sitespeak.com', // TODO: Get from database
-        sessionId: payload.sessionId,
-      });
+      // Use real authentication service
+      const result = await authService.refreshToken(data);
 
       logger.info('Token refreshed successfully', {
-        userId: payload.userId,
-        sessionId: payload.sessionId,
         correlationId: req.correlationId,
       });
 
       res.json({
         success: true,
-        data: {
-          accessToken: newAccessToken,
-        },
+        data: result,
         message: 'Token refreshed successfully',
       });
     } catch (error) {
@@ -292,20 +209,12 @@ export class AuthController {
     try {
       const user = req.user!;
       
-      // TODO: Get full user data from database
+      // Use real authentication service
+      const result = await authService.getCurrentUser(user.id);
       
       res.json({
         success: true,
-        data: {
-          id: user.id,
-          email: user.email,
-          name: 'Test User', // TODO: Get from database
-          role: user.role,
-          tenantId: user.tenantId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          preferences: {},
-        },
+        data: result,
       });
     } catch (error) {
       logger.error('Get current user failed', {
@@ -322,7 +231,8 @@ export class AuthController {
       const user = req.user!;
       const updates: UpdateUserRequest = req.body;
       
-      // TODO: Update user in database
+      // Use real authentication service
+      const result = await authService.updateCurrentUser(user.id, updates);
       
       logger.info('User updated successfully', {
         userId: user.id,
@@ -332,16 +242,7 @@ export class AuthController {
 
       res.json({
         success: true,
-        data: {
-          id: user.id,
-          email: updates.email || user.email,
-          name: updates.name || 'Test User',
-          role: user.role,
-          tenantId: user.tenantId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          preferences: updates.preferences || {},
-        },
+        data: result,
         message: 'User updated successfully',
       });
     } catch (error) {
@@ -357,14 +258,11 @@ export class AuthController {
   async changePassword(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user!;
-      // TODO: Use data to verify current password and update with new password
-      const _data: ChangePasswordRequest = req.body;
-      void _data; // Will be used for password verification and update
+      const data: ChangePasswordRequest = req.body;
       
-      // TODO: Verify current password
-      // TODO: Update password in database
+      // Use real authentication service
+      await authService.changePassword(user.id, data);
       
-      // For now, just validate the request
       logger.info('Password changed successfully', {
         userId: user.id,
         correlationId: req.correlationId,
@@ -375,12 +273,23 @@ export class AuthController {
         message: 'Password changed successfully',
       });
     } catch (error) {
-      logger.error('Change password failed', {
-        error,
-        userId: req.user?.id,
-        correlationId: req.correlationId,
-      });
-      next(error);
+      const errorMessage = error instanceof Error ? error.message : 'Password change failed';
+      
+      if (errorMessage.includes('Current password is incorrect')) {
+        res.status(400).json({
+          success: false,
+          error: errorMessage,
+          code: 'INVALID_CURRENT_PASSWORD',
+          correlationId: req.correlationId,
+        });
+      } else {
+        logger.error('Change password failed', {
+          error,
+          userId: req.user?.id,
+          correlationId: req.correlationId,
+        });
+        next(error);
+      }
     }
   }
 
@@ -388,17 +297,13 @@ export class AuthController {
     try {
       const user = req.user!;
       
-      const sessions = await sessionManager.getActiveSessions(user.id);
+      // Use real authentication service
+      const sessions = await authService.getActiveSessions(user.id);
       
       res.json({
         success: true,
         data: sessions.map(session => ({
-          id: session.id,
-          createdAt: session.createdAt,
-          lastActivityAt: session.lastActivityAt,
-          ipAddress: session.ipAddress,
-          userAgent: session.userAgent,
-          isActive: session.isActive,
+          ...session,
           isCurrent: session.id === user.sessionId,
         })),
       });
@@ -421,8 +326,8 @@ export class AuthController {
         return res.status(400).json({ error: 'Session ID is required' });
       }
       
-      // TODO: Verify session belongs to user
-      const deleted = await sessionManager.deleteSession(sessionId);
+      // Use real authentication service with proper authorization
+      const deleted = await authService.deleteSession(sessionId, user.id);
       
       if (deleted) {
         logger.info('Session deleted successfully', {
@@ -458,8 +363,8 @@ export class AuthController {
     try {
       const { email } = req.body;
       
-      // TODO: Generate password reset token
-      // TODO: Send password reset email
+      // Use real authentication service
+      await authService.forgotPassword(email);
       
       logger.info('Password reset requested', {
         email,
@@ -481,12 +386,10 @@ export class AuthController {
 
   async resetPassword(req: Request, res: Response, next: NextFunction) {
     try {
-      // TODO: Use token to verify reset request and newPassword to update user password
-      const { token: _token, newPassword: _newPassword } = req.body;
+      const { token, newPassword } = req.body;
       
-      // TODO: Verify reset token
-      // TODO: Update password in database
-      // TODO: Invalidate all user sessions
+      // Use real authentication service
+      await authService.resetPassword(token, newPassword);
       
       logger.info('Password reset completed', {
         correlationId: req.correlationId,
@@ -509,12 +412,13 @@ export class AuthController {
     try {
       const user = req.user;
       
+      // Use real authentication service
+      const result = await authService.healthCheck();
+      
       res.json({
         success: true,
         data: {
-          service: 'auth',
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
+          ...result,
           authenticated: !!user,
           userId: user?.id,
         },

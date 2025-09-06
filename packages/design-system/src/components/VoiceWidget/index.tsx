@@ -168,7 +168,9 @@ class VoiceWebSocketClient {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++
       setTimeout(() => {
-        console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+        if (process.env['NODE_ENV'] === 'development') {
+          console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+        }
         this.connect()
       }, this.reconnectDelay * this.reconnectAttempts)
     }

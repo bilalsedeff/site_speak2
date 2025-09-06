@@ -79,7 +79,7 @@ router.post('/session',
       });
 
       // Generate a session ID for the HTTP-created session configuration
-      const sessionId = `http-session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const sessionId = `http-session-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
       
       // Create session configuration (to be used when WebSocket connects)
       const sessionConfig = {

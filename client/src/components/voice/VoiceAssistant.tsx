@@ -138,7 +138,7 @@ export function VoiceAssistant() {
                 <div className="flex items-center space-x-3">
                   <div className={cn(
                     "w-3 h-3 rounded-full",
-                    'transition-colors duration-[var(--motion-fast)]',
+                    'transition-colors duration-&lsqb;var(--motion-fast)&rsqb;',
                     isConnected ? "bg-green-500" : "bg-red-500"
                   )} 
                   aria-label={isConnected ? "Connected" : "Disconnected"}
@@ -302,7 +302,7 @@ export function VoiceAssistant() {
               disabled={!isConnected}
               className={cn(
                 "voice-button rounded-full shadow-lg hover:shadow-xl",
-                "transition-all duration-[var(--motion-fast)] ease-[var(--motion-ease)]",
+                "transition-all duration-&lsqb;var(--motion-fast)&rsqb; ease-&lsqb;var(--motion-ease)&rsqb;",
                 isListening && "listening",
                 isProcessing && "processing"
               )}

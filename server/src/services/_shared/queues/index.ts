@@ -12,7 +12,18 @@ export {
   shutdownQueues,
   checkQueueHealth,
   registerJobSchema,
+  registerQueueInstance,
 } from './factory.js';
+
+// Re-export worker management
+export {
+  initializeWorkers,
+  shutdownWorkers,
+  getWorker,
+  getAllWorkers,
+  getWorkersHealth,
+  createCrawlerWorker,
+} from './workers/index.js';
 
 // Re-export conventions
 export {
@@ -39,8 +50,9 @@ export type {
 export type { Queue, Worker, Job } from 'bullmq';
 
 import { Queue, Worker } from 'bullmq';
-import { makeQueue, makeWorker, shutdownQueues } from './factory';
+import { makeQueue, makeWorker, shutdownQueues, registerQueueInstance } from './factory';
 import { QueueNames, QueueConfigs, registerAllJobSchemas } from './conventions';
+import { initializeWorkers, shutdownWorkers } from './workers/index.js';
 import { logger } from '../telemetry/logger';
 
 /**
@@ -49,7 +61,7 @@ import { logger } from '../telemetry/logger';
 const queueInstances = new Set<Queue | Worker>();
 
 /**
- * Initialize queue system with default queues
+ * Initialize queue system with default queues and workers
  */
 export async function initializeQueueSystem(): Promise<void> {
   try {
@@ -75,6 +87,9 @@ export async function initializeQueueSystem(): Promise<void> {
       queues: queues.map(q => q.name),
     });
     
+    // Initialize workers to process jobs
+    await initializeWorkers();
+    
     // Setup graceful shutdown
     setupGracefulShutdown();
     
@@ -85,14 +100,6 @@ export async function initializeQueueSystem(): Promise<void> {
   }
 }
 
-/**
- * Add queue/worker instance to shutdown registry
- */
-export function registerQueueInstance(
-  instance: Queue | Worker
-): void {
-  queueInstances.add(instance);
-}
 
 /**
  * Setup graceful shutdown handlers
@@ -102,7 +109,12 @@ function setupGracefulShutdown(): void {
     logger.info(`Received ${signal}, shutting down queue system...`);
     
     try {
+      // Shutdown workers first to stop processing new jobs
+      await shutdownWorkers();
+      
+      // Then shutdown queues
       await shutdownQueues(Array.from(queueInstances));
+      
       logger.info('Queue system shutdown completed');
     } catch (error) {
       logger.error('Error during queue shutdown:', error);

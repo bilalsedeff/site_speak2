@@ -927,11 +927,11 @@ export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
     try {
       const updateData: Partial<typeof crawlSessions.$inferInsert> = {};
 
-      if (progress.discovered !== undefined) updateData.pagesDiscovered = progress.discovered;
-      if (progress.processed !== undefined) updateData.pagesCrawled = progress.processed;
-      if (progress.failed !== undefined) updateData.pagesFailed = progress.failed;
-      if (progress.skipped !== undefined) updateData.pagesSkipped = progress.skipped;
-      if (progress.status !== undefined) updateData.status = progress.status;
+      if (progress.discovered !== undefined) {updateData.pagesDiscovered = progress.discovered;}
+      if (progress.processed !== undefined) {updateData.pagesCrawled = progress.processed;}
+      if (progress.failed !== undefined) {updateData.pagesFailed = progress.failed;}
+      if (progress.skipped !== undefined) {updateData.pagesSkipped = progress.skipped;}
+      if (progress.status !== undefined) {updateData.status = progress.status;}
       if (progress.completedAt !== undefined) {
         updateData.completedAt = progress.completedAt;
         // Calculate duration if session is completed
@@ -945,7 +945,7 @@ export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
           updateData.duration = Math.floor((progress.completedAt.getTime() - session.startedAt.getTime()) / 1000);
         }
       }
-      if (progress.errors !== undefined) updateData.errors = progress.errors;
+      if (progress.errors !== undefined) {updateData.errors = progress.errors;}
 
       await db
         .update(crawlSessions)

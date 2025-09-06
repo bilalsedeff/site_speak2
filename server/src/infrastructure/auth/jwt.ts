@@ -14,11 +14,27 @@ export const JWTPayloadSchema = z.object({
   email: z.string().email(),
   permissions: z.array(z.string()).optional(),
   sessionId: z.string().uuid().optional(),
+  siteId: z.string().uuid().optional(),
+  locale: z.string().optional(),
   iat: z.number().optional(),
   exp: z.number().optional(),
   iss: z.string().optional(),
   aud: z.string().optional(),
 });
+
+// Voice-specific JWT payload for WebSocket connections
+export const VoiceJWTPayloadSchema = z.object({
+  tenantId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  userId: z.string().uuid().optional(),
+  locale: z.string().default('en-US'),
+  iat: z.number().optional(),
+  exp: z.number().optional(),
+  iss: z.string().optional(),
+  aud: z.string().optional(),
+});
+
+export type VoiceJWTPayload = z.infer<typeof VoiceJWTPayloadSchema>;
 
 export type JWTPayload = z.infer<typeof JWTPayloadSchema>;
 
@@ -224,6 +240,64 @@ export class JWTService {
       return Date.now() >= decoded.exp * 1000;
     } catch (error) {
       return true;
+    }
+  }
+
+  /**
+   * Generate voice session token for WebSocket authentication
+   */
+  generateVoiceToken(payload: Omit<VoiceJWTPayload, 'iat' | 'exp' | 'iss' | 'aud'>, options?: TokenOptions): string {
+    try {
+      const tokenPayload: VoiceJWTPayload = {
+        ...payload,
+        iss: options?.issuer || this.defaultIssuer,
+        aud: options?.audience || 'sitespeak-voice',
+      };
+
+      const expiresIn = options?.expiresIn || '1h'; // Voice tokens expire in 1 hour
+      const signOptions: jwt.SignOptions = {
+        expiresIn: typeof expiresIn === 'string' ? parseExpirationTime(expiresIn) : expiresIn,
+        issuer: tokenPayload.iss,
+        audience: tokenPayload.aud,
+      };
+      
+      return jwt.sign(tokenPayload, this.accessTokenSecret, signOptions);
+    } catch (error) {
+      logger.error('Failed to generate voice token', { error, tenantId: payload.tenantId, siteId: payload.siteId });
+      throw new Error('Voice token generation failed');
+    }
+  }
+
+  /**
+   * Verify voice session token
+   */
+  verifyVoiceToken(token: string): VoiceJWTPayload {
+    try {
+      const decoded = jwt.verify(token, this.accessTokenSecret, {
+        issuer: this.defaultIssuer,
+        audience: 'sitespeak-voice',
+      }) as jwt.JwtPayload;
+
+      const payload = VoiceJWTPayloadSchema.parse(decoded);
+      return payload;
+    } catch (error) {
+      if (error instanceof jwt.JsonWebTokenError) {
+        logger.warn('Invalid voice token', { error: error.message });
+        throw new Error('Invalid voice token');
+      }
+      
+      if (error instanceof jwt.TokenExpiredError) {
+        logger.info('Voice token expired', { expiredAt: error.expiredAt });
+        throw new Error('Voice token expired');
+      }
+
+      if (error instanceof z.ZodError) {
+        logger.warn('Voice token payload validation failed', { error: error.errors });
+        throw new Error('Invalid voice token format');
+      }
+
+      logger.error('Voice token verification failed', { error });
+      throw new Error('Voice token verification failed');
     }
   }
 

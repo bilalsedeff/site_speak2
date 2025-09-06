@@ -218,7 +218,7 @@ export class AIService {
     return new Promise((resolve, reject) => {
       this.onStreamingResponse = onResponse
 
-      const conversationId = `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const conversationId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
 
       this.socketClient?.emit('ai:start_streaming', {
         ...request,
@@ -280,7 +280,7 @@ export class AIService {
     }
 
     return new Promise((resolve, reject) => {
-      const sessionId = `voice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const sessionId = `voice_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
 
       this.socketClient?.emit('voice:start_session', {
         sessionId,

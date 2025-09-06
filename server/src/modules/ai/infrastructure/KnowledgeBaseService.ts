@@ -9,7 +9,7 @@ import { createLogger } from '../../../shared/utils';
 import { db } from '../../../infrastructure/database';
 import { 
   knowledgeChunks
-} from '../../../infrastructure/database/schema/knowledge-base';
+} from '../../../infrastructure/database/schema/knowledge-base.js';
 import { eq, and, desc, sql, gt, lt, ilike, inArray } from 'drizzle-orm';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { config } from '../../../infrastructure/config';

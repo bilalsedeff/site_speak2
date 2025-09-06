@@ -72,13 +72,8 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animationFrameRef = useRef<number | null>(null)
   
-  // Initialize WebSocket connection
-  useEffect(() => {
-    const socketInstance = io(import.meta.env.VITE_WS_URL || 'ws://localhost:5000', {
-      transports: ['websocket'],
-      upgrade: true,
-    })
-
+  // Separate function to setup socket events
+  const setupSocketEvents = (socketInstance: Socket) => {
     socketInstance.on('connect', () => {
       console.log('Voice WebSocket connected')
       setIsConnected(true)
@@ -116,15 +111,69 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       setIsRecording(false)
     })
 
-    setSocket(socketInstance)
+    socketInstance.on('error', (error: any) => {
+      console.error('Socket error:', error)
+      setIsConnected(false)
+      setIsListening(false)
+      setIsProcessing(false)
+      setIsRecording(false)
+    })
+  }
+
+  // Initialize WebSocket connection with authentication
+  useEffect(() => {
+    const initializeVoiceConnection = async () => {
+      try {
+        // Get voice session token from the API
+        const response = await fetch('/api/v1/voice/session/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          },
+          body: JSON.stringify({
+            siteId: import.meta.env['VITE_SITE_ID'] || '00000000-0000-0000-0000-000000000000',
+            locale: language,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to get voice token: ${response.statusText}`)
+        }
+
+        const tokenData = await response.json()
+        const { token, websocketUrl } = tokenData.data
+
+        // Connect to WebSocket with authentication token
+        const socketInstance = io(websocketUrl || import.meta.env.VITE_WS_URL || 'ws://localhost:5000', {
+          transports: ['websocket'],
+          upgrade: true,
+          auth: {
+            token: token,
+          },
+        })
+
+        // Setup socket events
+        setupSocketEvents(socketInstance)
+        setSocket(socketInstance)
+
+      } catch (error) {
+        console.error('Failed to initialize voice connection:', error)
+        setIsConnected(false)
+      }
+    }
+
+    initializeVoiceConnection()
 
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current)
       }
-      socketInstance.disconnect()
+      if (socket) {
+        socket.disconnect()
+      }
     }
-  }, [])
+  }, [language])
 
   // Request microphone permission
   const requestPermission = async (): Promise<boolean> => {

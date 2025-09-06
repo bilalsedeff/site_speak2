@@ -39,7 +39,7 @@ export async function withOutbox<T>(
         aggregateId: event.aggregateId,
         type: event.type,
         payload: event.payload,
-        correlationId: event.correlationId || `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        correlationId: event.correlationId || `event-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
         status: OutboxEventStatus.PENDING,
         attempts: 0,
         maxAttempts: 5,
@@ -412,7 +412,7 @@ export const outboxHelpers = {
     aggregateId,
     type,
     payload,
-    correlationId: correlationId || `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    correlationId: correlationId || `event-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
   }),
 
   /**

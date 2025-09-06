@@ -43,7 +43,7 @@ export class Tenant {
   constructor(
     public readonly id: string,
     public name: string,
-    public readonly plan: 'free' | 'starter' | 'professional' | 'enterprise',
+    public plan: 'free' | 'starter' | 'professional' | 'enterprise',
     public settings: TenantSettings,
     public readonly limits: TenantLimits,
     public usage: TenantUsage,
@@ -51,6 +51,9 @@ export class Tenant {
     public updatedAt: Date,
     public readonly isActive: boolean = true,
     public readonly ownerId?: string,
+    public stripeCustomerId?: string,
+    public stripeSubscriptionId?: string,
+    public billingEmail?: string,
   ) {}
 
   /**
@@ -58,12 +61,16 @@ export class Tenant {
    */
   update(updates: {
     name?: string;
+    plan?: 'free' | 'starter' | 'professional' | 'enterprise';
     settings?: Partial<TenantSettings>;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    billingEmail?: string;
   }): Tenant {
     return new Tenant(
       this.id,
       updates.name ?? this.name,
-      this.plan,
+      updates.plan ?? this.plan,
       updates.settings ? { ...this.settings, ...updates.settings } : this.settings,
       this.limits,
       this.usage,
@@ -71,6 +78,9 @@ export class Tenant {
       new Date(), // updatedAt
       this.isActive,
       this.ownerId,
+      updates.stripeCustomerId !== undefined ? updates.stripeCustomerId || undefined : this.stripeCustomerId,
+      updates.stripeSubscriptionId !== undefined ? updates.stripeSubscriptionId || undefined : this.stripeSubscriptionId,
+      updates.billingEmail ?? this.billingEmail,
     );
   }
 
@@ -89,6 +99,9 @@ export class Tenant {
       new Date(),
       this.isActive,
       this.ownerId,
+      this.stripeCustomerId,
+      this.stripeSubscriptionId,
+      this.billingEmail,
     );
   }
 
@@ -156,6 +169,9 @@ export class Tenant {
       new Date(),
       false, // isActive
       this.ownerId,
+      this.stripeCustomerId,
+      this.stripeSubscriptionId,
+      this.billingEmail,
     );
   }
 

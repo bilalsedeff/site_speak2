@@ -23,10 +23,10 @@ export class SiteSeakServer {
   private app: Express;
   private httpServer: HTTPServer;
   private io: SocketIOServer;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   private _isShuttingDown = false;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   constructor(private _dependencies: ServerDependencies = {}) {
     this.app = express();
     this.httpServer = new HTTPServer(this.app);

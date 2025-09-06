@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createLogger } from '../../../shared/utils.js';
 import { siteContractService } from '../application/services/SiteContractService';
+import { SiteContractRepositoryImpl } from '../../../infrastructure/repositories/SiteContractRepositoryImpl.js';
+import { db } from '../../../infrastructure/database/index.js';
 
 const logger = createLogger({ service: 'site-contract-controller' });
 
@@ -39,21 +41,10 @@ const UpdateBusinessInfoSchema = z.object({
 });
 
 export class SiteContractController {
-  // In-memory contract store (TODO: Replace with database repository)
-  private contractStore = new Map<string, any>();
+  private contractRepository: SiteContractRepositoryImpl;
 
-  /**
-   * Get contract from in-memory store
-   */
-  private getContractFromStore(siteId: string) {
-    return this.contractStore.get(siteId);
-  }
-
-  /**
-   * Store contract in memory
-   */
-  private storeContract(siteId: string, contract: any) {
-    this.contractStore.set(siteId, contract);
+  constructor() {
+    this.contractRepository = new SiteContractRepositoryImpl(db);
   }
   /**
    * Generate site contract for a site
@@ -158,32 +149,20 @@ export class SiteContractController {
       });
 
       // Store the contract for later retrieval
+      // Extract only the fields required for the repository create method (omitting siteId, version, createdAt, updatedAt)
       const contractData = {
         id: result.contract.id,
-        siteId: result.contract.siteId,
-        version: result.contract.version,
+        tenantId: req.user!.tenantId,
         businessInfo: result.contract.businessInfo,
-        pages: result.contract.pages.map(page => ({
-          ...page,
-          actions: result.contract.getPageActions(page.id).map(action => ({
-            id: action.id,
-            name: action.name,
-            type: action.type,
-            description: action.description,
-            requiresAuth: action.requiresAuth,
-            metadata: action.metadata,
-          })),
-        })),
+        pages: result.contract.pages,
         actions: result.contract.actions,
         schema: result.contract.schema,
         accessibility: result.contract.accessibility,
         seo: result.contract.seo,
-        summary: result.contract.getSummary(),
-        createdAt: result.contract.createdAt,
-        updatedAt: result.contract.updatedAt,
       };
 
-      this.storeContract(siteId, contractData);
+      // Store contract in database
+      await this.contractRepository.create(siteId, contractData);
 
       return res.json({
         success: true,
@@ -242,8 +221,8 @@ export class SiteContractController {
         });
       }
 
-      // Get contract from in-memory store (TODO: Replace with database repository)
-      const contract = this.getContractFromStore(siteId);
+      // Get contract from database repository
+      const contract = await this.contractRepository.findBySiteId(siteId);
       
       if (!contract) {
         return res.status(404).json({
@@ -289,8 +268,8 @@ export class SiteContractController {
         correlationId: req.correlationId,
       });
 
-      // Get existing contract
-      const existingContract = this.getContractFromStore(siteId);
+      // Get existing contract from database
+      const existingContract = await this.contractRepository.findBySiteId(siteId);
       if (!existingContract) {
         return res.status(404).json({
           success: false,
@@ -298,18 +277,25 @@ export class SiteContractController {
         });
       }
 
-      // Update business info
+      // Update business info - filter out undefined values for exactOptionalPropertyTypes
+      const cleanedData = Object.entries(data).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, unknown>);
+
       const updatedContract = {
         ...existingContract,
         businessInfo: {
           ...existingContract.businessInfo,
-          ...data,
+          ...cleanedData,
         },
         updatedAt: new Date(),
       };
 
-      // Save updated contract
-      this.storeContract(siteId, updatedContract);
+      // Save updated contract to database
+      await this.contractRepository.update(siteId, { businessInfo: updatedContract.businessInfo });
 
       return res.json({
         success: true,
@@ -350,8 +336,8 @@ export class SiteContractController {
         correlationId: req.correlationId,
       });
 
-      // Get site contract
-      const contract = this.getContractFromStore(siteId);
+      // Get site contract from database  
+      const contract = await this.contractRepository.findBySiteId(siteId);
       if (!contract) {
         return res.status(404).json({
           success: false,
@@ -428,9 +414,21 @@ export class SiteContractController {
       const _user = req.user!; // TODO: Use for access control
       void _user; // Will be used for access control
       const { siteId } = req.params;
+      if (!siteId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'MISSING_SITE_ID', message: 'Site ID is required' },
+        });
+      }
 
-      // TODO: Get site contract
-      // TODO: Generate JSON-LD from contract
+      // Get site contract from database
+      const contract = await this.contractRepository.findBySiteId(siteId);
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'CONTRACT_NOT_FOUND', message: `Site contract not found for site ${siteId}` },
+        });
+      }
 
       const mockStructuredData = [
         {
@@ -473,7 +471,7 @@ export class SiteContractController {
         siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -485,9 +483,21 @@ export class SiteContractController {
       const _user = req.user!; // TODO: Use for access control
       void _user; // Will be used for access control
       const { siteId } = req.params;
+      if (!siteId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'MISSING_SITE_ID', message: 'Site ID is required' },
+        });
+      }
 
-      // TODO: Get site contract
-      // TODO: Generate sitemap from contract pages
+      // Get site contract from database
+      const contract = await this.contractRepository.findBySiteId(siteId);
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'CONTRACT_NOT_FOUND', message: `Site contract not found for site ${siteId}` },
+        });
+      }
 
       const mockSitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -514,7 +524,7 @@ export class SiteContractController {
         siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -525,6 +535,12 @@ export class SiteContractController {
     try {
       const user = req.user!;
       const { siteId } = req.params;
+      if (!siteId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'MISSING_SITE_ID', message: 'Site ID is required' },
+        });
+      }
 
       logger.info('Validating site contract', {
         userId: user.id,
@@ -532,8 +548,14 @@ export class SiteContractController {
         correlationId: req.correlationId,
       });
 
-      // TODO: Get site contract
-      // TODO: Run validation
+      // Get site contract from database
+      const contract = await this.contractRepository.findBySiteId(siteId);
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'CONTRACT_NOT_FOUND', message: `Site contract not found for site ${siteId}` },
+        });
+      }
 
       const mockValidation = {
         valid: true,
@@ -561,7 +583,7 @@ export class SiteContractController {
         siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
   }
 

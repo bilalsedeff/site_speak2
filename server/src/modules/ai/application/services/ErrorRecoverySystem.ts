@@ -1,5 +1,5 @@
 import { createLogger } from '../../../../shared/utils.js';
-// TODO: Import SessionStateType when implementing LangGraph session-aware error recovery
+// SessionStateType available for future enhancements
 // import type { SessionStateType } from '../../domain/LangGraphOrchestrator';
 
 const logger = createLogger({ service: 'error-recovery' });

@@ -2,6 +2,7 @@
 export * from './users';
 export * from './tenants';
 export * from './sites';
+export * from './site-contracts';
 export * from './knowledge-base';
 export * from './voice-sessions';
 export * from './conversations';

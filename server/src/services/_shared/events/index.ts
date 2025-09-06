@@ -198,7 +198,7 @@ export const publishEvent = {
       aggregateId,
       type: eventType,
       payload: payload as Record<string, any>,
-      correlationId: correlationId || `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      correlationId: correlationId || `event-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     };
 
     logger.debug('Durable event queued for publishing', {

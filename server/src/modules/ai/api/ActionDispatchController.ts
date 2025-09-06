@@ -123,7 +123,7 @@ export class ActionDispatchController {
 
       // Generate request ID if not provided
       if (!requestData.requestId) {
-        requestData.requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        requestData.requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
       }
 
       logger.info('Executing action via dispatch', {

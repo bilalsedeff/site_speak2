@@ -358,3 +358,98 @@ export interface ContractGenerationOptions {
   failOnErrors: boolean
   validateAgainstSchemas: boolean
 }
+
+// ==================== ENHANCED SITEMAP TYPES ====================
+
+export interface SitemapReport {
+  entries: SitemapEntry[]
+  xmlSitemap: string
+  validationIssues: SitemapValidationIssue[]
+  stats: SitemapStats
+  generatedAt: Date
+  baseUrl: string
+}
+
+export interface SitemapEntry {
+  loc: string
+  lastmod: Date
+  changefreq: string
+  priority: number
+  title: string
+  metaDescription: string
+  headings: Array<{ level: number; text: string; id?: string }>
+  links: Array<{ href: string; text: string; isInternal: boolean; hasTitle: boolean }>
+  images: Array<{ src: string; alt: string; hasAlt: boolean; isDecorative: boolean }>
+  structuredData: {
+    jsonLd: any[]
+    hasMicrodata: boolean
+    hasRdfa: boolean
+  }
+  componentUsage: Record<string, number>
+  wordCount: number
+  contentScore: number
+  hasForm: boolean
+  hasNavigation: boolean
+  isIndexable: boolean
+}
+
+export interface SitemapValidationIssue {
+  type: 'error' | 'warning' | 'info'
+  severity: 'high' | 'medium' | 'low'
+  message: string
+  pageUrl: string
+  details: Record<string, any>
+}
+
+export interface SitemapStats {
+  totalPages: number
+  indexablePages: number
+  pagesWithForms: number
+  averageContentScore: number
+  totalIssues: number
+  errorCount: number
+  warningCount: number
+}
+
+// ==================== ENHANCED ARIA TYPES ====================
+
+export interface EnhancedAriaAuditReport {
+  issues: EnhancedAriaIssue[]
+  landmarks: AriaLandmark[]
+  pageMetrics: Record<string, AccessibilityMetrics>
+  overallMetrics: AccessibilityMetrics
+  recommendations: string[]
+  auditedAt: Date
+  baseUrl: string
+  wcagVersion: string
+  complianceLevel: 'A' | 'AA' | 'AAA' | 'non-compliant'
+}
+
+export interface EnhancedAriaIssue {
+  type: 'error' | 'warning' | 'info'
+  severity: 'high' | 'medium' | 'low'
+  rule: string
+  message: string
+  pageUrl: string
+  element: string | null
+  wcagLevel: 'A' | 'AA' | 'AAA'
+  details: Record<string, any>
+}
+
+export interface AriaLandmark {
+  type: string
+  label: string | null
+  pageUrl: string
+  element: string
+}
+
+export interface AccessibilityMetrics {
+  totalElements: number
+  interactiveElements: number
+  accessibleNameCoverage: number
+  totalIssues: number
+  errorCount: number
+  warningCount: number
+  accessibilityScore: number
+  wcagComplianceLevel: 'A' | 'AA' | 'AAA' | 'non-compliant'
+}

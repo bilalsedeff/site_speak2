@@ -664,7 +664,9 @@ class SiteSpeakActionDispatcher {
    */
   showSuccess(message) {
     // Implementation would depend on the notification system
-    console.log('Success:', message);
+    if (process.env['NODE_ENV'] === 'development') {
+      console.log('Success:', message);
+    }
   }
 
   /**

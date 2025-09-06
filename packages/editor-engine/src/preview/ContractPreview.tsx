@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   FileText, 
@@ -299,5 +299,7 @@ function SitemapTab() {
 // Download contract function
 function downloadContract() {
   // This would generate and download the full contract
-  console.log('Downloading site contract...')
+  if (process.env['NODE_ENV'] === 'development') {
+    console.log('Downloading site contract...')
+  }
 }
