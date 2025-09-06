@@ -3,16 +3,22 @@
  * Following Frontend Source-of-Truth: Shadow DOM isolation, postMessage bridge
  */
 
-import { VoiceWidgetApp } from './app/VoiceWidgetApp'
+import { VoiceWidgetApp, VoiceWidgetConfig } from './app/VoiceWidgetApp'
 import { ActionsBridge } from './bridge/ActionsBridge'
 
 interface EmbedConfig {
-  apiEndpoint?: string
+  siteId: string
   tenantId: string
-  theme?: 'light' | 'dark' | 'system'
+  userId?: string
+  apiEndpoint?: string
+  wsEndpoint?: string
+  theme?: 'light' | 'dark' | 'auto'
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
   color?: string
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'small' | 'medium' | 'large'
+  locale?: string
+  autoStart?: boolean
+  debugMode?: boolean
   features?: {
     voiceEnabled?: boolean
     suggestionsEnabled?: boolean
@@ -31,6 +37,18 @@ interface WindowWithSiteSpeak extends Window {
 declare let window: WindowWithSiteSpeak
 
 /**
+ * Map legacy size values to new size values
+ */
+function mapSizeFromDataset(size?: string): 'small' | 'medium' | 'large' | undefined {
+  switch (size) {
+    case 'sm': return 'small';
+    case 'md': return 'medium';  
+    case 'lg': return 'large';
+    default: return undefined;
+  }
+}
+
+/**
  * Voice Widget Manager - Core embed functionality
  */
 class VoiceWidgetManager {
@@ -42,10 +60,14 @@ class VoiceWidgetManager {
 
   constructor(config: EmbedConfig) {
     this.config = {
-      apiEndpoint: 'wss://api.sitespeak.ai/voice',
-      theme: 'system',
+      apiEndpoint: config.apiEndpoint || 'https://api.sitespeak.ai',
+      wsEndpoint: config.wsEndpoint || 'wss://api.sitespeak.ai/voice',
+      theme: 'auto',
       position: 'bottom-right',
-      size: 'md',
+      size: 'medium',
+      locale: 'en-US',
+      autoStart: false,
+      debugMode: false,
       features: {
         voiceEnabled: true,
         suggestionsEnabled: true,
@@ -89,11 +111,26 @@ class VoiceWidgetManager {
       await this.actionsBridge.init()
     }
 
+    // Convert EmbedConfig to VoiceWidgetConfig
+    const voiceWidgetConfig: VoiceWidgetConfig = {
+      siteId: this.config.siteId,
+      tenantId: this.config.tenantId,
+      apiEndpoint: this.config.apiEndpoint || 'https://api.sitespeak.ai',
+      wsEndpoint: this.config.wsEndpoint || 'wss://api.sitespeak.ai/voice',
+      ...(this.config.userId && { userId: this.config.userId }),
+      ...(this.config.locale && { locale: this.config.locale }),
+      ...(this.config.theme && { theme: this.config.theme }),
+      ...(this.config.position && { position: this.config.position }),
+      ...(this.config.size && { size: this.config.size }),
+      ...(this.config.autoStart !== undefined && { autoStart: this.config.autoStart }),
+      ...(this.config.debugMode !== undefined && { debugMode: this.config.debugMode }),
+    };
+
     // Create and mount React app
     this.app = new VoiceWidgetApp({
-      config: this.config,
+      config: voiceWidgetConfig,
       shadowRoot: this.shadowRoot,
-      actionsBridge: this.actionsBridge,
+      actionsBridge: this.actionsBridge!,
     })
 
     await this.app.mount()
@@ -281,17 +318,16 @@ class VoiceWidgetManager {
 
     // Listen for page navigation (for SPA support)
     window.addEventListener('popstate', () => {
-      this.app?.onNavigationChange((url) => {
-        console.log('[VoiceWidget] Navigation changed to:', url)
-      })
+      this.app?.handleNavigationChange()
+      console.log('[VoiceWidget] Navigation changed to:', window.location.href)
     })
 
     // Listen for visibility changes
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        this.app?.onPageHidden()
+        this.app?.handleVisibilityChange(false)
       } else {
-        this.app?.onPageVisible()
+        this.app?.handleVisibilityChange(true)
       }
     })
   }
@@ -299,9 +335,9 @@ class VoiceWidgetManager {
   /**
    * Update widget theme
    */
-  updateTheme(theme: 'light' | 'dark' | 'system'): void {
+  updateTheme(theme: 'light' | 'dark' | 'auto'): void {
     this.config.theme = theme
-    this.app?.updateTheme(theme)
+    this.app?.updateConfig({ theme })
   }
 
   /**
@@ -309,7 +345,25 @@ class VoiceWidgetManager {
    */
   updateConfig(newConfig: Partial<EmbedConfig>): void {
     this.config = { ...this.config, ...newConfig }
-    this.app?.updateConfig({ config: this.config })
+    
+    // Convert relevant config changes to VoiceWidgetConfig format
+    const voiceWidgetConfigUpdate: Partial<VoiceWidgetConfig> = {
+      ...(newConfig.siteId && { siteId: newConfig.siteId }),
+      ...(newConfig.tenantId && { tenantId: newConfig.tenantId }),
+      ...(newConfig.userId && { userId: newConfig.userId }),
+      ...(newConfig.apiEndpoint && { apiEndpoint: newConfig.apiEndpoint }),
+      ...(newConfig.wsEndpoint && { wsEndpoint: newConfig.wsEndpoint }),
+      ...(newConfig.locale && { locale: newConfig.locale }),
+      ...(newConfig.theme && { theme: newConfig.theme }),
+      ...(newConfig.position && { position: newConfig.position }),
+      ...(newConfig.size && { size: newConfig.size }),
+      ...(newConfig.autoStart !== undefined && { autoStart: newConfig.autoStart }),
+      ...(newConfig.debugMode !== undefined && { debugMode: newConfig.debugMode }),
+    };
+    
+    if (Object.keys(voiceWidgetConfigUpdate).length > 0) {
+      this.app?.updateConfig(voiceWidgetConfigUpdate);
+    }
   }
 
   /**
@@ -363,14 +417,14 @@ class VoiceWidgetManager {
    * Trigger voice input programmatically
    */
   startVoiceInput(): void {
-    this.app?.startVoiceInput()
+    this.app?.startVoiceSession()
   }
 
   /**
    * Stop voice input
    */
   stopVoiceInput(): void {
-    this.app?.stopVoiceInput()
+    this.app?.stopVoiceSession()
   }
 }
 
@@ -416,12 +470,18 @@ function autoInit(): void {
   if (!script) {return}
 
   const config: EmbedConfig = {
+    siteId: script.dataset['siteId'] || '',
     tenantId: script.dataset['tenantId'] || '',
     ...(script.dataset['apiEndpoint'] && { apiEndpoint: script.dataset['apiEndpoint'] }),
-    theme: (script.dataset['theme'] as 'light' | 'dark' | 'system') || 'system',
+    ...(script.dataset['wsEndpoint'] && { wsEndpoint: script.dataset['wsEndpoint'] }),
+    ...(script.dataset['userId'] && { userId: script.dataset['userId'] }),
+    ...(script.dataset['locale'] && { locale: script.dataset['locale'] }),
+    theme: (script.dataset['theme'] as 'light' | 'dark' | 'auto') || 'auto',
     position: (script.dataset['position'] as 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left') || 'bottom-right',
     ...(script.dataset['color'] && { color: script.dataset['color'] }),
-    size: (script.dataset['size'] as 'sm' | 'md' | 'lg') || 'md',
+    size: mapSizeFromDataset(script.dataset['size'] as 'sm' | 'md' | 'lg') || 'medium',
+    ...(script.dataset['autoStart'] && { autoStart: script.dataset['autoStart'] === 'true' }),
+    ...(script.dataset['debugMode'] && { debugMode: script.dataset['debugMode'] === 'true' }),
   }
 
   if (config.tenantId) {

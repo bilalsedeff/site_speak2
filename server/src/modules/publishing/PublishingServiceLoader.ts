@@ -11,6 +11,8 @@ import { createPublishingPipeline, type PublishingPipeline } from './app/Publish
 import { createArtifactStoreFromEnv, type ArtifactStore } from './adapters/ArtifactStore';
 import { createCDNProviderFromEnv, type CDNProvider } from './adapters/CDNProvider';
 import { createKnowledgeBaseIntegration, type KnowledgeBaseIntegration } from './integration/KnowledgeBaseIntegration';
+import { metricsService } from '../../infrastructure/monitoring/MetricsService.js';
+import type { SiteRepository } from '../../domain/repositories/SiteRepository';
 
 const logger = createLogger({ service: 'publishing-service-loader' });
 
@@ -27,6 +29,7 @@ export interface PublishingConfig {
   enableMetricsCollection?: boolean;
   enableHealthChecks?: boolean;
   eventBus?: EventBus;
+  siteRepository: SiteRepository;
 }
 
 /**
@@ -39,7 +42,7 @@ export class PublishingServiceLoader {
   /**
    * Initialize all publishing services
    */
-  async initialize(config: PublishingConfig = {}): Promise<PublishingServices> {
+  async initialize(config: PublishingConfig): Promise<PublishingServices> {
     if (this.initialized && this.services) {
       return this.services;
     }
@@ -66,7 +69,7 @@ export class PublishingServiceLoader {
 
       // Initialize publishing pipeline
       logger.info('Initializing publishing pipeline');
-      const pipeline = createPublishingPipeline(artifactStore, cdnProvider, eventBus);
+      const pipeline = createPublishingPipeline(artifactStore, cdnProvider, eventBus, config.siteRepository);
 
       // Initialize knowledge base integration
       let knowledgeBaseIntegration: KnowledgeBaseIntegration;
@@ -185,8 +188,12 @@ export class PublishingServiceLoader {
 
     // Listen for publishing events to collect metrics
     services.eventBus.on('pipeline.state_changed', (event) => {
-      // TODO: Integrate with actual metrics service
-      logger.debug('Pipeline state metric', {
+      metricsService.recordPipelineStateChange(
+        event.siteId,
+        event.currentState,
+        event.duration
+      );
+      logger.debug('Pipeline state metric recorded', {
         siteId: event.siteId,
         state: event.currentState,
         duration: event.duration,
@@ -194,12 +201,22 @@ export class PublishingServiceLoader {
     });
 
     services.eventBus.on('site.published', (event) => {
-      // TODO: Collect publishing success metrics
-      logger.debug('Site published metric', {
+      metricsService.recordSitePublished(event.siteId, event.tenantId);
+      logger.info('Site published metric recorded', {
         siteId: event.siteId,
         tenantId: event.tenantId,
         publishedAt: event.publishedAt,
       });
+    });
+
+    // Listen for publishing failures to track error metrics
+    services.eventBus.on('site.publish_failed', (event) => {
+      logger.error('Site publish failed', {
+        siteId: event.siteId,
+        tenantId: event.tenantId,
+        error: event.error,
+      });
+      // The error will be tracked by the general error handling system
     });
 
     logger.info('Metrics collection setup completed');
@@ -211,8 +228,47 @@ export class PublishingServiceLoader {
   private setupHealthChecks(services: PublishingServices): void {
     logger.info('Setting up health checks');
 
-    // Register health check endpoints or periodic checks
-    // TODO: Integrate with actual health check service
+    // Register publishing service health checks with the main metrics service
+    // The health checks are automatically included in the main /health endpoints
+    // through the metricsService.performHealthChecks() method
+    
+    // Set up event monitoring for publishing service availability
+    services.eventBus.on('service.health_changed', (event) => {
+      logger.info('Publishing service health status changed', {
+        service: event.serviceName,
+        status: event.status,
+        details: event.details,
+      });
+    });
+
+    // Register periodic health verification for critical publishing services
+    setInterval(async () => {
+      try {
+        // Basic health check for publishing services availability
+        const healthStatus = {
+          artifactStore: services.artifactStore ? 'healthy' : 'unhealthy',
+          cdnProvider: services.cdnProvider ? 'healthy' : 'unhealthy',
+          pipeline: services.pipeline ? 'healthy' : 'unhealthy',
+        };
+
+        logger.debug('Publishing services health check', healthStatus);
+        
+        // If any critical service is unhealthy, emit a health change event
+        const unhealthyServices = Object.entries(healthStatus)
+          .filter(([_, status]) => status === 'unhealthy')
+          .map(([service, _]) => service);
+
+        if (unhealthyServices.length > 0) {
+          services.eventBus.emit('service.health_changed', {
+            serviceName: 'publishing',
+            status: 'unhealthy',
+            details: { unhealthyServices },
+          });
+        }
+      } catch (error) {
+        logger.error('Publishing health check failed', { error });
+      }
+    }, 30000); // Check every 30 seconds
     
     logger.info('Health checks setup completed');
   }
@@ -328,7 +384,7 @@ export const publishingServiceLoader = new PublishingServiceLoader();
 /**
  * Convenience function to initialize publishing services
  */
-export async function initializePublishingServices(config: PublishingConfig = {}): Promise<PublishingServices> {
+export async function initializePublishingServices(config: PublishingConfig): Promise<PublishingServices> {
   return publishingServiceLoader.initialize(config);
 }
 

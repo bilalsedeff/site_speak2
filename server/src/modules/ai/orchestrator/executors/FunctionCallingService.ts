@@ -605,7 +605,7 @@ Return JSON in this exact format:
   private shouldRequireConfirmation(action: SiteAction, riskLevel: string): boolean {
     if (action.confirmation) {return true;}
     if (riskLevel === 'high') {return true;}
-    if (action.sideEffecting === 'write') {return true;}
+    if (action.sideEffecting === 'confirmation_required' || action.sideEffecting === 'destructive') {return true;}
     return false;
   }
 

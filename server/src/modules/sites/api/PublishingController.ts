@@ -5,6 +5,7 @@ import { createArtifactStoreFromEnv } from '../../publishing/adapters/ArtifactSt
 import { createCDNProviderFromEnv } from '../../publishing/adapters/CDNProvider';
 import { EventBus } from '../../../services/_shared/events/eventBus';
 import { createPublishingPipeline, type PublishRequest } from '../../publishing/app/PublishingPipeline';
+import type { SiteRepository } from '../../../domain/repositories/SiteRepository';
 
 const logger = createLogger({ service: 'publishing-controller' });
 
@@ -31,7 +32,7 @@ export class PublishingController {
   private publishingPipeline;
   private eventBus;
 
-  constructor() {
+  constructor(private siteRepository: SiteRepository) {
     // Initialize publishing infrastructure
     this.eventBus = new EventBus();
     
@@ -40,7 +41,7 @@ export class PublishingController {
     const cdnProvider = createCDNProviderFromEnv();
     
     // Create publishing pipeline
-    this.publishingPipeline = createPublishingPipeline(artifactStore, cdnProvider, this.eventBus);
+    this.publishingPipeline = createPublishingPipeline(artifactStore, cdnProvider, this.eventBus, this.siteRepository);
 
     // Set up event listeners for system integration
     this.setupEventListeners();
@@ -366,5 +367,5 @@ export class PublishingController {
 
 }
 
-// Export controller instance
-export const publishingController = new PublishingController();
+// Note: PublishingController should be instantiated with proper dependency injection
+// Example: new PublishingController(siteRepository)

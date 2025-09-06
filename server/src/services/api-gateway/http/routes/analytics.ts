@@ -108,7 +108,7 @@ router.get('/reports/metrics', reportsHandlers.metrics);
  */
 
 // Service health check
-router.get('/health', async (req, res) => {
+router.get('/health', async (_req, res) => {
   try {
     const { checkAnalyticsHealth } = await import('../../../_shared/analytics/index.js');
     const health = checkAnalyticsHealth();
@@ -134,7 +134,7 @@ router.get('/health', async (req, res) => {
 router.get('/stats',
   authenticate(),
   requireRole('admin'), 
-  async (req, res) => {
+  async (_req, res) => {
     try {
       const { getAnalyticsStats } = await import('../../../_shared/analytics/index.js');
       const stats = getAnalyticsStats();

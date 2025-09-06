@@ -363,7 +363,7 @@ export class KnowledgeBaseIntegration {
         if (locMatch) {
           urls.push({
             loc: locMatch[1],
-            lastmod: lastmodMatch ? new Date(lastmodMatch[1]) : new Date()
+            lastmod: lastmodMatch?.[1] ? new Date(lastmodMatch[1]) : new Date()
           });
         }
       }

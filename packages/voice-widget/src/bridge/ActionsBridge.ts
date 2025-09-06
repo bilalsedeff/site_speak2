@@ -167,16 +167,16 @@ export class ActionsBridge {
         ...message,
         source: 'voice-widget',
         version: '1.0.0',
-        timestamp: message.timestamp || Date.now()
+        timestamp: message['timestamp'] || Date.now()
       }
 
       // Send to parent with origin validation
-      const targetOrigin = this.allowedOrigins.includes('*') ? '*' : this.allowedOrigins[0]
+      const targetOrigin = this.allowedOrigins.includes('*') ? '*' : this.allowedOrigins[0] || '*'
       window.parent.postMessage(enrichedMessage, targetOrigin)
 
       // Log for debugging (only in development)
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[ActionsBridge] Message sent:', enrichedMessage.type)
+      if (process.env['NODE_ENV'] === 'development') {
+        console.log('[ActionsBridge] Message sent:', (enrichedMessage as any).type)
       }
     } catch (error) {
       console.error('[ActionsBridge] Failed to send message:', error)

@@ -16,6 +16,7 @@ import {
   embeddingService, 
   conversationService, 
   knowledgeBaseService,
+  type SearchResult,
 } from '../application/services';
 import { hybridSearchService } from '../infrastructure/retrieval/HybridSearchService';
 // Reserved for future incremental indexing features
@@ -159,12 +160,17 @@ export class AIController {
         ...(data.filters !== undefined && { filters: data.filters }),
       };
 
-      const results = await knowledgeBaseService.search(searchParams);
+      // Initialize KB service with repository dependency
+      const { KnowledgeBaseRepositoryImpl } = await import('../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
+      const kbRepository = new KnowledgeBaseRepositoryImpl();
+      const kbService = knowledgeBaseService.getInstance(kbRepository);
+      
+      const results = await kbService.search(searchParams);
 
       res.json({
         success: true,
         data: {
-          results: results.map(result => ({
+          results: results.map((result: SearchResult) => ({
             content: result.relevantContent,
             score: result.score,
             source: {
@@ -210,8 +216,13 @@ export class AIController {
 
       const conversationId = data.conversationId || `conv-${Date.now()}-${user.id}`;
 
+      // Initialize KB service with repository dependency
+      const { KnowledgeBaseRepositoryImpl } = await import('../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
+      const kbRepository2 = new KnowledgeBaseRepositoryImpl();
+      const kbService2 = knowledgeBaseService.getInstance(kbRepository2);
+
       // Search knowledge base for relevant context
-      const knowledgeResults = await knowledgeBaseService.search({
+      const knowledgeResults = await kbService2.search({
         query: data.message,
         knowledgeBaseId: `kb-${siteId}`,
         topK: 3,
@@ -239,7 +250,7 @@ export class AIController {
         data: {
           message: completion.message,
           conversationId,
-          sources: knowledgeResults.map(result => ({
+          sources: knowledgeResults.map((result: SearchResult) => ({
             title: result.chunk.metadata.title,
             url: result.chunk.metadata.url,
             score: result.score,
@@ -276,7 +287,12 @@ export class AIController {
       // TODO: Verify user has access to this site
       // TODO: Check if indexing is already in progress
 
-      await knowledgeBaseService.startIndexing(`kb-${siteId}`);
+      // Initialize KB service with repository dependency
+      const { KnowledgeBaseRepositoryImpl } = await import('../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
+      const kbRepository3 = new KnowledgeBaseRepositoryImpl();
+      const kbService3 = knowledgeBaseService.getInstance(kbRepository3);
+      
+      await kbService3.startIndexing(`kb-${siteId}`);
 
       res.json({
         success: true,
@@ -303,11 +319,16 @@ export class AIController {
   async getIndexingStatus(req: Request, res: Response, next: NextFunction) {
     try {
       // TODO: Implement user-based access control for site indexing
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _user = req.user!; // Reserved for future access control
+      void _user; // Suppress TypeScript unused variable warning
       const { siteId } = req.params;
 
-      const progress = await knowledgeBaseService.getIndexingProgress(`kb-${siteId}`);
+      // Initialize KB service with repository dependency
+      const { KnowledgeBaseRepositoryImpl } = await import('../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
+      const kbRepository4 = new KnowledgeBaseRepositoryImpl();
+      const kbService4 = knowledgeBaseService.getInstance(kbRepository4);
+      
+      const progress = await kbService4.getIndexingProgress(`kb-${siteId}`);
 
       res.json({
         success: true,

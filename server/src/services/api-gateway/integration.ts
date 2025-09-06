@@ -165,7 +165,7 @@ async function setupEnhancedHealthChecks(
 
   // Enhanced health endpoint with detailed component status
   if (includeDetailedHealth) {
-    app.get('/api/health/detailed', async (req, res) => {
+    app.get('/api/health/detailed', async (_req, res) => {
       try {
         const healthChecks = await performComprehensiveHealthCheck();
         const status = healthChecks.overall === 'healthy' ? 200 : 503;
@@ -193,7 +193,7 @@ async function setupEnhancedHealthChecks(
 
   // Legacy health endpoint compatibility
   if (includeLegacyHealth) {
-    app.get('/health', (req, res) => {
+    app.get('/health', (_req, res) => {
       res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
@@ -236,7 +236,7 @@ async function setupLegacyRouteCompatibility(app: express.Application): Promise<
 
   // Setup redirects with deprecation warnings
   legacyRedirects.forEach(({ from, to }) => {
-    app.use(from, (req, res, next) => {
+    app.use(from, (req, res, _next) => {
       // Add deprecation warning header
       res.setHeader('X-API-Deprecation', 'true');
       res.setHeader('X-API-Deprecation-Info', `This endpoint is deprecated. Use ${to} instead.`);
@@ -257,7 +257,7 @@ async function setupLegacyRouteCompatibility(app: express.Application): Promise<
   });
 
   // Legacy health endpoint with warning
-  app.get('/health', (req, res, next) => {
+  app.get('/health', (_req, res, next) => {
     res.setHeader('X-API-Deprecation', 'true');
     res.setHeader('X-API-Deprecation-Info', 'Use /api/health for basic health checks or /api/health/detailed for comprehensive status');
     next();
@@ -318,7 +318,10 @@ async function performComprehensiveHealthCheck(): Promise<{
   // AI services health
   try {
     const { knowledgeBaseService } = await import('../../modules/ai/application/services/KnowledgeBaseService');
-    const kbHealth = await knowledgeBaseService.healthCheck();
+    const { KnowledgeBaseRepositoryImpl } = await import('../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
+    const kbRepository = new KnowledgeBaseRepositoryImpl();
+    const kbServiceInstance = knowledgeBaseService.getInstance(kbRepository);
+    const kbHealth = await kbServiceInstance.healthCheck();
     components['knowledgeBase'] = kbHealth;
     if (kbHealth.healthy) {healthyCount++;}
     totalChecks++;

@@ -14,10 +14,7 @@ import {
   ProductIdSchema,
   VariantIdSchema,
   QuantitySchema,
-  CouponCodeSchema,
   CartIdSchema,
-  CheckoutTokenSchema,
-  MoneySchema,
   IdempotencyKeySchema,
   UrlSchema,
   toJsonSchema
@@ -50,27 +47,6 @@ const StartCheckoutParametersSchema = z.object({
   returnUrl: UrlSchema.optional().describe('URL to return to after checkout'),
   paymentMethod: z.enum(['stripe', 'paypal', 'bank_transfer']).optional().describe('Preferred payment method'),
   idempotencyKey: IdempotencyKeySchema.describe('Unique checkout session key'),
-});
-
-const PlaceOrderParametersSchema = z.object({
-  checkoutToken: CheckoutTokenSchema.describe('Secure checkout session token'),
-  confirmTotal: MoneySchema.describe('Total amount confirmation'),
-  paymentMethod: z.string().min(1).describe('Selected payment method'),
-  shippingAddress: z.object({
-    street: z.string().min(1),
-    city: z.string().min(1),
-    state: z.string().min(1),
-    country: z.string().length(2),
-    postalCode: z.string().min(1),
-  }).optional().describe('Shipping address'),
-  billingAddress: z.object({
-    street: z.string().min(1),
-    city: z.string().min(1),
-    state: z.string().min(1),
-    country: z.string().length(2),
-    postalCode: z.string().min(1),
-  }).optional().describe('Billing address'),
-  idempotencyKey: IdempotencyKeySchema.describe('Unique order placement key'),
 });
 
 // ==================== TOOL IMPLEMENTATIONS ====================
@@ -169,7 +145,7 @@ async function executeAddToCart(
     // Find add to cart action
     const availableActions = actionExecutorService.getAvailableActions(context.siteId);
     const cartAction = availableActions.find(action => 
-      action.category === 'ecommerce' || 
+      (action.category === 'payment' || action.category === 'write') ||
       action.name.includes('cart') || 
       action.name.includes('add_to_cart')
     );
@@ -250,7 +226,7 @@ async function executeStartCheckout(
     }
 
     // Execute checkout initiation
-    const executionResult = await actionExecutorService.execute({
+    const executeParams: any = {
       siteId: context.siteId,
       actionName: checkoutAction.name,
       parameters: {
@@ -259,9 +235,16 @@ async function executeStartCheckout(
         ...(parameters.paymentMethod && { paymentMethod: parameters.paymentMethod }),
         idempotencyKey: parameters.idempotencyKey,
       },
-      ...(context.sessionId && { sessionId: context.sessionId }),
-      ...(context.userId && { userId: context.userId }),
-    });
+    };
+
+    if (context.sessionId) {
+      executeParams.sessionId = context.sessionId;
+    }
+    if (context.userId) {
+      executeParams.userId = context.userId;
+    }
+
+    const executionResult = await actionExecutorService.execute(executeParams);
 
     const executionTime = Date.now() - startTime;
 

@@ -51,6 +51,11 @@ export class CrawlOrchestrator {
     this.canonicalUrlService = createCanonicalUrlService();
     this.contentHashService = createContentHashService();
     // Site contract service is injected as dependency
+    
+    // Suppress TypeScript warnings for architectural placeholders
+    void this._playwrightAdapter; // Will be used for advanced crawling
+    void this._htmlExtractor; // Will be used for advanced extraction
+    void this._siteContractService; // Will be used for contract integration
   }
 
   /**
@@ -97,6 +102,8 @@ export class CrawlOrchestrator {
           });
         }
       }
+      // TODO: Site contract will be used for future contract persistence and validation
+      void _siteContract;
 
       // Update session with results
       session = session.complete({
@@ -535,6 +542,7 @@ export class CrawlOrchestrator {
       };
 
       // TODO: Implement proper site contract generation using SiteContractService
+      void _contractRequest; // Will be used for proper site contract generation
       // This requires creating a proper Site entity from the extracted content
       const contract = {
         id: `contract-${request.siteId}`,

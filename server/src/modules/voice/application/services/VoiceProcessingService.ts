@@ -47,12 +47,12 @@ interface OpenAIVerboseTranscriptionResponse {
   }>;
 }
 
-// Type for the actual response (could be simple text or verbose json)
-type OpenAITranscriptionResponse = OpenAI.Audio.Transcription | OpenAIVerboseTranscriptionResponse;
 
-// Type guard function for transcription response validation
-function isTranscriptionWithMetadata(transcription: any): transcription is OpenAITranscriptionResponse {
-  return transcription && typeof transcription.text === 'string';
+// Type guard function for verbose transcription response validation
+function isVerboseTranscriptionResponse(transcription: any): transcription is OpenAIVerboseTranscriptionResponse {
+  return transcription && 
+         typeof transcription.text === 'string' && 
+         ('language' in transcription || 'duration' in transcription || 'segments' in transcription);
 }
 
 export interface TextToSpeechRequest {
@@ -128,7 +128,7 @@ export class VoiceProcessingService {
       const transcription = await this.openai.audio.transcriptions.create(transcriptionParams);
 
       // Validate transcription response using type guard
-      if (!isTranscriptionWithMetadata(transcription)) {
+      if (!transcription || typeof transcription.text !== 'string') {
         throw new Error('Invalid transcription response from OpenAI API');
       }
 
@@ -136,19 +136,23 @@ export class VoiceProcessingService {
 
       const processingTime = Date.now() - startTime;
 
+      // Check if this is a verbose response with additional metadata
+      const isVerbose = isVerboseTranscriptionResponse(transcription);
+      const verboseTranscription = isVerbose ? transcription as OpenAIVerboseTranscriptionResponse : null;
+
       logger.info('Speech-to-text completed successfully', {
         filename: request.filename,
         transcriptLength: transcription.text.length,
-        language: transcription.language,
-        duration: transcription.duration,
+        language: verboseTranscription?.language,
+        duration: verboseTranscription?.duration,
         processingTime,
       });
 
       return {
         transcript: transcription.text,
-        language: transcription.language || request.language || 'en',
-        duration: transcription.duration,
-        segments: transcription.segments?.map(segment => ({
+        language: verboseTranscription?.language || request.language || 'en',
+        duration: verboseTranscription?.duration || 0,
+        segments: verboseTranscription?.segments?.map((segment: any) => ({
           start: segment.start,
           end: segment.end,
           text: segment.text,

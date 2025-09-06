@@ -12,7 +12,7 @@ export * from './KnowledgeBaseService';
 // Re-export service instances
 export { embeddingService } from './EmbeddingService';
 export { conversationService } from './ConversationService';
-export { knowledgeBaseService } from './KnowledgeBaseService';
+export { knowledgeBaseService, createKnowledgeBaseService } from './KnowledgeBaseService';
 
 // Export types
 export type { 

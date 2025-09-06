@@ -51,7 +51,6 @@ export interface ErrorPattern {
 export class ErrorRecoverySystem {
   private errorHistory: Map<string, ErrorContext[]> = new Map();
   private errorPatterns: Map<string, ErrorPattern> = new Map();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private _recoveryStrategies: Map<string, RecoveryStrategy[]> = new Map(); // TODO: Implement recovery strategy lookup
   private learningThreshold = 3; // Minimum occurrences to identify a pattern
 
@@ -61,6 +60,9 @@ export class ErrorRecoverySystem {
     
     // Clean up old error history every hour
     setInterval(() => this.cleanupOldHistory(), 60 * 60 * 1000);
+    
+    // Acknowledge architectural placeholder for future use
+    void this._recoveryStrategies; // Will be used for recovery strategy lookup
   }
 
   /**

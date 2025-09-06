@@ -14,10 +14,12 @@
 
 import { createLogger } from '../../../services/_shared/telemetry/logger';
 import { EventBus } from '../../../services/_shared/events/eventBus';
-import { metricsService } from '../../../infrastructure/monitoring';
+// Metrics service not used yet - will be implemented for telemetry
 import { siteContractService, ContractGenerationResult } from '../../sites/application/services/SiteContractService';
 import type { ArtifactStore } from '../adapters/ArtifactStore';
 import type { CDNProvider } from '../adapters/CDNProvider';
+import type { SiteRepository } from '../../../domain/repositories/SiteRepository';
+import type { Site } from '../../../domain/entities/Site';
 import { createHash } from 'crypto';
 
 const logger = createLogger({ service: 'publishing-pipeline' });
@@ -184,7 +186,8 @@ export class PublishingPipeline {
   constructor(
     private artifactStore: ArtifactStore,
     private cdnProvider: CDNProvider,
-    private eventBus: EventBus
+    private eventBus: EventBus,
+    private siteRepository: SiteRepository
   ) {}
 
   /**
@@ -322,7 +325,10 @@ export class PublishingPipeline {
 
     // Record state history
     if (context.stateHistory.length > 0) {
-      context.stateHistory[context.stateHistory.length - 1].duration = duration;
+      const lastState = context.stateHistory[context.stateHistory.length - 1];
+      if (lastState) {
+        lastState.duration = duration;
+      }
     }
     
     context.stateHistory.push({
@@ -475,7 +481,7 @@ export class PublishingPipeline {
           tenantId: context.request.tenantId,
           buildTime: new Date().toISOString(),
           environment: context.request.buildParams?.environment || 'production',
-          commitSha: context.request.commitSha
+          ...(context.request.commitSha && { commitSha: context.request.commitSha })
         },
         integrity: {
           algorithm: 'sha256',
@@ -609,7 +615,7 @@ export class PublishingPipeline {
 
       context.activationResult = {
         aliasPointed: newAlias,
-        previousAlias,
+        ...(previousAlias && { previousAlias }),
         activatedAt: new Date(),
         rollbackCapable: !!previousAlias
       };
@@ -762,54 +768,36 @@ export class PublishingPipeline {
     return `deploy_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
   }
 
-  private async loadSiteData(context: PipelineContext): Promise<any> {
-    // Placeholder: load actual site data from repository
-    // TODO: Replace with actual site loading logic
-    return {
-      id: context.request.siteId,
-      name: `Site ${context.request.siteId}`,
-      description: 'SiteSpeak Generated Site',
-      tenantId: context.request.tenantId,
-      templateId: 'business-modern',
-      configuration: {
-        theme: {
-          primaryColor: '#3B82F6',
-          secondaryColor: '#10B981',
-          fontFamily: 'Inter',
-          layout: 'modern',
-        },
-        seo: {
-          title: `Site ${context.request.siteId}`,
-          description: 'A modern website built with SiteSpeak',
-          keywords: ['business', 'services', 'professional'],
-        },
-        analytics: { enabled: true },
-        voice: { enabled: true, personality: 'professional', language: 'en' },
-      },
-      content: {
-        pages: [
-          {
-            id: 'home',
-            name: 'Home',
-            slug: '/',
-            title: 'Welcome to Our Site',
-            content: {
-              sections: [
-                { type: 'hero', title: 'Welcome', content: 'Welcome to our site' },
-              ],
-            },
-            isHomePage: true,
-            isPublished: true,
-          },
-        ],
-        components: [],
-        assets: [],
-      },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      isPublished: true,
-      getUrl: () => this.buildDomain(context).replace('https://', ''),
-    };
+  private async loadSiteData(context: PipelineContext): Promise<Site> {
+    logger.debug('Loading site data from repository', {
+      siteId: context.request.siteId,
+      tenantId: context.request.tenantId
+    });
+
+    const site = await this.siteRepository.findById(context.request.siteId);
+    if (!site) {
+      throw new Error(`Site not found: ${context.request.siteId}`);
+    }
+
+    // Verify tenant access
+    if (site.tenantId !== context.request.tenantId) {
+      throw new Error(`Site ${context.request.siteId} does not belong to tenant ${context.request.tenantId}`);
+    }
+
+    // Verify site is publishable
+    if (!site.isPublished && context.request.deploymentIntent === 'production') {
+      throw new Error(`Site ${context.request.siteId} is not marked as published`);
+    }
+
+    logger.debug('Site data loaded successfully', {
+      siteId: site.id,
+      siteName: site.name,
+      pageCount: site.content.pages.length,
+      componentCount: site.content.components.length,
+      assetCount: site.content.assets.length
+    });
+
+    return site;
   }
 
   private buildDomain(context: PipelineContext): string {
@@ -821,29 +809,6 @@ export class PublishingPipeline {
     return `https://${context.request.siteId}.sites.sitespeak.com`;
   }
 
-  private async loadSitePages(context: PipelineContext): Promise<any[]> {
-    // Placeholder: load actual site pages from database/builder
-    return [
-      {
-        id: 'home',
-        path: '/',
-        title: 'Home',
-        lastModified: new Date(),
-        components: [],
-        meta: {}
-      }
-    ];
-  }
-
-  private async loadSiteConfiguration(context: PipelineContext): Promise<any> {
-    // Placeholder: load actual site configuration
-    return {
-      name: `Site ${context.request.siteId}`,
-      description: 'SiteSpeak Generated Site',
-      language: 'en',
-      timezone: 'UTC'
-    };
-  }
 
   private buildContractPaths(context: PipelineContext): ContractPaths {
     const baseUrl = `${context.request.tenantId}/${context.request.siteId}/${context.releaseHash}/contract`;
@@ -927,7 +892,8 @@ export class PublishingPipeline {
 export function createPublishingPipeline(
   artifactStore: ArtifactStore,
   cdnProvider: CDNProvider,
-  eventBus: EventBus
+  eventBus: EventBus,
+  siteRepository: SiteRepository
 ): PublishingPipeline {
-  return new PublishingPipeline(artifactStore, cdnProvider, eventBus);
+  return new PublishingPipeline(artifactStore, cdnProvider, eventBus, siteRepository);
 }

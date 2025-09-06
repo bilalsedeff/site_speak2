@@ -17,7 +17,6 @@ const logger = createLogger({ service: 'incremental-indexer' });
 export class IncrementalIndexer {
   private readonly crawlOrchestrator: CrawlOrchestrator;
   private readonly sitemapReader: SitemapReader;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private readonly _deltaDetectionService: DeltaDetectionService; // TODO: Implement delta detection logic
   private readonly contentHashService: ContentHashService;
 
@@ -26,6 +25,9 @@ export class IncrementalIndexer {
     this.sitemapReader = createSitemapReader();
     this._deltaDetectionService = createDeltaDetectionService();
     this.contentHashService = createContentHashService();
+    
+    // Acknowledge architectural placeholder for future use
+    void this._deltaDetectionService; // Will be used for delta detection logic
   }
 
   /**

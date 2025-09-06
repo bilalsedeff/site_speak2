@@ -37,6 +37,10 @@ export class SiteSeakServer {
         credentials: true,
       },
     });
+    
+    // Suppress TypeScript warnings for architectural placeholders
+    void this._isShuttingDown; // Will be used for graceful shutdown logic
+    void this._dependencies; // Will be used for dependency injection
   }
 
   async initialize(): Promise<void> {

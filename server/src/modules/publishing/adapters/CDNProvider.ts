@@ -382,7 +382,10 @@ export class FastlyCDNProvider implements CDNProvider {
     private apiKey: string,
     private serviceId: string,
     private config: Partial<CDNConfig> = {}
-  ) {}
+  ) {
+    // Acknowledge architectural placeholder for future CDN configuration use
+    void this.config; // Will be used for advanced CDN configuration
+  }
 
   async purgeUrls(urls: string[]): Promise<PurgeResult> {
     try {
@@ -468,6 +471,7 @@ export class FastlyCDNProvider implements CDNProvider {
   async purgeByPrefix(prefix: string): Promise<PurgeResult> {
     // Fastly doesn't support prefix purging directly
     // This would require using surrogate keys or VCL logic
+    void prefix; // Parameter acknowledged but not used due to Fastly limitations
     logger.warn('Fastly prefix purging not directly supported, consider using surrogate keys');
     
     return {
@@ -621,6 +625,7 @@ export class GenericCDNProvider implements CDNProvider {
   }
 
   async purgeByTag(tags: string[]): Promise<PurgeResult> {
+    void tags; // Parameter acknowledged but not used by generic provider
     return {
       success: false,
       errors: ['Tag purging not supported by generic provider']

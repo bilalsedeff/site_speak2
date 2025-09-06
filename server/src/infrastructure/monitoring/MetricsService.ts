@@ -3,6 +3,8 @@ import { config } from '../config';
 import os from 'os';
 import fs from 'fs';
 import { monitorEventLoopDelay } from 'perf_hooks';
+import { checkDatabaseHealth } from '../database/index.js';
+import { createClient, RedisClientType } from 'redis';
 
 const logger = createLogger({ service: 'metrics' });
 
@@ -61,6 +63,12 @@ export interface SystemMetrics {
     ttsRequests: number;
     averageLatency: number;
   };
+  publishing: {
+    totalPublishes: number;
+    pipelineStates: Record<string, number>;
+    successRate: number;
+    averagePublishTime: number;
+  };
 }
 
 export interface HealthCheck {
@@ -79,6 +87,8 @@ export class MetricsService {
   private requestCounts = new Map<string, number>();
   private responseTimes: number[] = [];
   private errorCounts = new Map<string, number>();
+  private publishingMetrics = new Map<string, number>();
+  private pipelineStateMetrics = new Map<string, number>();
   // TODO: Use for application start time metrics (vs process uptime)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private _startTime = Date.now(); // Application start time for future use
@@ -97,6 +107,9 @@ export class MetricsService {
   private probeFailureCounts = new Map<string, number>();
   private probeDurations: Array<{ probe: string; duration: number; success: boolean; timestamp: number }> = [];
 
+  // Redis client for health checks
+  private redisClient: RedisClientType | null = null;
+
   constructor() {
     // Initialize event loop lag monitoring
     this.eventLoopMonitor = monitorEventLoopDelay({ resolution: 20 });
@@ -104,6 +117,14 @@ export class MetricsService {
     
     // Start metrics collection
     this.startMetricsCollection();
+    
+    // Initialize Redis client for health checks (async, non-blocking)
+    this.initializeRedis().catch((error) => {
+      logger.error('Failed to initialize Redis client during startup', { error });
+    });
+    
+    // Acknowledge architectural placeholder variables for future use
+    void this._startTime; // Will be used for application uptime metrics
   }
 
   /**
@@ -124,6 +145,74 @@ export class MetricsService {
       const errorKey = `${statusCode}`;
       this.errorCounts.set(errorKey, (this.errorCounts.get(errorKey) || 0) + 1);
     }
+  }
+
+  /**
+   * Record publishing pipeline state change metrics
+   */
+  recordPipelineStateChange(siteId: string, state: string, duration?: number): void {
+    const key = `pipeline:${state}`;
+    this.pipelineStateMetrics.set(key, (this.pipelineStateMetrics.get(key) || 0) + 1);
+    
+    logger.debug('Pipeline state metric recorded', {
+      siteId,
+      state,
+      duration,
+      totalCount: this.pipelineStateMetrics.get(key),
+    });
+  }
+
+  /**
+   * Record site publishing success metrics
+   */
+  recordSitePublished(siteId: string, tenantId: string): void {
+    const successKey = 'publishing:success';
+    const tenantKey = `publishing:tenant:${tenantId}`;
+    
+    this.publishingMetrics.set(successKey, (this.publishingMetrics.get(successKey) || 0) + 1);
+    this.publishingMetrics.set(tenantKey, (this.publishingMetrics.get(tenantKey) || 0) + 1);
+    
+    logger.info('Site published metric recorded', {
+      siteId,
+      tenantId,
+      totalSuccess: this.publishingMetrics.get(successKey),
+      tenantPublishes: this.publishingMetrics.get(tenantKey),
+    });
+  }
+
+  /**
+   * Get publishing metrics summary
+   */
+  getPublishingMetrics(): {
+    totalPublishes: number;
+    pipelineStates: Record<string, number>;
+    tenantPublishes: Record<string, number>;
+  } {
+    const totalPublishes = this.publishingMetrics.get('publishing:success') || 0;
+    const pipelineStates: Record<string, number> = {};
+    const tenantPublishes: Record<string, number> = {};
+
+    // Extract pipeline states
+    for (const [key, count] of this.pipelineStateMetrics.entries()) {
+      if (key.startsWith('pipeline:')) {
+        const state = key.replace('pipeline:', '');
+        pipelineStates[state] = count;
+      }
+    }
+
+    // Extract tenant publishes
+    for (const [key, count] of this.publishingMetrics.entries()) {
+      if (key.startsWith('publishing:tenant:')) {
+        const tenantId = key.replace('publishing:tenant:', '');
+        tenantPublishes[tenantId] = count;
+      }
+    }
+
+    return {
+      totalPublishes,
+      pipelineStates,
+      tenantPublishes,
+    };
   }
 
   /**
@@ -198,7 +287,21 @@ export class MetricsService {
         ttsRequests: 0,
         averageLatency: 0,
       },
+      publishing: {
+        ...this.getPublishingMetrics(),
+        successRate: this.calculatePublishingSuccessRate(),
+        averagePublishTime: 0, // TODO: Track publish duration metrics
+      },
     };
+  }
+
+  /**
+   * Calculate publishing success rate
+   */
+  private calculatePublishingSuccessRate(): number {
+    const successCount = this.publishingMetrics.get('publishing:success') || 0;
+    const totalAttempts = successCount; // TODO: Add failure tracking for accurate rate
+    return totalAttempts > 0 ? (successCount / totalAttempts) * 100 : 100;
   }
 
   /**
@@ -315,14 +418,13 @@ export class MetricsService {
   }
 
   /**
-   * Perform actual database ping - placeholder for now
+   * Perform actual database ping using real connection
    */
   private async performDatabasePing(): Promise<void> {
-    // TODO: Implement actual database ping with SELECT 1
-    // For now, simulate a fast database check
-    return new Promise((resolve) => {
-      setTimeout(resolve, Math.random() * 20 + 5); // 5-25ms simulation
-    });
+    const healthResult = await checkDatabaseHealth();
+    if (!healthResult.healthy) {
+      throw new Error(healthResult.error || 'Database health check failed');
+    }
   }
 
   /**
@@ -359,14 +461,18 @@ export class MetricsService {
   }
 
   /**
-   * Perform actual Redis ping - placeholder for now
+   * Perform actual Redis ping using real connection
    */
   private async performRedisPing(): Promise<void> {
-    // TODO: Implement actual Redis PING command
-    // For now, simulate a fast Redis check
-    return new Promise((resolve) => {
-      setTimeout(resolve, Math.random() * 15 + 5); // 5-20ms simulation
-    });
+    if (!this.redisClient) {
+      throw new Error('Redis client not initialized');
+    }
+    
+    // Use Redis PING command to check connectivity
+    const pong = await this.redisClient.ping();
+    if (pong !== 'PONG') {
+      throw new Error('Redis ping failed - unexpected response');
+    }
   }
 
   /**
@@ -517,6 +623,7 @@ export class MetricsService {
       // TODO: Implement actual disk usage calculation using _stats
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _stats = await fs.promises.stat(process.cwd());
+      void _stats; // Suppress TypeScript unused variable warning
       
       // Return placeholder values for now - in production, use a library like 'node-disk-info'
       return { 
@@ -555,9 +662,49 @@ export class MetricsService {
       this.errorCounts.clear();
     }
 
+    if (this.publishingMetrics.size > 500) {
+      // Keep only the main success counter and recent tenant metrics
+      const successCount = this.publishingMetrics.get('publishing:success') || 0;
+      this.publishingMetrics.clear();
+      this.publishingMetrics.set('publishing:success', successCount);
+    }
+
+    if (this.pipelineStateMetrics.size > 200) {
+      this.pipelineStateMetrics.clear();
+    }
+
     // Keep only recent response times
     if (this.responseTimes.length > 1000) {
       this.responseTimes = this.responseTimes.slice(-500);
+    }
+  }
+
+  /**
+   * Initialize Redis client for health checks
+   */
+  private async initializeRedis(): Promise<void> {
+    if (!config.REDIS_URL) {
+      logger.info('Redis URL not configured, health checks will skip Redis');
+      return;
+    }
+
+    try {
+      this.redisClient = createClient({
+        url: config.REDIS_URL,
+        socket: {
+          reconnectStrategy: (retries) => Math.min(retries * 50, 1000),
+        },
+      });
+
+      this.redisClient.on('error', (error) => {
+        logger.error('Redis error in metrics service', { error });
+      });
+
+      await this.redisClient.connect();
+      logger.info('Redis client connected for health checks');
+    } catch (error) {
+      logger.error('Failed to initialize Redis for health checks', { error });
+      this.redisClient = null;
     }
   }
 

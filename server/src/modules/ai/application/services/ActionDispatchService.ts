@@ -72,7 +72,10 @@ export class ActionDispatchService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private _manifestGenerator: ActionManifestGenerator,
     private widgetBridge: WidgetActionBridge
-  ) {}
+  ) {
+    // Suppress TypeScript warnings for architectural placeholders
+    void this._manifestGenerator; // Will be used for dynamic action validation
+  }
 
   /**
    * Initialize dispatch configuration for a site

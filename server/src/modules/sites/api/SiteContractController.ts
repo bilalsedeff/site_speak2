@@ -39,6 +39,22 @@ const UpdateBusinessInfoSchema = z.object({
 });
 
 export class SiteContractController {
+  // In-memory contract store (TODO: Replace with database repository)
+  private contractStore = new Map<string, any>();
+
+  /**
+   * Get contract from in-memory store
+   */
+  private getContractFromStore(siteId: string) {
+    return this.contractStore.get(siteId);
+  }
+
+  /**
+   * Store contract in memory
+   */
+  private storeContract(siteId: string, contract: any) {
+    this.contractStore.set(siteId, contract);
+  }
   /**
    * Generate site contract for a site
    */
@@ -46,6 +62,12 @@ export class SiteContractController {
     try {
       const user = req.user!;
       const { siteId } = req.params;
+      if (!siteId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'MISSING_SITE_ID', message: 'Site ID is required' },
+        });
+      }
       const data = GenerateContractSchema.parse(req.body);
 
       logger.info('Generating site contract', {
@@ -135,7 +157,35 @@ export class SiteContractController {
         wcagLevel: data.wcagLevel,
       });
 
-      res.json({
+      // Store the contract for later retrieval
+      const contractData = {
+        id: result.contract.id,
+        siteId: result.contract.siteId,
+        version: result.contract.version,
+        businessInfo: result.contract.businessInfo,
+        pages: result.contract.pages.map(page => ({
+          ...page,
+          actions: result.contract.getPageActions(page.id).map(action => ({
+            id: action.id,
+            name: action.name,
+            type: action.type,
+            description: action.description,
+            requiresAuth: action.requiresAuth,
+            metadata: action.metadata,
+          })),
+        })),
+        actions: result.contract.actions,
+        schema: result.contract.schema,
+        accessibility: result.contract.accessibility,
+        seo: result.contract.seo,
+        summary: result.contract.getSummary(),
+        createdAt: result.contract.createdAt,
+        updatedAt: result.contract.updatedAt,
+      };
+
+      this.storeContract(siteId, contractData);
+
+      return res.json({
         success: true,
         data: {
           contract: {
@@ -173,7 +223,7 @@ export class SiteContractController {
         siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -182,18 +232,29 @@ export class SiteContractController {
    */
   async getContract(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user!;
+      const _user = req.user!; // TODO: Use for access control
+      void _user; // Will be used for access control
       const { siteId } = req.params;
+      if (!siteId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'MISSING_SITE_ID', message: 'Site ID is required' },
+        });
+      }
 
-      // TODO: Get contract from repository
-      // TODO: Verify user has access
+      // Get contract from in-memory store (TODO: Replace with database repository)
+      const contract = this.getContractFromStore(siteId);
+      
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'CONTRACT_NOT_FOUND', message: `Site contract not found for site ${siteId}` },
+        });
+      }
 
-      res.json({
+      return res.json({
         success: true,
-        data: {
-          message: 'Contract retrieval not yet implemented',
-          siteId,
-        },
+        data: contract,
       });
     } catch (error) {
       logger.error('Get site contract failed', {
@@ -202,7 +263,7 @@ export class SiteContractController {
         siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -213,6 +274,12 @@ export class SiteContractController {
     try {
       const user = req.user!;
       const { siteId } = req.params;
+      if (!siteId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'MISSING_SITE_ID', message: 'Site ID is required' },
+        });
+      }
       const data = UpdateBusinessInfoSchema.parse(req.body);
 
       logger.info('Updating site business info', {
@@ -222,15 +289,34 @@ export class SiteContractController {
         correlationId: req.correlationId,
       });
 
-      // TODO: Get existing contract
-      // TODO: Update business info
-      // TODO: Save updated contract
+      // Get existing contract
+      const existingContract = this.getContractFromStore(siteId);
+      if (!existingContract) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'CONTRACT_NOT_FOUND', message: `Site contract not found for site ${siteId}` },
+        });
+      }
 
-      res.json({
+      // Update business info
+      const updatedContract = {
+        ...existingContract,
+        businessInfo: {
+          ...existingContract.businessInfo,
+          ...data,
+        },
+        updatedAt: new Date(),
+      };
+
+      // Save updated contract
+      this.storeContract(siteId, updatedContract);
+
+      return res.json({
         success: true,
         data: {
           message: 'Business information updated successfully',
           updatedFields: Object.keys(data),
+          contract: updatedContract,
         },
       });
     } catch (error) {
@@ -240,7 +326,7 @@ export class SiteContractController {
         siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -251,6 +337,12 @@ export class SiteContractController {
     try {
       const user = req.user!;
       const { siteId } = req.params;
+      if (!siteId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'MISSING_SITE_ID', message: 'Site ID is required' },
+        });
+      }
 
       logger.info('Generating action manifest', {
         userId: user.id,
@@ -258,56 +350,28 @@ export class SiteContractController {
         correlationId: req.correlationId,
       });
 
-      // TODO: Get site contract
-      // TODO: Generate action manifest from contract
+      // Get site contract
+      const contract = this.getContractFromStore(siteId);
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'CONTRACT_NOT_FOUND', message: `Site contract not found for site ${siteId}` },
+        });
+      }
 
-      const mockManifest = {
+      // Generate action manifest from contract
+      const manifest = {
         siteId,
-        version: '1.0.0',
+        version: contract.version || '1.0.0',
         generatedAt: new Date().toISOString(),
-        actions: [
-          {
-            name: 'navigate_to_home',
-            type: 'navigation',
-            selector: '[data-action="navigate"]',
-            description: 'Navigate to home page',
-            parameters: [],
-            confirmation: false,
-            sideEffecting: 'safe',
-            riskLevel: 'low',
-            category: 'read',
-          },
-          {
-            name: 'submit_contact_form',
-            type: 'form',
-            selector: '[data-action="contact-form"]',
-            description: 'Submit contact form',
-            parameters: [
-              { name: 'name', type: 'string', required: true },
-              { name: 'email', type: 'string', required: true },
-              { name: 'message', type: 'string', required: true },
-            ],
-            confirmation: true,
-            sideEffecting: 'confirmation_required',
-            riskLevel: 'medium',
-            category: 'communication',
-          },
-        ],
-        capabilities: ['navigation', 'forms', 'contact'],
-        metadata: {
-          hasContactForm: true,
-          hasEcommerce: false,
-          hasBooking: false,
-          hasBlog: false,
-          hasGallery: false,
-          hasAuth: false,
-          hasSearch: false,
-        },
+        actions: contract.actions || [],
+        capabilities: this.extractCapabilities(contract.actions || []),
+        metadata: this.generateSiteMetadata(contract),
       };
 
-      res.json({
+      return res.json({
         success: true,
-        data: mockManifest,
+        data: manifest,
       });
     } catch (error) {
       logger.error('Action manifest generation failed', {
@@ -316,8 +380,44 @@ export class SiteContractController {
         siteId: req.params['siteId'],
         correlationId: req.correlationId,
       });
-      next(error);
+      return next(error);
     }
+  }
+
+  /**
+   * Extract capabilities from actions
+   */
+  private extractCapabilities(actions: any[]): string[] {
+    const capabilitySet = new Set<string>();
+    
+    actions.forEach(action => {
+      if (action.type === 'navigation') {capabilitySet.add('navigation');}
+      if (action.type === 'form_submit') {capabilitySet.add('forms');}
+      if (action.type === 'contact') {capabilitySet.add('contact');}
+      if (action.type === 'search') {capabilitySet.add('search');}
+      if (action.type === 'cart') {capabilitySet.add('ecommerce');}
+      if (action.type === 'booking') {capabilitySet.add('booking');}
+    });
+
+    return Array.from(capabilitySet);
+  }
+
+  /**
+   * Generate site metadata from contract
+   */
+  private generateSiteMetadata(contract: any): Record<string, boolean> {
+    const actions = contract.actions || [];
+    const pages = contract.pages || [];
+    
+    return {
+      hasContactForm: actions.some((a: any) => a.type === 'contact' || a.type === 'form_submit'),
+      hasEcommerce: actions.some((a: any) => a.type === 'cart'),
+      hasBooking: actions.some((a: any) => a.type === 'booking'),
+      hasBlog: pages.some((p: any) => p.name.toLowerCase().includes('blog')),
+      hasGallery: pages.some((p: any) => p.name.toLowerCase().includes('gallery')),
+      hasAuth: actions.some((a: any) => a.requiresAuth),
+      hasSearch: actions.some((a: any) => a.type === 'search'),
+    };
   }
 
   /**
@@ -325,7 +425,8 @@ export class SiteContractController {
    */
   async generateStructuredData(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user!;
+      const _user = req.user!; // TODO: Use for access control
+      void _user; // Will be used for access control
       const { siteId } = req.params;
 
       // TODO: Get site contract
@@ -381,7 +482,8 @@ export class SiteContractController {
    */
   async generateSitemap(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user!;
+      const _user = req.user!; // TODO: Use for access control
+      void _user; // Will be used for access control
       const { siteId } = req.params;
 
       // TODO: Get site contract
@@ -468,7 +570,8 @@ export class SiteContractController {
    */
   async getContractAnalytics(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user!;
+      const _user = req.user!; // TODO: Use for access control
+      void _user; // Will be used for access control
       const { siteId } = req.params;
 
       // TODO: Get contract analytics from repository

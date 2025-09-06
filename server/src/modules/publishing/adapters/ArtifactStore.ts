@@ -254,6 +254,11 @@ export interface ArtifactStore {
    * Get storage provider info
    */
   getProviderInfo(): { provider: string; region: string; bucket: string };
+
+  /**
+   * Validate configuration (optional)
+   */
+  validateConfiguration?(): Promise<boolean>;
 }
 
 /**

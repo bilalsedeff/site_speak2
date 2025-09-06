@@ -2,7 +2,7 @@ import { chromium, type Page, type Browser, type BrowserContext } from 'playwrig
 import { createLogger } from '../../../../shared/utils.js';
 import { parseString as parseXML } from 'xml2js';
 import * as cheerio from 'cheerio';
-import { knowledgeBaseService } from './KnowledgeBaseService.js';
+import { KnowledgeBaseService } from './KnowledgeBaseService.js';
 // TODO: Remove if KnowledgeChunk types are not needed for future web crawler features
 // import type { KnowledgeChunk } from '../../domain/entities/KnowledgeBase.js';
 
@@ -110,7 +110,7 @@ export class WebCrawlerService {
   private etagCache = new Map<string, { etag: string; lastModified?: string; timestamp: number }>();
   private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes
   
-  constructor() {}
+  constructor(private readonly knowledgeBaseService: KnowledgeBaseService) {}
 
   /**
    * Start a new crawling session
@@ -668,7 +668,7 @@ export class WebCrawlerService {
       }
 
       // Process into chunks with site context
-      const chunks = await knowledgeBaseService.processTextIntoChunks(
+      const chunks = await this.knowledgeBaseService.processTextIntoChunks(
         cleanedContent,
         {
           url: result.finalUrl,
@@ -794,4 +794,22 @@ export class WebCrawlerService {
 }
 
 // Export singleton instance
-export const webCrawlerService = new WebCrawlerService();
+// Export factory function for dependency injection
+export const createWebCrawlerService = (knowledgeBaseService: KnowledgeBaseService) => {
+  return new WebCrawlerService(knowledgeBaseService);
+};
+
+// Export singleton instance (will need to be initialized with dependencies)
+let _webCrawlerServiceInstance: WebCrawlerService | null = null;
+
+export const webCrawlerService = {
+  getInstance: (knowledgeBaseService?: KnowledgeBaseService): WebCrawlerService => {
+    if (!_webCrawlerServiceInstance) {
+      if (!knowledgeBaseService) {
+        throw new Error('KnowledgeBaseService is required for first initialization');
+      }
+      _webCrawlerServiceInstance = new WebCrawlerService(knowledgeBaseService);
+    }
+    return _webCrawlerServiceInstance;
+  }
+};

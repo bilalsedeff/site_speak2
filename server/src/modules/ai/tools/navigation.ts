@@ -124,18 +124,18 @@ async function executeHighlight(
   const startTime = Date.now();
   
   logger.info('Executing highlight', {
-    selector: parameters.selector,
-    duration: parameters.duration,
-    style: parameters.style,
+    selector,
+    duration,
+    style,
   });
 
   const sideEffects = [{
     type: 'dom_interaction',
-    description: `Highlight element ${parameters.selector}`,
+    description: `Highlight element ${selector}`,
     data: {
-      selector: parameters.selector,
-      duration: parameters.duration,
-      style: parameters.style,
+      selector,
+      duration,
+      style,
     },
   }];
 
@@ -175,19 +175,19 @@ async function executeScrollTo(
   const startTime = Date.now();
   
   logger.info('Executing scroll', {
-    selector: parameters.selector,
-    position: parameters.position,
-    to: parameters.to,
+    selector,
+    position,
+    to,
   });
 
   const sideEffects = [{
     type: 'dom_interaction',
-    description: `Scroll to ${parameters.selector || parameters.to}`,
+    description: `Scroll to ${selector || to}`,
     data: {
-      selector: parameters.selector,
-      position: parameters.position,
-      behavior: parameters.behavior,
-      to: parameters.to,
+      selector,
+      position,
+      behavior,
+      to,
     },
   }];
 
@@ -229,28 +229,28 @@ async function executeOpenExternal(
   const startTime = Date.now();
   
   logger.info('Executing external navigation', {
-    url: parameters.url,
-    target: parameters.target,
-    validate: parameters.validate,
+    url,
+    target,
+    validate,
   });
 
   try {
     // Basic URL validation
-    if (parameters.validate) {
-      const url = new URL(parameters.url);
+    if (validate) {
+      const urlObj = new URL(url);
       
       // Basic security checks - no javascript: or data: URLs
-      if (['javascript:', 'data:', 'vbscript:'].some(scheme => url.protocol.startsWith(scheme))) {
+      if (['javascript:', 'data:', 'vbscript:'].some(scheme => urlObj.protocol.startsWith(scheme))) {
         throw new Error('Unsafe URL protocol detected');
       }
     }
 
     const sideEffects = [{
       type: 'navigation',
-      description: `Open external URL ${parameters.url}`,
+      description: `Open external URL ${url}`,
       data: {
-        url: parameters.url,
-        target: parameters.target,
+        url,
+        target,
         external: true,
       },
     }];

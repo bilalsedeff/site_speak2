@@ -1,14 +1,9 @@
 import { createLogger } from '../../../../shared/utils.js';
 import { embeddingService } from './EmbeddingService';
 import { webCrawlerService, type CrawlOptions } from './WebCrawlerService.js';
+import { KnowledgeBaseRepository } from '../../../../domain/repositories/KnowledgeBaseRepository';
 import type { 
-  // TODO: Implement when needed
-  // KnowledgeBase, 
-  KnowledgeChunk,
-  // TODO: Implement when needed
-  // CreateKnowledgeBaseInput,
-  // UpdateKnowledgeBaseInput,
-  // getDefaultKnowledgeBaseSettings,
+  KnowledgeChunk
 } from '../../domain/entities/KnowledgeBase';
 
 const logger = createLogger({ service: 'knowledge-base' });
@@ -66,7 +61,7 @@ export interface IndexingProgress {
  * Service for managing knowledge bases and search functionality
  */
 export class KnowledgeBaseService {
-  constructor() {}
+  constructor(private readonly knowledgeBaseRepository: KnowledgeBaseRepository) {}
 
   /**
    * Search knowledge base using semantic similarity
@@ -83,58 +78,32 @@ export class KnowledgeBaseService {
       // Generate query embedding
       const queryEmbedding = await embeddingService.generateEmbedding(request.query);
 
-      // TODO: Get knowledge base chunks from repository
-      // For now, using mock data
-      const mockChunks: KnowledgeChunk[] = [];
+      // Get knowledge base chunks from repository using vector search
+      const searchResults = await this.knowledgeBaseRepository.searchChunks({
+        knowledgeBaseId: request.knowledgeBaseId,
+        embedding: queryEmbedding,
+        topK: request.topK,
+        threshold: request.threshold || 0.7,
+        filters: {
+          ...(request.filters?.contentType && { contentType: request.filters.contentType }),
+          ...(request.filters?.url && { url: request.filters.url }),
+        },
+      });
 
-      // Prepare embeddings for similarity search
-      const embeddingData = mockChunks.map(chunk => ({
-        id: chunk.id,
-        embedding: chunk.embedding,
+      // Convert to similarity results format
+      const similarityResults = searchResults.map(result => ({
+        score: result.score,
+        id: result.chunk.id,
         metadata: {
-          chunk,
-          url: chunk.metadata.url,
-          title: chunk.metadata.title,
-          contentType: chunk.metadata.contentType,
+          chunk: result.chunk,
+          url: result.chunk.metadata.url,
+          title: result.chunk.metadata.title,
+          contentType: result.chunk.metadata.contentType,
         },
       }));
 
-      // Perform similarity search
-      const similarityResults = await embeddingService.similaritySearch({
-        queryEmbedding,
-        embeddings: embeddingData,
-        topK: request.topK,
-        threshold: request.threshold || 0.7,
-      });
-
-      // Apply filters if provided
-      let filteredResults = similarityResults;
-      if (request.filters) {
-        filteredResults = similarityResults.filter(result => {
-          const chunk = result.metadata?.['chunk'] as KnowledgeChunk;
-          if (!chunk) {return false;}
-
-          if (request.filters?.contentType && 
-              !request.filters.contentType.includes(chunk.metadata.contentType)) {
-            return false;
-          }
-
-          if (request.filters?.url && 
-              !chunk.metadata.url?.includes(request.filters.url)) {
-            return false;
-          }
-
-          if (request.filters?.section && 
-              !chunk.metadata.section?.includes(request.filters.section)) {
-            return false;
-          }
-
-          return true;
-        });
-      }
-
-      // Format results
-      const searchResults: SearchResult[] = filteredResults.map(result => {
+      // Format results (filtering is already done by repository)
+      const formattedResults: SearchResult[] = similarityResults.map(result => {
         const chunk = result.metadata?.['chunk'] as KnowledgeChunk;
         const relevantContent = this.extractRelevantContent(chunk.content, request.query);
 
@@ -147,11 +116,11 @@ export class KnowledgeBaseService {
 
       logger.info('Knowledge base search completed', {
         knowledgeBaseId: request.knowledgeBaseId,
-        resultsCount: searchResults.length,
-        topScore: searchResults[0]?.score,
+        resultsCount: formattedResults.length,
+        topScore: formattedResults[0]?.score,
       });
 
-      return searchResults;
+      return formattedResults;
     } catch (error) {
       logger.error('Knowledge base search failed', {
         error,
@@ -192,7 +161,8 @@ export class KnowledgeBaseService {
         ...request.options
       };
 
-      const sessionId = await webCrawlerService.startCrawl({
+      const webCrawlerServiceInstance = webCrawlerService.getInstance(this);
+      const sessionId = await webCrawlerServiceInstance.startCrawl({
         url: request.baseUrl,
         siteId: request.siteId,
         tenantId: request.tenantId,
@@ -245,7 +215,8 @@ export class KnowledgeBaseService {
    */
   async getCrawlingProgress(sessionId: string): Promise<IndexingProgress> {
     try {
-      const crawlSession = webCrawlerService.getCrawlStatus(sessionId);
+      const webCrawlerServiceInstance = webCrawlerService.getInstance(this);
+      const crawlSession = webCrawlerServiceInstance.getCrawlStatus(sessionId);
       
       if (!crawlSession) {
         return {
@@ -290,17 +261,60 @@ export class KnowledgeBaseService {
    */
   async getIndexingProgress(knowledgeBaseId: string): Promise<IndexingProgress> {
     try {
-      // TODO: Get actual progress from repository/job queue
-      // For now, return mock progress
-      const mockProgress: IndexingProgress = {
-        status: 'idle',
-        progress: 0,
-        message: 'Ready to start indexing',
-        processedUrls: 0,
-        totalUrls: 0,
+      // Get knowledge base from repository to check status
+      const knowledgeBase = await this.knowledgeBaseRepository.findById(knowledgeBaseId);
+      
+      if (!knowledgeBase) {
+        return {
+          status: 'error',
+          progress: 0,
+          message: 'Knowledge base not found',
+          processedUrls: 0,
+          totalUrls: 0,
+        };
+      }
+
+      // Get the most recent crawl sessions to determine progress
+      const sessions = await this.knowledgeBaseRepository.getCrawlSessions(knowledgeBaseId, {
+        limit: 1,
+        status: 'running',
+      });
+
+      const runningSession = sessions[0];
+      
+      if (runningSession) {
+        const progress = runningSession.pagesDiscovered > 0 
+          ? Math.round((runningSession.pagesCrawled / runningSession.pagesDiscovered) * 100)
+          : 0;
+
+        return {
+          status: 'crawling',
+          progress,
+          message: `Crawling: ${runningSession.pagesCrawled}/${runningSession.pagesDiscovered} pages processed`,
+          processedUrls: runningSession.pagesCrawled,
+          totalUrls: runningSession.pagesDiscovered,
+        };
+      }
+
+      // Map knowledge base status to IndexingProgress status
+      const statusMap = {
+        'initializing': 'idle' as const,
+        'crawling': 'crawling' as const,
+        'indexing': 'indexing' as const,
+        'ready': 'completed' as const,
+        'error': 'error' as const,
+        'outdated': 'idle' as const,
       };
 
-      return mockProgress;
+      const mappedStatus = statusMap[knowledgeBase.indexingStatus.status as keyof typeof statusMap] || 'idle';
+      
+      return {
+        status: mappedStatus,
+        progress: knowledgeBase.indexingStatus.progress || 0,
+        message: knowledgeBase.indexingStatus.errorMessage || 'Ready to start indexing',
+        processedUrls: knowledgeBase.indexingStatus.processedUrls || 0,
+        totalUrls: knowledgeBase.indexingStatus.totalUrls || 0,
+      };
     } catch (error) {
       logger.error('Failed to get indexing progress', {
         error,
@@ -382,11 +396,15 @@ export class KnowledgeBaseService {
         chunksCount: newChunks.length,
       });
 
-      // TODO: Update chunks in repository
-      // This would involve:
-      // 1. Clear existing chunks
-      // 2. Insert new chunks
-      // 3. Update knowledge base metadata
+      // Update chunks in repository
+      await this.knowledgeBaseRepository.updateChunks(knowledgeBaseId, newChunks);
+
+      // Update knowledge base status to indicate successful indexing
+      await this.knowledgeBaseRepository.updateStatus(knowledgeBaseId, {
+        status: 'ready',
+        lastIndexedAt: new Date(),
+        totalChunks: newChunks.length,
+      });
 
       logger.info('Knowledge base chunks updated successfully', {
         knowledgeBaseId,
@@ -398,6 +416,16 @@ export class KnowledgeBaseService {
         knowledgeBaseId,
         chunksCount: newChunks.length,
       });
+      
+      // Mark knowledge base as error state
+      await this.knowledgeBaseRepository.updateStatus(knowledgeBaseId, {
+        status: 'error',
+        lastError: error instanceof Error ? error.message : 'Unknown error',
+        errorCount: 1,
+      }).catch(() => {
+        // Ignore errors in error handling
+      });
+
       throw error;
     }
   }
@@ -547,12 +575,92 @@ export class KnowledgeBaseService {
   }
 
   /**
+   * Get knowledge base statistics
+   */
+  async getStats(knowledgeBaseId: string): Promise<{
+    totalDocuments: number;
+    totalChunks: number;
+    lastUpdated: Date | null;
+    indexSizeMB: number;
+    avgSearchLatencyMs: number;
+    searchCount24h: number;
+    languageDistribution: Record<string, number>;
+    contentTypeDistribution: Record<string, number>;
+    qualityScoreAvg: number;
+  }> {
+    try {
+      return await this.knowledgeBaseRepository.getStats(knowledgeBaseId);
+    } catch (error) {
+      logger.error('Failed to get knowledge base stats', { knowledgeBaseId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get tenant-wide knowledge base statistics
+   */
+  async getTenantStats(tenantId: string): Promise<{
+    totalKnowledgeBases: number;
+    totalDocuments: number;
+    totalChunks: number;
+    totalIndexSizeMB: number;
+    avgSearchLatencyMs: number;
+    searchCount24h: number;
+    knowledgeBasesByStatus: Record<string, number>;
+    lastCrawlAt: Date | null;
+    lastSuccessfulCrawl: Date | null;
+  }> {
+    try {
+      return await this.knowledgeBaseRepository.getTenantStats(tenantId);
+    } catch (error) {
+      logger.error('Failed to get tenant stats', { tenantId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get last crawl information for tenant
+   */
+  async getLastCrawlInfo(tenantId: string): Promise<{
+    lastCrawlAt: Date | null;
+    status: 'idle' | 'crawling' | 'indexing' | 'completed' | 'error';
+    lastCrawlTime: number | null;
+    lastSitemapCheck: Date | null;
+    lastSuccessfulCrawl: Date | null;
+    errorCount: number;
+    lastError: string | null;
+  }> {
+    try {
+      return await this.knowledgeBaseRepository.getLastCrawlInfo(tenantId);
+    } catch (error) {
+      logger.error('Failed to get last crawl info', { tenantId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get vector index statistics
+   */
+  async getIndexStats(knowledgeBaseId: string): Promise<{
+    indexSize: number;
+    vectorCount: number;
+    type: 'HNSW' | 'IVFFlat';
+    parameters: Record<string, any> | null;
+    healthy: boolean;
+    lastOptimized: Date | null;
+  }> {
+    try {
+      return await this.knowledgeBaseRepository.getIndexStats(knowledgeBaseId);
+    } catch (error) {
+      logger.error('Failed to get index stats', { knowledgeBaseId, error });
+      throw error;
+    }
+  }
+
+  /**
    * Get comprehensive service statistics
    */
   getServiceStats(): {
-    knowledgeBase: {
-      // TODO: Add actual KB stats from repository
-    };
     webCrawler: {
       robotsCache: number;
       etagCache: number;
@@ -560,10 +668,7 @@ export class KnowledgeBaseService {
     };
   } {
     return {
-      knowledgeBase: {
-        // TODO: Implement when repository is connected
-      },
-      webCrawler: webCrawlerService.getCacheStats()
+      webCrawler: webCrawlerService.getInstance().getCacheStats()
     };
   }
 
@@ -571,7 +676,7 @@ export class KnowledgeBaseService {
    * Clear all service caches
    */
   clearAllCaches(): void {
-    webCrawlerService.clearCaches();
+    webCrawlerService.getInstance().clearCaches();
     logger.info('All knowledge base service caches cleared');
   }
 
@@ -632,5 +737,22 @@ export class KnowledgeBaseService {
   }
 }
 
-// Export singleton instance
-export const knowledgeBaseService = new KnowledgeBaseService();
+// Export factory function for dependency injection
+export const createKnowledgeBaseService = (knowledgeBaseRepository: KnowledgeBaseRepository) => {
+  return new KnowledgeBaseService(knowledgeBaseRepository);
+};
+
+// Export singleton instance (will need to be initialized with repository)
+let _knowledgeBaseServiceInstance: KnowledgeBaseService | null = null;
+
+export const knowledgeBaseService = {
+  getInstance: (knowledgeBaseRepository?: KnowledgeBaseRepository): KnowledgeBaseService => {
+    if (!_knowledgeBaseServiceInstance) {
+      if (!knowledgeBaseRepository) {
+        throw new Error('KnowledgeBaseRepository is required for first initialization');
+      }
+      _knowledgeBaseServiceInstance = new KnowledgeBaseService(knowledgeBaseRepository);
+    }
+    return _knowledgeBaseServiceInstance;
+  }
+};

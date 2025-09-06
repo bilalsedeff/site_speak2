@@ -1,14 +1,5 @@
 /**
- *import { createLogger } from '../../../../../shared/utils.js';
-import { 
-  ToolDefinition, 
-  ToolContext, 
-  ToolExecutionResult, 
-  SideEffects,
-  RegistryToolDefinition
-} from './validators.js';
-import { actionExecutorService } from '../application/ActionExecutorService.js';
-import type { SiteAction } from '../../../../../shared/types/index.js';egistry
+ * AI Tools Registry
  * 
  * Central registry for all AI tools with OpenAI function calling compatibility.
  * Integrates with existing ActionExecutorService without duplication.
@@ -21,9 +12,9 @@ import {
   ToolExecutionResult, 
   SideEffects,
   RegistryToolDefinition
-} from './validators';
-import { actionExecutorService } from '../application/ActionExecutorService';
-import type { SiteAction } from '../../../shared/types';
+} from './validators.js';
+import { actionExecutorService } from '../application/ActionExecutorService.js';
+import type { SiteAction, ActionParameter } from '../../../shared/types.js';
 
 const logger = createLogger({ service: 'tools-registry' });
 
@@ -211,7 +202,7 @@ export class AIToolsRegistry {
       const toolName = `site.${action.name}`;
       
       // Generate parameters schema from action parameters  
-      const parametersSchema = this.createParametersSchema(action.parameters.map(p => ({
+      const parametersSchema = this.createParametersSchema(action.parameters.map((p: ActionParameter) => ({
         name: p.name,
         type: p.type,
         required: p.required,

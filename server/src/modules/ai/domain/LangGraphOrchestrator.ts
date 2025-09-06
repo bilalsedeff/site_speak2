@@ -322,6 +322,10 @@ export class LangGraphOrchestrator {
     this.checkpointer = new MemorySaver();
     this.graph = this.buildGraph();
     
+    // Acknowledge architectural placeholders for future use
+    void this.analyzeTaskCompletion; // Will be used in future iterations
+    void this.validateAndEnhanceActionPlan; // Will be used in future iterations
+    
     logger.info('LangGraph orchestrator initialized', { siteId });
   }
 
@@ -1135,7 +1139,6 @@ export class LangGraphOrchestrator {
    * Enhanced task completion analysis
    * TODO: Implement in future iterations
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private analyzeTaskCompletion(state: SessionStateType): {
     isComplete: boolean;
     needsRecovery: boolean;
@@ -1215,7 +1218,6 @@ export class LangGraphOrchestrator {
    * Validate and enhance action plan
    * TODO: Implement in future iterations
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private validateAndEnhanceActionPlan(rawPlan: any[], state: SessionStateType): Array<{
     actionName: string;
     parameters: Record<string, unknown>;

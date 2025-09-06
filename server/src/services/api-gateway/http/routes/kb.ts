@@ -293,37 +293,33 @@ router.get('/status',
         correlationId: req.correlationId
       });
 
-      // Import required services (currently unused - implement when methods are available)
-      // const { knowledgeBaseService } = await import('../../../../modules/ai/application/services/KnowledgeBaseService');
-      // const { createQueueService } = await import('../../../_shared/queues');
-      // const queueServiceInstance = createQueueService();
-      // const { pgVectorClient } = await import('../../../../modules/ai/infrastructure/vector-store/PgVectorClient');
+      // Import required services
+      const { KnowledgeBaseRepositoryImpl } = await import('../../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
+      const { createKnowledgeBaseService } = await import('../../../../modules/ai/application/services/KnowledgeBaseService');
+      
+      // Initialize services
+      const knowledgeBaseRepository = new KnowledgeBaseRepositoryImpl();
+      const knowledgeBaseService = createKnowledgeBaseService(knowledgeBaseRepository);
+      // const queueServiceInstance = createQueueService(); // TODO: Implement queue service integration
 
       // Get parallel status checks
       const [kbStats, indexStats, crawlStatus, queueStats] = await Promise.allSettled([
-        // TODO: Implement these methods in KnowledgeBaseService
-        Promise.resolve({ 
-          totalDocuments: 0, 
-          totalChunks: 0, 
-          lastUpdated: new Date(),
-          indexSizeMB: 0,
-          avgSearchLatencyMs: 0,
-          searchCount24h: 0 
-        }), // knowledgeBaseService.getStats(tenantId),
-        Promise.resolve({ 
-          indexSize: 0, 
-          vectorCount: 0,
-          type: 'HNSW',
-          parameters: null,
-          healthy: true
-        }), // pgVectorClient.getIndexStats(tenantId),
-        Promise.resolve({ 
-          lastCrawlAt: null, 
-          status: 'idle',
-          lastCrawlTime: null,
-          lastSitemapCheck: null,
-          lastSuccessfulCrawl: null
-        }), // knowledgeBaseService.getLastCrawlInfo(tenantId),
+        knowledgeBaseService.getTenantStats(tenantId),
+        // For index stats, we need a knowledge base ID - let's get the first one for tenant
+        knowledgeBaseRepository.findByTenantId(tenantId).then(async (kbs) => {
+          if (kbs.length > 0) {
+            return await knowledgeBaseService.getIndexStats(kbs[0]!.id);
+          }
+          return { 
+            indexSize: 0, 
+            vectorCount: 0,
+            type: 'HNSW' as const,
+            parameters: null,
+            healthy: true,
+            lastOptimized: null
+          };
+        }),
+        knowledgeBaseService.getLastCrawlInfo(tenantId),
         Promise.resolve({ 
           waitingJobs: 0, 
           activeJobs: 0,
@@ -338,7 +334,7 @@ router.get('/status',
         // Knowledge base metrics
         chunkCount: kbStats.status === 'fulfilled' ? kbStats.value.totalChunks : 0,
         documentCount: kbStats.status === 'fulfilled' ? kbStats.value.totalDocuments : 0,
-        indexSize: kbStats.status === 'fulfilled' ? kbStats.value.indexSizeMB : 0,
+        indexSize: kbStats.status === 'fulfilled' ? kbStats.value.totalIndexSizeMB : 0,
         
         // Index information
         indexType: indexStats.status === 'fulfilled' ? indexStats.value.type : 'HNSW',
@@ -361,12 +357,16 @@ router.get('/status',
           queueHealthy: queueStats.status === 'fulfilled'
         },
         
-        // Language support
-        supportedLanguages: ['en', 'es', 'fr', 'de', 'it', 'pt', 'zh', 'ja', 'ko'], // knowledgeBaseService.getSupportedLanguages(),
+        // Language support (would be determined from actual data)
+        supportedLanguages: ['en', 'es', 'fr', 'de', 'it', 'pt', 'zh', 'ja', 'ko'],
         
         // Performance metrics
         averageSearchLatency: kbStats.status === 'fulfilled' ? kbStats.value.avgSearchLatencyMs : null,
-        searchCount24h: kbStats.status === 'fulfilled' ? kbStats.value.searchCount24h : 0
+        searchCount24h: kbStats.status === 'fulfilled' ? kbStats.value.searchCount24h : 0,
+        
+        // Additional KB status info
+        knowledgeBasesByStatus: kbStats.status === 'fulfilled' ? kbStats.value.knowledgeBasesByStatus : {},
+        lastCrawlAt: crawlStatus.status === 'fulfilled' ? crawlStatus.value.lastCrawlAt : null,
       };
 
       res.json({

@@ -39,12 +39,135 @@ const CheckRobotsParametersSchema = z.object({
   path: z.string().optional().describe('Specific path to check (optional)'),
 });
 
-const AnalyzeSiteStructureParametersSchema = z.object({
-  siteUrl: UrlSchema.describe('Site URL to analyze'),
-  includeMetadata: z.boolean().default(true).describe('Include page metadata analysis'),
-  checkAccessibility: z.boolean().default(false).describe('Run accessibility checks'),
-  depth: z.number().int().min(1).max(3).default(1).describe('Crawl depth for analysis'),
-});
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Parse sitemap XML and extract URLs with metadata
+ */
+async function parseSitemapXml(
+  xmlContent: string,
+  parameters: z.infer<typeof ReadSitemapParametersSchema>
+): Promise<Array<{
+  url: string;
+  lastmod?: string;
+  changefreq?: string;
+  priority?: string;
+}>> {
+  const urls: Array<{
+    url: string;
+    lastmod?: string;
+    changefreq?: string;
+    priority?: string;
+  }> = [];
+
+  try {
+    // Simple XML parsing using regex (for basic sitemap format)
+    const urlMatches = xmlContent.match(/<url\s*>([\s\S]*?)<\/url>/g) || [];
+    
+    for (const urlMatch of urlMatches) {
+      const locMatch = urlMatch.match(/<loc\s*>(.*?)<\/loc>/);
+      if (locMatch?.[1]) {
+        const urlData: {
+          url: string;
+          lastmod?: string;
+          changefreq?: string;
+          priority?: string;
+        } = {
+          url: locMatch[1].trim(),
+        };
+
+        if (parameters.includeChangeFreq) {
+          const changefreqMatch = urlMatch.match(/<changefreq\s*>(.*?)<\/changefreq>/);
+          if (changefreqMatch?.[1]) {
+            urlData.changefreq = changefreqMatch[1].trim();
+          }
+        }
+
+        if (parameters.includePriority) {
+          const priorityMatch = urlMatch.match(/<priority\s*>(.*?)<\/priority>/);
+          if (priorityMatch?.[1]) {
+            urlData.priority = priorityMatch[1].trim();
+          }
+        }
+
+        const lastmodMatch = urlMatch.match(/<lastmod\s*>(.*?)<\/lastmod>/);
+        if (lastmodMatch?.[1]) {
+          urlData.lastmod = lastmodMatch[1].trim();
+        }
+
+        urls.push(urlData);
+      }
+    }
+  } catch (error) {
+    logger.warn('Error parsing sitemap XML', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    throw new Error('Failed to parse sitemap XML');
+  }
+
+  return urls;
+}
+
+/**
+ * Parse robots.txt content and check access rules
+ */
+function parseRobotsTxt(
+  robotsTxtContent: string,
+  userAgent: string,
+  path?: string
+): {
+  allowed: boolean;
+  rules: Array<{ directive: string; value: string }>;
+  sitemaps: string[];
+  crawlDelay?: number;
+} {
+  const lines = robotsTxtContent.split('\n').map(line => line.trim());
+  const rules: Array<{ directive: string; value: string }> = [];
+  const sitemaps: string[] = [];
+  let crawlDelay: number | undefined;
+  let currentUserAgent = '*';
+  let allowed = true;
+
+  for (const line of lines) {
+    if (line.startsWith('#') || !line) {
+      continue; // Skip comments and empty lines
+    }
+
+    const parts = line.split(':');
+    const directive = parts[0]?.trim();
+    const value = parts.slice(1).join(':').trim();
+
+    if (!directive) {continue;}
+
+    if (directive.toLowerCase() === 'user-agent') {
+      currentUserAgent = value.toLowerCase();
+    } else if (directive.toLowerCase() === 'sitemap') {
+      sitemaps.push(value);
+    } else if (directive.toLowerCase() === 'crawl-delay' && currentUserAgent === userAgent.toLowerCase()) {
+      crawlDelay = parseInt(value, 10);
+    } else if (
+      (currentUserAgent === '*' || currentUserAgent === userAgent.toLowerCase()) &&
+      path &&
+      (directive.toLowerCase() === 'disallow' || directive.toLowerCase() === 'allow')
+    ) {
+      rules.push({ directive: directive.toLowerCase(), value });
+      
+      // Check if the path matches the rule
+      if (directive.toLowerCase() === 'disallow' && path.startsWith(value)) {
+        allowed = false;
+      } else if (directive.toLowerCase() === 'allow' && path.startsWith(value)) {
+        allowed = true;
+      }
+    }
+  }
+
+  return { 
+    allowed, 
+    rules, 
+    sitemaps, 
+    ...(crawlDelay !== undefined && { crawlDelay }),
+  };
+}
 
 // ==================== TOOL IMPLEMENTATIONS ====================
 
@@ -64,10 +187,63 @@ async function executeReadSitemap(
   });
 
   try {
-    // Return not implemented error for now
-    throw new Error('Sitemap reading functionality is not yet implemented in the public API');
+    // Construct sitemap URL
+    const baseUrl = parameters.siteUrl.endsWith('/') 
+      ? parameters.siteUrl.slice(0, -1) 
+      : parameters.siteUrl;
+    const sitemapUrl = `${baseUrl}/sitemap.xml`;
+
+    // Fetch sitemap with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await fetch(sitemapUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'SiteSpeak-AI/1.0',
+        'Accept': 'application/xml, text/xml, */*',
+      },
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch sitemap: HTTP ${response.status}`);
+    }
+
+    const sitemapXml = await response.text();
+    const urls = await parseSitemapXml(sitemapXml, parameters);
+
+    const executionTime = Date.now() - startTime;
+
+    return {
+      success: true,
+      result: {
+        type: 'sitemap_data',
+        siteUrl: parameters.siteUrl,
+        urlCount: urls.length,
+        urls: urls.slice(0, parameters.maxUrls),
+        fetchedFrom: sitemapUrl,
+        metadata: {
+          totalUrls: urls.length,
+          limitApplied: urls.length > parameters.maxUrls,
+        },
+      },
+      executionTime,
+      sideEffects: [{
+        type: 'sitemap_read',
+        description: `Read sitemap with ${urls.length} URLs`,
+        data: { sitemapUrl, urlCount: urls.length },
+      }],
+    };
   } catch (error) {
     const executionTime = Date.now() - startTime;
+    
+    logger.warn('Sitemap reading failed', {
+      siteUrl: parameters.siteUrl,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     
     return {
       success: false,
@@ -181,16 +357,95 @@ async function executeCheckRobots(
   });
 
   try {
-    // Return not implemented error for now
-    throw new Error('Robots.txt checking functionality is not yet implemented in the public API');
+    // Construct robots.txt URL
+    const baseUrl = parameters.siteUrl.endsWith('/') 
+      ? parameters.siteUrl.slice(0, -1) 
+      : parameters.siteUrl;
+    const robotsUrl = `${baseUrl}/robots.txt`;
 
+    // Fetch robots.txt with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    const response = await fetch(robotsUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': parameters.userAgent,
+        'Accept': 'text/plain, */*',
+      },
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
 
+    if (!response.ok) {
+      // If robots.txt doesn't exist, assume everything is allowed
+      if (response.status === 404) {
+        const executionTime = Date.now() - startTime;
+        return {
+          success: true,
+          result: {
+            type: 'robots_check',
+            allowed: true,
+            robotsExists: false,
+            rules: [],
+            sitemaps: [],
+            message: 'robots.txt not found - all access allowed',
+          },
+          executionTime,
+          sideEffects: [{
+            type: 'robots_check',
+            description: 'robots.txt not found - assuming all access allowed',
+            data: { robotsUrl, status: 404 },
+          }],
+        };
+      }
+      
+      throw new Error(`Failed to fetch robots.txt: HTTP ${response.status}`);
+    }
+
+    const robotsTxtContent = await response.text();
+    const robotsData = parseRobotsTxt(robotsTxtContent, parameters.userAgent, parameters.path);
+
+    const executionTime = Date.now() - startTime;
+
+    return {
+      success: true,
+      result: {
+        type: 'robots_check',
+        allowed: robotsData.allowed,
+        robotsExists: true,
+        rules: robotsData.rules,
+        sitemaps: robotsData.sitemaps,
+        crawlDelay: robotsData.crawlDelay,
+        userAgent: parameters.userAgent,
+        checkedPath: parameters.path,
+        fetchedFrom: robotsUrl,
+      },
+      executionTime,
+      sideEffects: [{
+        type: 'robots_check',
+        description: `Checked robots.txt - access ${robotsData.allowed ? 'allowed' : 'denied'}`,
+        data: { 
+          robotsUrl, 
+          allowed: robotsData.allowed,
+          rulesCount: robotsData.rules.length,
+          sitemapsFound: robotsData.sitemaps.length,
+        },
+      }],
+    };
   } catch (error) {
     const executionTime = Date.now() - startTime;
+    
+    logger.warn('Robots.txt check failed', {
+      siteUrl: parameters.siteUrl,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Robots check failed',
+      result: null,
       executionTime,
       sideEffects: [],
     };

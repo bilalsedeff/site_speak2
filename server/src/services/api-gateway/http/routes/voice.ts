@@ -13,7 +13,7 @@ import express from 'express';
 import { z } from 'zod';
 import { createLogger } from '../../../_shared/telemetry/logger';
 import { authenticate, optionalAuth } from '../../../../infrastructure/auth/middleware';
-import { enforceTenancy, type TenantRequest } from '../../../_shared/security/tenancy';
+import { enforceTenancy } from '../../../_shared/security/tenancy';
 import { validateRequest } from '../../../../infrastructure/middleware/validation';
 import { addProblemDetailMethod } from '../middleware/problem-details';
 import { createCustomRateLimit } from '../middleware/rate-limit-headers';
@@ -287,7 +287,7 @@ router.post('/stream',
   validateRequest({ body: VoiceStreamSchema }),
   async (req, res) => {
     try {
-      const { sessionId, input, audioData, inputType, enablePartialResults, context } = req.body;
+      const { sessionId, input, audioData, inputType, enablePartialResults: _enablePartialResults, context: _context } = req.body;
 
       logger.debug('Processing voice input', {
         sessionId,
@@ -423,7 +423,7 @@ router.get('/session/:sessionId',
   }),
   authenticate(),
   enforceTenancy(),
-  async (req: TenantRequest, res: express.Response) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const { sessionId } = req.params;
       if (!sessionId) {
@@ -527,7 +527,7 @@ router.delete('/session/:sessionId',
   }),
   authenticate(),
   enforceTenancy(),
-  async (req: TenantRequest, res: express.Response) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const { sessionId } = req.params;
       if (!sessionId) {

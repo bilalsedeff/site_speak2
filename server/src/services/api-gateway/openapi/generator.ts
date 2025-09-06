@@ -1017,7 +1017,7 @@ const commonParameters: Record<string, OpenAPIV3_1.ParameterObject> = {
  * Create OpenAPI specification route handler
  */
 export function createOpenAPIHandler(options: Parameters<typeof generateOpenAPISpec>[0] = {}) {
-  return (req: any, res: any) => {
+  return (_req: any, res: any) => {
     try {
       const spec = generateOpenAPISpec(options);
       res.json(spec);

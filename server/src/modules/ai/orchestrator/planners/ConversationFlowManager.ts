@@ -436,7 +436,8 @@ Normalize common expressions:
     // Temporal slot extractor
     this.slotExtractors.set('temporal', {
       extract: async (raw: string, context: ConversationContext) => {
-        const timezone = context.userPreferences?.timezone || 'UTC';
+        const _timezone = context.userPreferences?.timezone || 'UTC';
+        void _timezone; // TODO: Use for timezone-aware temporal calculations
         const currentYear = new Date().getFullYear();
         
         // Handle common temporal expressions
@@ -566,7 +567,7 @@ Normalize common expressions:
   private async generateClarificationQuestion(
     missingSlot: string,
     slotFrame: SlotFrame,
-    context: ConversationContext
+    _context: ConversationContext
   ): Promise<ClarificationResponse> {
     const knownInfo = Object.keys(slotFrame.slots)
       .filter(key => {
@@ -690,7 +691,7 @@ Return JSON:
     };
   }
 
-  private createFallbackSlotFrame(userInput: string, context: ConversationContext): SlotFrame {
+  private createFallbackSlotFrame(userInput: string, _context: ConversationContext): SlotFrame {
     return {
       intent: 'get_information',
       confidence: 0.3,
@@ -711,7 +712,7 @@ Return JSON:
   private async extractSlotsFromResponse(
     userResponse: string,
     currentFrame: SlotFrame,
-    context: ConversationContext
+    _context: ConversationContext
   ): Promise<Record<string, SlotValue>> {
     const newSlots: Record<string, SlotValue> = {};
     

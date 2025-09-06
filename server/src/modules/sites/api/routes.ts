@@ -1,6 +1,6 @@
 import express from 'express';
 import { siteContractController } from './SiteContractController';
-import { publishingController } from './PublishingController';
+// import { PublishingController } from './PublishingController'; // TODO: Set up proper dependency injection
 
 const router = express.Router();
 
@@ -20,9 +20,10 @@ router.post('/:siteId/contract/validate', siteContractController.validateContrac
 router.get('/:siteId/contract/analytics', siteContractController.getContractAnalytics.bind(siteContractController));
 
 // Publishing endpoints (deployment pipeline)
-router.post('/:siteId/publish', publishingController.publishSite.bind(publishingController));
-router.get('/:siteId/deployments/:deploymentId', publishingController.getDeploymentStatus.bind(publishingController));
-router.post('/:siteId/deployments/rollback', publishingController.rollbackDeployment.bind(publishingController));
-router.get('/:siteId/deployments', publishingController.getDeploymentHistory.bind(publishingController));
+// TODO: Implement proper dependency injection for PublishingController
+// router.post('/:siteId/publish', publishingController.publishSite.bind(publishingController));
+// router.get('/:siteId/deployments/:deploymentId', publishingController.getDeploymentStatus.bind(publishingController));
+// router.post('/:siteId/deployments/rollback', publishingController.rollbackDeployment.bind(publishingController));
+// router.get('/:siteId/deployments', publishingController.getDeploymentHistory.bind(publishingController));
 
 export { router as siteContractRoutes };

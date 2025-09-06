@@ -84,7 +84,7 @@ async function executeSearchSlots(
     // Look for booking-related actions
     const availableActions = actionExecutorService.getAvailableActions(context.siteId);
     const bookingAction = availableActions.find(action => 
-      action.category === 'booking' || 
+      (action.category === 'communication' || action.category === 'write') ||
       action.name.includes('booking') ||
       action.name.includes('schedule')
     );
@@ -231,7 +231,7 @@ async function executeBookSlot(
     // Find booking action
     const availableActions = actionExecutorService.getAvailableActions(context.siteId);
     const bookingAction = availableActions.find(action => 
-      action.category === 'booking' || 
+      (action.category === 'communication' || action.category === 'write') ||
       action.name.includes('book') ||
       action.name.includes('reserve')
     );

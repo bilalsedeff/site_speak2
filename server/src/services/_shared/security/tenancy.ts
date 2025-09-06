@@ -25,7 +25,7 @@ export interface TenantContext {
  * Extended request with tenant context
  */
 export interface TenantRequest extends Request {
-  tenant: TenantContext;
+  tenant: TenantContext; // Required after enforceTenancy middleware
   user?: {
     id: string;
     tenantId: string;
@@ -35,6 +35,12 @@ export interface TenantRequest extends Request {
     sessionId?: string;
   };
 }
+
+/**
+ * Type for Express request handlers that use tenant context
+ * Use this after enforceTenancy() middleware to ensure tenant is available
+ */
+export type TenantRequestHandler = (req: TenantRequest, res: Response, next?: NextFunction) => Promise<void> | void;
 
 /**
  * Extract tenant ID from various sources

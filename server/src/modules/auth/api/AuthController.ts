@@ -33,6 +33,7 @@ export class AuthController {
       const tenantId = randomUUID();
       // TODO: Use hashedPassword when implementing database user creation
       const _hashedPassword = await bcrypt.hash(data.password, 12);
+      void _hashedPassword; // Will be used for database user creation
 
       // Create session
       const session = await sessionManager.createSession({
@@ -358,6 +359,7 @@ export class AuthController {
       const user = req.user!;
       // TODO: Use data to verify current password and update with new password
       const _data: ChangePasswordRequest = req.body;
+      void _data; // Will be used for password verification and update
       
       // TODO: Verify current password
       // TODO: Update password in database

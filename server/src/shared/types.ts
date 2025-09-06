@@ -8,25 +8,19 @@ export interface ActionParameter {
   required: boolean;
   description?: string;
   default?: any;
-  validation?: {
-    min?: number;
-    max?: number;
-    pattern?: string;
-    options?: string[];
-  };
+  validation?: any; // Zod schema will be here
 }
 
 export interface SiteAction {
   name: string;
   type: 'navigation' | 'form' | 'button' | 'api' | 'custom';
+  selector: string;
   description: string;
   parameters: ActionParameter[];
-  selector?: string;
-  confirmation?: boolean;
-  sideEffecting?: 'safe' | 'read' | 'write';
-  riskLevel?: 'low' | 'medium' | 'high';
-  category?: string;
-  metadata?: Record<string, any>;
+  confirmation: boolean;
+  sideEffecting: 'safe' | 'confirmation_required' | 'destructive';
+  riskLevel: 'low' | 'medium' | 'high';
+  category: 'read' | 'write' | 'delete' | 'payment' | 'communication';
 }
 
 export interface AIResponse {
