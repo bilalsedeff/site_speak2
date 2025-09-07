@@ -16,12 +16,31 @@
 
 // Core components
 export { TurnManager, getDefaultTurnManagerConfig } from './turnManager';
-export type { TurnManagerConfig, TurnEvent } from './turnManager';
+export type { TurnManagerConfig, TurnEvent, VoiceTransport } from './turnManager';
 export { VisualFeedbackService, visualFeedbackService } from './visualFeedbackService';
 export { OpusFramer, opusFramer, getDefaultOpusConfig } from './opusFramer';
 export type { OpusConfig, OpusFrame, PCMFrame } from './opusFramer';
 export { OpenAIRealtimeClient, openaiRealtimeClient, createRealtimeConfig } from './openaiRealtimeClient';
 export type { RealtimeConfig } from './openaiRealtimeClient';
+
+// Audio processing and decoding
+// TODO: Implement AudioStreamDecoder when needed
+// export { 
+//   AudioStreamDecoder, 
+//   AudioFormat, 
+//   createAudioDecoder, 
+//   createOpenAIRealtimeDecoder 
+// } from './AudioStreamDecoder';
+// export type { 
+//   AudioChunk, 
+//   AudioStreamDecoderConfig, 
+//   AudioStreamDecoderEvents 
+// } from './AudioStreamDecoder';
+
+// Transport implementations
+// TODO: Implement OpenAIRealtimeTransport when needed
+// export { OpenAIRealtimeTransport } from './transport/OpenAIRealtimeTransport';
+// export type { RealtimeTransportConfig } from './transport/OpenAIRealtimeTransport';
 
 // Transport layer
 export { 

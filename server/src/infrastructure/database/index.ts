@@ -46,9 +46,14 @@ export async function initializeDatabase(): Promise<void> {
 
     // Run migrations if not in test environment
     if (config.NODE_ENV !== 'test') {
-      logger.info('Running database migrations...');
-      await migrate(db, { migrationsFolder: './server/migrations' });
-      logger.info('Database migrations completed');
+      try {
+        logger.info('Running database migrations...');
+        await migrate(db, { migrationsFolder: './server/migrations' });
+        logger.info('Database migrations completed');
+      } catch (migrationError) {
+        logger.warn('Migration failed, continuing without migrations', { migrationError });
+        // Continue without migrations for now
+      }
     }
 
     // Setup pgvector extension if not exists

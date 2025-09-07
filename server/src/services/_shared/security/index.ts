@@ -5,21 +5,15 @@
  * authorization, rate limiting, and tenant isolation.
  */
 
-// Re-export authentication
-export {
-  generateAccessToken,
-  generateRefreshToken,
-  generateTokenPair,
-  validateAccessToken,
-  refreshTokenPair,
-  revokeRefreshToken,
-  extractBearerToken,
-  generateSecureToken,
-  hashPassword,
-  verifyPassword,
-} from './auth.js';
+// Re-export authentication from jwtService instance
+import { jwtService } from '../../../infrastructure/auth/jwt.js';
+export const generateAccessToken = jwtService.generateAccessToken.bind(jwtService);
+export const generateRefreshToken = jwtService.generateRefreshToken.bind(jwtService);
+export const generateTokenPair = jwtService.generateTokenPair.bind(jwtService);
+export const verifyAccessToken = jwtService.verifyAccessToken.bind(jwtService);
+export const extractTokenFromHeader = jwtService.extractTokenFromHeader.bind(jwtService);
 
-export type { JWTClaims, TokenPair, TokenValidation } from './auth.js';
+export type { JWTPayload as JWTClaims, TokenPair } from '../../../infrastructure/auth/jwt.js';
 
 // Re-export RBAC
 export {
@@ -85,7 +79,6 @@ export type { SecurityHeadersConfig } from './headers.js';
 import { Request, Response, NextFunction } from 'express';
 import { cfg } from '../config/index.js';
 import { logger } from '../telemetry/logger.js';
-import { extractBearerToken, validateAccessToken } from './auth.js';
 import { enforceTenancy } from './tenancy.js';
 import { rbacService } from './rbac.js';
 import { createRateLimiter } from './ratelimit.js';
@@ -108,7 +101,7 @@ export function authenticate(options: {
       }
 
       const authHeader = req.headers.authorization;
-      const token = extractBearerToken(authHeader);
+      const token = jwtService.extractTokenFromHeader(authHeader);
 
       if (!token) {
         if (required) {
@@ -122,34 +115,37 @@ export function authenticate(options: {
         }
       }
 
-      const validation = validateAccessToken(token);
+      try {
+        const payload = jwtService.verifyAccessToken(token);
 
-      if (!validation.valid) {
+        // Set user context
+        req.user = {
+          id: payload.userId,
+          tenantId: payload.tenantId,
+          role: payload.role,
+          permissions: payload.permissions || [],
+          sessionId: payload.sessionId,
+        };
+      } catch (tokenError) {
+        const errorMessage = tokenError instanceof Error ? tokenError.message : 'Unknown error';
+        const isExpired = errorMessage.includes('expired');
+        
         logger.warn('Invalid token provided', {
-          error: validation.error,
-          expired: validation.expired,
+          error: errorMessage,
+          expired: isExpired,
           ip: req.ip,
           userAgent: req.get('User-Agent'),
         });
 
-        const statusCode = validation.expired ? 401 : 403;
-        const errorCode = validation.expired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN';
+        const statusCode = isExpired ? 401 : 403;
+        const errorCode = isExpired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN';
 
         return res.status(statusCode).json({
-          error: validation.error || 'Authentication failed',
+          error: errorMessage,
           code: errorCode,
-          expired: validation.expired,
+          expired: isExpired,
         });
       }
-
-      // Set user context
-      req.user = {
-        id: validation.claims!.sub,
-        tenantId: validation.claims!.tenantId,
-        role: validation.claims!.role,
-        permissions: validation.claims!.permissions,
-        jti: validation.claims!.jti,
-      };
 
       logger.debug('User authenticated', {
         userId: req.user.id,

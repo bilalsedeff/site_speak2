@@ -336,13 +336,8 @@ router.get('/status',
         correlationId: req.correlationId
       });
 
-      // Import required services
-      const { KnowledgeBaseRepositoryImpl } = await import('../../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
-      const { createKnowledgeBaseService } = await import('../../../../modules/ai/application/services/KnowledgeBaseService');
-      
-      // Initialize services
-      const knowledgeBaseRepository = new KnowledgeBaseRepositoryImpl();
-      const knowledgeBaseService = createKnowledgeBaseService(knowledgeBaseRepository);
+      // Import required repository for stats
+      const { knowledgeBaseRepository } = await import('../../../../infrastructure/repositories');
       
       // Initialize queue service for status checking
       const { createQueueService, checkQueueHealth } = await import('../../../_shared/queues');
@@ -350,11 +345,11 @@ router.get('/status',
 
       // Get parallel status checks
       const [kbStats, indexStats, crawlStatus, queueStats] = await Promise.allSettled([
-        knowledgeBaseService.getTenantStats(tenantId),
+        knowledgeBaseRepository.getTenantStats(tenantId),
         // For index stats, we need a knowledge base ID - let's get the first one for tenant
         knowledgeBaseRepository.findByTenantId(tenantId).then(async (kbs) => {
           if (kbs.length > 0) {
-            return await knowledgeBaseService.getIndexStats(kbs[0]!.id);
+            return await knowledgeBaseRepository.getIndexStats(kbs[0]!.id);
           }
           return { 
             indexSize: 0, 
@@ -365,7 +360,7 @@ router.get('/status',
             lastOptimized: null
           };
         }),
-        knowledgeBaseService.getLastCrawlInfo(tenantId),
+        knowledgeBaseRepository.getLastCrawlInfo(tenantId),
         // Get real queue statistics
         checkQueueHealth(queueServiceInstance.queues.crawler).then(crawlerHealth => ({
           ...crawlerHealth,

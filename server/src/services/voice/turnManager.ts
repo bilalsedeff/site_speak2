@@ -426,6 +426,19 @@ export class TurnManager extends EventEmitter {
       this.emit('event', { type: 'tts_play', data });
     });
 
+    // Handle OpenAI audio deltas for direct playback
+    this.config.transport.on('audio_delta', async (data) => {
+      if (data.delta && this.config.tts.enable) {
+        try {
+          // Play PCM16 audio directly from OpenAI
+          await this.playPCM16Audio(data.delta);
+          this.isTTSPlaying = true;
+        } catch (error) {
+          logger.error('Failed to play audio delta', { error });
+        }
+      }
+    });
+
     // Handle errors
     this.config.transport.on('error', (error) => {
       this.emit('event', {
@@ -457,6 +470,51 @@ export class TurnManager extends EventEmitter {
     if (latencies.length === 0) {return 0;}
     
     return latencies.reduce((sum: number, lat: number) => sum + lat, 0) / latencies.length;
+  }
+
+  /**
+   * Play PCM16 audio data using existing AudioContext
+   */
+  private async playPCM16Audio(audioData: Buffer): Promise<void> {
+    if (!this.audioContext) {
+      logger.warn('Cannot play audio: AudioContext not available');
+      return;
+    }
+
+    try {
+      // Convert Buffer to ArrayBuffer
+      const arrayBuffer = audioData.buffer.slice(
+        audioData.byteOffset,
+        audioData.byteOffset + audioData.byteLength
+      );
+      
+      // Convert ArrayBuffer to Float32Array for Web Audio API
+      const int16Array = new Int16Array(arrayBuffer);
+      const float32Array = new Float32Array(int16Array.length);
+      
+      // Convert PCM16 to Float32 range [-1, 1]
+      for (let i = 0; i < int16Array.length; i++) {
+        float32Array[i] = int16Array[i]! / 32768.0;
+      }
+      
+      // Create audio buffer with OpenAI's sample rate (24kHz)
+      const audioBuffer = this.audioContext.createBuffer(1, float32Array.length, 24000);
+      audioBuffer.copyToChannel(float32Array, 0);
+      
+      // Create and play buffer source
+      const source = this.audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(this.audioContext.destination);
+      source.start();
+      
+      logger.debug('PCM16 audio played', { 
+        duration: audioBuffer.duration,
+        samples: float32Array.length 
+      });
+    } catch (error) {
+      logger.error('Error playing PCM16 audio', { error });
+      throw error;
+    }
   }
 
   /**

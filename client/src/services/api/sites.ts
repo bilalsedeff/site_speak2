@@ -86,7 +86,8 @@ export const sitesApi = {
    * Get all sites for current user
    */
   getAllSites: async (): Promise<Site[]> => {
-    return api.get<Site[]>('/sites')
+    const response = await api.get<{ sites: Site[], total: number, page: number, limit: number }>('/sites')
+    return response.sites || []
   },
 
   /**

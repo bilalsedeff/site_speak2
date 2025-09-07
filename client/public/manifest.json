@@ -1,0 +1,19 @@
+{
+  "name": "SiteSpeak - Voice-First Website Builder",
+  "short_name": "SiteSpeak",
+  "description": "Create professional websites with your voice. SiteSpeak combines AI-powered assistance with intuitive design tools.",
+  "theme_color": "#0066cc",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["productivity", "business"]
+}

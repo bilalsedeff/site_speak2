@@ -2,7 +2,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { config } from '../../../../infrastructure/config';
 import { createLogger } from '../../../../shared/utils.js';
-import { kbChunks, kbEmbeddings } from '../../../../infrastructure/database/schema';
+import { knowledgeChunks } from '../../../../infrastructure/database/schema/knowledge-base';
 import { eq, and, sql, inArray } from 'drizzle-orm';
 
 const logger = createLogger({ service: 'pgvector-client' });
@@ -103,50 +103,40 @@ export class PgVectorClient {
         for (const chunk of chunks) {
           // Check if chunk already exists with same content hash
           const existing = await tx
-            .select({ id: kbChunks.id })
-            .from(kbChunks)
+            .select({ id: knowledgeChunks.id })
+            .from(knowledgeChunks)
             .where(
               and(
-                eq(kbChunks.siteId, chunk.siteId),
-                eq(kbChunks.contentHash, chunk.contentHash)
+                eq(knowledgeChunks.knowledgeBaseId, chunk.siteId),
+                eq(knowledgeChunks.contentHash, chunk.contentHash)
               )
             )
             .limit(1);
 
           if (existing.length === 0) {
             // Insert new chunk
-            const [insertedChunk] = await tx
-              .insert(kbChunks)
+            await tx
+              .insert(knowledgeChunks)
               .values({
-                siteId: chunk.siteId,
-                tenantId: chunk.tenantId,
-                documentId: chunk.documentId,
-                chunkIndex: chunk.chunkIndex,
+                knowledgeBaseId: chunk.siteId, 
+                url: chunk.documentId,
+                urlHash: chunk.contentHash.substring(0, 64),
                 content: chunk.content,
-                cleanedContent: chunk.cleanedContent,
                 contentHash: chunk.contentHash,
-                wordCount: chunk.wordCount,
+                embedding: chunk.embedding, // Store as vector, not JSON
+                chunkOrder: chunk.chunkIndex,
                 tokenCount: chunk.tokenCount,
-                locale: chunk.locale,
+                characterCount: chunk.content.length,
+                language: chunk.locale,
                 contentType: chunk.contentType || 'text',
-                section: chunk.section,
-                heading: chunk.heading,
+                title: chunk.heading,
                 selector: chunk.selector,
                 metadata: chunk.metadata,
               })
-              .returning({ id: kbChunks.id });
+              .returning({ id: knowledgeChunks.id });
 
-            if (insertedChunk) {
-              // Insert embedding - store as JSON string since schema uses text
-              await tx.insert(kbEmbeddings).values({
-                chunkId: insertedChunk.id,
-                siteId: chunk.siteId,
-                tenantId: chunk.tenantId,
-                embedding: JSON.stringify(chunk.embedding),
-                model: 'text-embedding-3-small',
-                dimensions: chunk.embedding.length,
-              });
-            }
+            // Embedding is now stored directly in the knowledgeChunks table
+            // No separate embeddings table needed
           }
         }
       });
@@ -179,37 +169,38 @@ export class PgVectorClient {
         await this.sql`SET ivfflat.probes = 50`; // Can be tuned based on recall needs
       }
 
-      // Build the query with proper vector distance operator
-      // Note: Since embeddings are stored as text, we'll use a simpler similarity approach
+      // Build the query with proper vector distance operator using pgvector
+      const embeddingStr = `[${query.embedding.join(',')}]`;
+      
       const results = await this.sql`
         SELECT 
-          c.id,
-          c.content,
-          c.metadata,
-          c.chunk_index,
-          c.site_id,
-          c.tenant_id,
-          0.8 as distance,
-          0.8 as score
-        FROM kb_chunks c
-        JOIN kb_embeddings e ON c.id = e.chunk_id
+          kc.id,
+          kc.content,
+          kc.metadata,
+          kc.chunk_order as chunk_index,
+          kc.knowledge_base_id as site_id,
+          kc.url,
+          kc.title,
+          (kc.embedding <=> ${embeddingStr}::vector) as distance,
+          (1 - (kc.embedding <=> ${embeddingStr}::vector)) as score
+        FROM knowledge_chunks kc
         WHERE 
-          c.site_id = ${query.siteId} 
-          AND c.tenant_id = ${query.tenantId}
-          ${query.locale ? this.sql` AND c.locale = ${query.locale}` : this.sql``}
-        ORDER BY c.created_at DESC
+          kc.knowledge_base_id = ${query.siteId}
+          ${query.locale ? this.sql` AND kc.language = ${query.locale}` : this.sql``}
+          ${query.minScore ? this.sql` AND (1 - (kc.embedding <=> ${embeddingStr}::vector)) >= ${query.minScore}` : this.sql``}
+        ORDER BY kc.embedding <=> ${embeddingStr}::vector
         LIMIT ${query.k}
       `;
 
       const hits: Hit[] = results.map((row: any) => ({
         id: row.id,
-        pageId: row.site_id, // Using site_id since we don't have page_id in this simplified query
+        pageId: row.site_id,
         distance: parseFloat(row.distance),
         score: parseFloat(row.score),
         content: row.content,
         meta: row.metadata || {},
-        url: `/${row.id}`, // Generate a URL based on chunk ID
-        title: `Chunk ${row.chunk_index}`,
+        url: row.url || `/${row.id}`,
+        title: row.title || `Chunk ${row.chunk_index}`,
       }));
 
       const duration = Date.now() - startTime;
@@ -249,29 +240,57 @@ export class PgVectorClient {
     });
 
     try {
-      // Hybrid search with FTS (simplified since we don't have proper vector ops yet)
+      // Hybrid search combining vector similarity with full-text search using RRF
+      const embeddingStr = `[${query.embedding.join(',')}]`;
       const results = await this.sql`
-        WITH fts_results AS (
+        WITH vector_results AS (
           SELECT 
-            c.id,
-            c.content,
-            c.metadata,
-            c.chunk_index,
-            c.site_id,
-            c.tenant_id,
-            ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', ${query.hybrid.text})) as fts_score
-          FROM kb_chunks c
+            kc.id,
+            kc.content,
+            kc.metadata,
+            kc.chunk_order as chunk_index,
+            kc.knowledge_base_id as site_id,
+            kc.url,
+            kc.title,
+            (kc.embedding <=> ${embeddingStr}::vector) as vector_distance,
+            ROW_NUMBER() OVER (ORDER BY kc.embedding <=> ${embeddingStr}::vector) as vector_rank
+          FROM knowledge_chunks kc
           WHERE 
-            c.site_id = ${query.siteId} 
-            AND c.tenant_id = ${query.tenantId}
-            AND to_tsvector('english', c.content) @@ plainto_tsquery('english', ${query.hybrid.text})
-            ${query.locale ? this.sql` AND c.locale = ${query.locale}` : this.sql``}
+            kc.knowledge_base_id = ${query.siteId}
+            ${query.locale ? this.sql` AND kc.language = ${query.locale}` : this.sql``}
+        ),
+        fts_results AS (
+          SELECT 
+            kc.id,
+            kc.content,
+            kc.metadata,
+            kc.chunk_order as chunk_index,
+            kc.knowledge_base_id as site_id,
+            kc.url,
+            kc.title,
+            ts_rank(to_tsvector('english', kc.content), plainto_tsquery('english', ${query.hybrid.text})) as fts_score,
+            ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('english', kc.content), plainto_tsquery('english', ${query.hybrid.text})) DESC) as fts_rank
+          FROM knowledge_chunks kc
+          WHERE 
+            kc.knowledge_base_id = ${query.siteId}
+            AND to_tsvector('english', kc.content) @@ plainto_tsquery('english', ${query.hybrid.text})
+            ${query.locale ? this.sql` AND kc.language = ${query.locale}` : this.sql``}
         )
         SELECT 
-          *,
-          fts_score as combined_score,
-          fts_score as vector_distance
-        FROM fts_results
+          COALESCE(v.id, f.id) as id,
+          COALESCE(v.content, f.content) as content,
+          COALESCE(v.metadata, f.metadata) as metadata,
+          COALESCE(v.chunk_index, f.chunk_index) as chunk_index,
+          COALESCE(v.site_id, f.site_id) as site_id,
+          COALESCE(v.url, f.url) as url,
+          COALESCE(v.title, f.title) as title,
+          COALESCE(v.vector_distance, 1.0) as vector_distance,
+          COALESCE(f.fts_score, 0.0) as fts_score,
+          -- RRF (Reciprocal Rank Fusion) scoring
+          (COALESCE(1.0 / (60 + v.vector_rank), 0.0) * ${alpha} + 
+           COALESCE(1.0 / (60 + f.fts_rank), 0.0) * ${1 - alpha}) as combined_score
+        FROM vector_results v
+        FULL OUTER JOIN fts_results f ON v.id = f.id
         ORDER BY combined_score DESC
         LIMIT ${query.k}
       `;
@@ -283,8 +302,8 @@ export class PgVectorClient {
         score: parseFloat(row.combined_score || 0),
         content: row.content,
         meta: row.metadata || {},
-        url: `/${row.id}`,
-        title: `Chunk ${row.chunk_index}`,
+        url: row.url || `/${row.id}`,
+        title: row.title || `Chunk ${row.chunk_index}`,
       }));
 
       const duration = Date.now() - startTime;
@@ -348,23 +367,20 @@ export class PgVectorClient {
       const result = await this.db.transaction(async (tx) => {
         // Get chunk IDs to delete embeddings
         const chunks = await tx
-          .select({ id: kbChunks.id })
-          .from(kbChunks)
+          .select({ id: knowledgeChunks.id })
+          .from(knowledgeChunks)
           .where(
             and(
-              eq(kbChunks.documentId, pageId),
-              eq(kbChunks.tenantId, tenantId)
+              eq(knowledgeChunks.url, pageId),
+              eq(knowledgeChunks.knowledgeBaseId, tenantId) // Using knowledgeBaseId instead of tenantId
             )
           );
 
         if (chunks.length > 0) {
           const chunkIds = chunks.map(c => c.id);
           
-          // Delete embeddings
-          await tx.delete(kbEmbeddings).where(inArray(kbEmbeddings.chunkId, chunkIds));
-          
-          // Delete chunks
-          await tx.delete(kbChunks).where(inArray(kbChunks.id, chunkIds));
+          // Delete chunks (embeddings are stored in the same table now)
+          await tx.delete(knowledgeChunks).where(inArray(knowledgeChunks.id, chunkIds));
         }
 
         return chunks.length;
@@ -386,23 +402,23 @@ export class PgVectorClient {
 
     try {
       if (kind === 'hnsw') {
-        // Create HNSW index
+        // Create HNSW index on knowledge_chunks.embedding
         await this.sql`
-          CREATE INDEX CONCURRENTLY IF NOT EXISTS kb_embeddings_embedding_hnsw_idx 
-          ON kb_embeddings 
+          CREATE INDEX CONCURRENTLY IF NOT EXISTS knowledge_chunks_embedding_hnsw_idx 
+          ON knowledge_chunks 
           USING hnsw (embedding vector_cosine_ops) 
           WITH (m = 16, ef_construction = 64)
         `;
       } else if (kind === 'ivfflat') {
         // Create IVFFlat index
         // Calculate lists based on row count
-        const rowCountResult = await this.sql`SELECT COUNT(*) FROM kb_embeddings`;
+        const rowCountResult = await this.sql`SELECT COUNT(*) FROM knowledge_chunks WHERE embedding IS NOT NULL`;
         const rowCount = Number(rowCountResult[0]?.['count'] || 0);
         const lists = Math.max(100, Math.min(1000, Math.floor(rowCount / 1000)));
         
         await this.sql`
-          CREATE INDEX CONCURRENTLY IF NOT EXISTS kb_embeddings_embedding_ivfflat_idx 
-          ON kb_embeddings 
+          CREATE INDEX CONCURRENTLY IF NOT EXISTS knowledge_chunks_embedding_ivfflat_idx 
+          ON knowledge_chunks 
           USING ivfflat (embedding vector_cosine_ops) 
           WITH (lists = ${lists})
         `;
@@ -425,33 +441,54 @@ export class PgVectorClient {
     avgChunkSize: number;
   }> {
     try {
-      const whereCondition = siteId 
-        ? and(eq(kbChunks.tenantId, tenantId), eq(kbChunks.siteId, siteId))
-        : eq(kbChunks.tenantId, tenantId);
+      // Get knowledge base IDs for this tenant
+      const kbResult = await this.sql`
+        SELECT kb.id 
+        FROM knowledge_bases kb
+        JOIN sites s ON kb.site_id = s.id
+        WHERE s.tenant_id = ${tenantId}
+        ${siteId ? this.sql`AND kb.site_id = ${siteId}` : this.sql``}
+      `;
+
+      if (kbResult.length === 0) {
+        return {
+          totalChunks: 0,
+          totalEmbeddings: 0,
+          indexType: 'none',
+          avgChunkSize: 0,
+        };
+      }
+
+      const kbIds = kbResult.map((row: any) => row.id);
 
       const chunkStatsResult = await this.db
         .select({
           count: sql<number>`count(*)`,
           avgLength: sql<number>`avg(length(content))`,
         })
-        .from(kbChunks)
-        .where(whereCondition);
+        .from(knowledgeChunks)
+        .where(inArray(knowledgeChunks.knowledgeBaseId, kbIds));
 
       const embeddingStatsResult = await this.db
         .select({
           count: sql<number>`count(*)`,
         })
-        .from(kbEmbeddings)
-        .where(eq(kbEmbeddings.tenantId, tenantId));
+        .from(knowledgeChunks)
+        .where(
+          and(
+            inArray(knowledgeChunks.knowledgeBaseId, kbIds),
+            sql`embedding IS NOT NULL`
+          )
+        );
 
       const chunkStats = chunkStatsResult[0] || { count: 0, avgLength: 0 };
       const embeddingStats = embeddingStatsResult[0] || { count: 0 };
 
-      // Check which index is active
+      // Check which index is active on knowledge_chunks table
       const indexInfo = await this.sql`
         SELECT indexname, indexdef 
         FROM pg_indexes 
-        WHERE tablename = 'kb_embeddings' 
+        WHERE tablename = 'knowledge_chunks' 
         AND indexdef LIKE '%embedding%'
       `;
 

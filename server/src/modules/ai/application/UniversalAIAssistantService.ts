@@ -2,7 +2,7 @@ import { createLogger } from '../../../shared/utils.js';
 import { AIOrchestrationService, ConversationRequest } from './AIOrchestrationService';
 import { ActionExecutorService } from './ActionExecutorService';
 import { LanguageDetectorService } from './LanguageDetectorService';
-import { getKnowledgeBaseService, KnowledgeBaseService, SemanticSearchResult } from '../infrastructure/KnowledgeBaseService';
+import { knowledgeBaseService, type KnowledgeBaseService } from './services/KnowledgeBaseService';
 import { SiteAction } from '../../../shared/types';
 
 // Voice handler interface - making it compatible with actual implementation
@@ -174,7 +174,7 @@ export class UniversalAIAssistantService {
     this.actionExecutor = new ActionExecutorService();
 
     // Create knowledge base adapter
-    const kbServiceAdapter = this.createKnowledgeBaseAdapter(getKnowledgeBaseService());
+    const kbServiceAdapter = this.createKnowledgeBaseAdapter(knowledgeBaseService);
     
     // Initialize orchestration service with dependencies
     const orchestrationDependencies: {
@@ -668,9 +668,9 @@ export class UniversalAIAssistantService {
           ...(resultObj.response?.metadata?.intent && { intent: resultObj.response.metadata.intent }),
           searchMetadata: {
             searchTime: this.metrics.averageSearchTime,
-            totalResults: 0, // Will be populated by actual search results
+            totalResults: 0,
             strategiesUsed: this.config.searchStrategies || ['vector', 'fulltext'],
-            consensusScore: 0.8 // Default reasonable consensus score
+            consensusScore: 0.8
           }
         },
         // Only include audioUrl if it exists
@@ -708,7 +708,13 @@ export class UniversalAIAssistantService {
           tokensUsed: 0,
           actionsTaken: 0,
           language: this.config.defaultLocale,
-        },
+          searchMetadata: {
+            searchTime: 0,
+            totalResults: 0,
+            strategiesUsed: this.config.searchStrategies || ['vector', 'fulltext'],
+            consensusScore: 0
+          }
+        }
       },
     };
   }
@@ -777,12 +783,12 @@ export class UniversalAIAssistantService {
           });
 
           // Transform results to match expected interface
-          return searchResults.map((result: SemanticSearchResult) => ({
+          return searchResults.map((result) => ({
             id: result.id,
             content: result.content,
             url: result.url,
             score: result.score,
-            metadata: result.metadata
+            metadata: result.metadata || {}
           }));
         } catch (error) {
           logger.error('Knowledge base search failed', { error });

@@ -318,10 +318,7 @@ async function performComprehensiveHealthCheck(): Promise<{
   // AI services health
   try {
     const { knowledgeBaseService } = await import('../../modules/ai/application/services/KnowledgeBaseService');
-    const { KnowledgeBaseRepositoryImpl } = await import('../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
-    const kbRepository = new KnowledgeBaseRepositoryImpl();
-    const kbServiceInstance = knowledgeBaseService.getInstance(kbRepository);
-    const kbHealth = await kbServiceInstance.healthCheck();
+    const kbHealth = await knowledgeBaseService.healthCheck();
     components['knowledgeBase'] = kbHealth;
     if (kbHealth.healthy) {healthyCount++;}
     totalChecks++;

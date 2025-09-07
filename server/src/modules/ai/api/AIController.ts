@@ -160,10 +160,8 @@ export class AIController {
         ...(data.filters !== undefined && { filters: data.filters }),
       };
 
-      // Initialize KB service with repository dependency
-      const { KnowledgeBaseRepositoryImpl } = await import('../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
-      const kbRepository = new KnowledgeBaseRepositoryImpl();
-      const kbService = knowledgeBaseService.getInstance(kbRepository);
+      // Use initialized KB service
+      const kbService = knowledgeBaseService;
       
       const results = await kbService.search(searchParams);
 
@@ -216,10 +214,8 @@ export class AIController {
 
       const conversationId = data.conversationId || `conv-${Date.now()}-${user.id}`;
 
-      // Initialize KB service with repository dependency
-      const { KnowledgeBaseRepositoryImpl } = await import('../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
-      const kbRepository2 = new KnowledgeBaseRepositoryImpl();
-      const kbService2 = knowledgeBaseService.getInstance(kbRepository2);
+      // Use initialized KB service
+      const kbService2 = knowledgeBaseService;
 
       // Search knowledge base for relevant context
       const knowledgeResults = await kbService2.search({
@@ -287,10 +283,8 @@ export class AIController {
       // TODO: Verify user has access to this site
       // TODO: Check if indexing is already in progress
 
-      // Initialize KB service with repository dependency
-      const { KnowledgeBaseRepositoryImpl } = await import('../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
-      const kbRepository3 = new KnowledgeBaseRepositoryImpl();
-      const kbService3 = knowledgeBaseService.getInstance(kbRepository3);
+      // Use initialized KB service
+      const kbService3 = knowledgeBaseService;
       
       await kbService3.startIndexing(`kb-${siteId}`);
 
@@ -323,10 +317,8 @@ export class AIController {
       void _user; // Suppress TypeScript unused variable warning
       const { siteId } = req.params;
 
-      // Initialize KB service with repository dependency
-      const { KnowledgeBaseRepositoryImpl } = await import('../../../infrastructure/repositories/KnowledgeBaseRepositoryImpl');
-      const kbRepository4 = new KnowledgeBaseRepositoryImpl();
-      const kbService4 = knowledgeBaseService.getInstance(kbRepository4);
+      // Use initialized KB service
+      const kbService4 = knowledgeBaseService;
       
       const progress = await kbService4.getIndexingProgress(`kb-${siteId}`);
 

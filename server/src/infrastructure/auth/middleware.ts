@@ -76,7 +76,7 @@ export function authenticate() {
       req.user = {
         id: payload.userId,
         tenantId: payload.tenantId,
-        role: payload.role,
+        role: payload.role as UserRole,
         email: payload.email,
         permissions: payload.permissions || [],
         ...(payload.sessionId && { sessionId: payload.sessionId }),
@@ -137,7 +137,7 @@ export function optionalAuth() {
           req.user = {
             id: payload.userId,
             tenantId: payload.tenantId,
-            role: payload.role,
+            role: payload.role as UserRole,
             email: payload.email,
             permissions: payload.permissions || [],
             ...(payload.sessionId && { sessionId: payload.sessionId }),

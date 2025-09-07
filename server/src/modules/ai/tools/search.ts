@@ -16,10 +16,9 @@ import {
   LocaleSchema,
   toJsonSchema
 } from './validators';
-import { getKnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
+import { knowledgeBaseService } from '../application/services/KnowledgeBaseService';
 
-// Get singleton service instance
-const knowledgeBaseService = getKnowledgeBaseService();
+// Use application layer service (follows clean architecture)
 
 const logger = createLogger({ service: 'search-tools' });
 
@@ -242,6 +241,7 @@ async function executeSuggestNext(
       sideEffects: [],
     };
   }
+}
 
 // Helper function to generate action hints
 function generateActionHint(metadata?: Record<string, unknown>): string {
@@ -253,7 +253,6 @@ function generateActionHint(metadata?: Record<string, unknown>): string {
     return 'Read full article';
   }
   return 'View page';
-}
 }
 
 /**

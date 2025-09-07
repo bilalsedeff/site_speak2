@@ -567,6 +567,39 @@ export class OpenAIRealtimeClient extends EventEmitter {
   }
 
   /**
+   * Play PCM16 audio data directly using Web Audio API
+   */
+  async playAudio(audioData: ArrayBuffer, sampleRate: number = 24000): Promise<void> {
+    // Use the global AudioContext or create one
+    const audioContext = (globalThis as any).audioContext || new AudioContext({ sampleRate });
+    
+    // Convert ArrayBuffer to Float32Array for Web Audio API
+    const int16Array = new Int16Array(audioData);
+    const float32Array = new Float32Array(int16Array.length);
+    
+    // Convert PCM16 to Float32 range [-1, 1]
+    for (let i = 0; i < int16Array.length; i++) {
+      float32Array[i] = int16Array[i]! / 32768.0;
+    }
+    
+    // Create audio buffer
+    const audioBuffer = audioContext.createBuffer(1, float32Array.length, sampleRate);
+    audioBuffer.copyToChannel(float32Array, 0);
+    
+    // Create and play buffer source
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
+    source.start();
+    
+    logger.debug('Audio played', { 
+      duration: audioBuffer.duration,
+      sampleRate,
+      samples: float32Array.length 
+    });
+  }
+
+  /**
    * Get performance metrics
    */
   getMetrics(): RealtimeMetrics {

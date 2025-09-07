@@ -8,7 +8,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { cfg } from '../config/index.js';
 import { logger } from '../telemetry/logger.js';
-import { validateAccessToken } from './auth.js';
+import { jwtService } from '../../../infrastructure/auth/jwt.js';
 import type { UserRole } from '../../../../../shared/types';
 
 /**
@@ -51,10 +51,14 @@ function extractTenantId(req: Request): string | null {
   // 1. JWT token claims (most secure)
   const authHeader = req.headers.authorization;
   if (authHeader) {
-    const token = authHeader.replace('Bearer ', '');
-    const validation = validateAccessToken(token);
-    if (validation.valid && validation.claims) {
-      return validation.claims.tenantId;
+    const token = jwtService.extractTokenFromHeader(authHeader);
+    if (token) {
+      try {
+        const payload = jwtService.verifyAccessToken(token);
+        return payload.tenantId;
+      } catch (error) {
+        // Token is invalid, continue to fallback methods
+      }
     }
   }
 

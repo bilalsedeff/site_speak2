@@ -53,7 +53,7 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Active Sites</p>
-                <p className="text-2xl font-bold">{sites.filter(s => s.status === 'published').length}</p>
+                <p className="text-2xl font-bold">{sites?.filter(s => s.status === 'published').length || 0}</p>
               </div>
               <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
                 <Zap className="h-6 w-6 text-primary" />
@@ -101,13 +101,13 @@ export function Dashboard() {
             </Button>
           </div>
 
-          {sites.length === 0 ? (
-            <div className="bg-card rounded-lg border border-border p-12 text-center">
+          {!sites || sites.length === 0 ? (
+            <div className="bg-card rounded-lg border border-border p-12 text-center flex flex-col items-center justify-center">
               <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
                 <Plus className="h-8 w-8 text-muted-foreground" />
               </div>
               <h3 className="text-lg font-medium mb-2">No sites yet</h3>
-              <p className="text-muted-foreground mb-6">
+              <p className="text-muted-foreground mb-6 text-center">
                 Create your first voice-powered website to get started
               </p>
               <Button onClick={() => dispatch(openModal('createSite'))}>
@@ -117,7 +117,7 @@ export function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {sites.map((site, index) => (
+              {sites?.map((site, index) => (
                 <motion.div
                   key={site.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -156,7 +156,7 @@ export function Dashboard() {
         </motion.div>
 
         {/* Getting Started */}
-        {sites.length === 0 && (
+        {(!sites || sites.length === 0) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

@@ -75,12 +75,12 @@ class SpeculationRulesManager {
     if (currentPath === '/' || currentPath === '/dashboard') {
       rules.prefetch = [
         {
-          source: 'list',
+          source: 'document',
           eagerness: 'moderate',
           where: { href_matches: '/editor/*' }
         },
         {
-          source: 'list', 
+          source: 'document', 
           eagerness: 'conservative',
           where: { href_matches: '/templates' }
         }
@@ -91,14 +91,14 @@ class SpeculationRulesManager {
     else if (currentPath === '/templates') {
       rules.prerender = [
         {
-          source: 'list',
+          source: 'document',
           eagerness: 'moderate',
           where: { href_matches: '/editor/*' }
         }
       ]
       rules.prefetch = [
         {
-          source: 'list',
+          source: 'document',
           eagerness: 'conservative', 
           where: { href_matches: '/dashboard' }
         }
@@ -109,27 +109,17 @@ class SpeculationRulesManager {
     else if (currentPath.startsWith('/editor')) {
       rules.prefetch = [
         {
-          source: 'list',
+          source: 'document',
           eagerness: 'conservative',
           where: { href_matches: '/analytics/*' }
         },
         {
-          source: 'list',
+          source: 'document',
           eagerness: 'conservative',
           where: { href_matches: '/templates' }
         }
       ]
     }
-
-    // General navigation patterns
-    rules.prefetch = [
-      ...(rules.prefetch || []),
-      {
-        source: 'document',
-        eagerness: 'conservative',
-        where: { selector_matches: 'a[href^="/"]' }
-      }
-    ]
 
     return rules
   }
@@ -147,14 +137,7 @@ class SpeculationRulesManager {
    */
   configureSiteBuilderRules(): void {
     const rules: SpeculationRules = {
-      // Prerender likely next pages
-      prerender: [
-        {
-          source: 'list',
-          eagerness: 'moderate',
-        }
-      ],
-      // Prefetch resources for all internal links
+      // Prefetch resources for all internal links using document rules
       prefetch: [
         {
           source: 'document',

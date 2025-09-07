@@ -2,6 +2,7 @@ import { createLogger } from '../../../../shared/utils.js';
 import { embeddingService } from './EmbeddingService';
 import { webCrawlerService, type CrawlOptions } from './WebCrawlerService.js';
 import { KnowledgeBaseRepository } from '../../../../domain/repositories/KnowledgeBaseRepository';
+import { knowledgeBaseRepository } from '../../../../infrastructure/repositories';
 import type { 
   KnowledgeChunk
 } from '../../domain/entities/KnowledgeBase';
@@ -735,6 +736,81 @@ export class KnowledgeBaseService {
       errors,
     };
   }
+
+  /**
+   * Semantic search compatibility method
+   * Maps to the search method with proper parameters
+   */
+  async semanticSearch(request: {
+    query: string;
+    siteId: string;
+    tenantId: string;
+    limit?: number;
+    threshold?: number;
+    filters?: {
+      contentType?: string[];
+      locale?: string;
+      section?: string;
+    };
+  }): Promise<Array<{
+    id: string;
+    title?: string;
+    content: string;
+    url: string;
+    score: number;
+    metadata?: Record<string, unknown>;
+  }>> {
+    try {
+      logger.debug('Semantic search request', {
+        query: request.query.substring(0, 100),
+        siteId: request.siteId,
+        tenantId: request.tenantId,
+        limit: request.limit,
+      });
+
+      // Get knowledge base for site
+      const knowledgeBase = await this.knowledgeBaseRepository.findBySiteId(request.siteId);
+      if (!knowledgeBase) {
+        logger.warn('No knowledge base found for site', { siteId: request.siteId });
+        return [];
+      }
+
+      // Use the existing search method
+      const searchRequest: SearchRequest = {
+        knowledgeBaseId: knowledgeBase.id,
+        query: request.query,
+        topK: request.limit || 10,
+      };
+      
+      if (request.threshold !== undefined) {
+        searchRequest.threshold = request.threshold;
+      }
+      
+      if (request.filters) {
+        searchRequest.filters = request.filters;
+      }
+
+      const searchResults = await this.search(searchRequest);
+
+      // Map results to expected format
+      return searchResults.map(result => ({
+        id: result.chunk.id,
+        title: result.chunk.metadata?.title as string,
+        content: result.relevantContent,
+        url: result.chunk.metadata?.url as string || '',
+        score: result.score,
+        metadata: result.chunk.metadata,
+      }));
+
+    } catch (error) {
+      logger.error('Semantic search failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        siteId: request.siteId,
+        tenantId: request.tenantId,
+      });
+      return [];
+    }
+  }
 }
 
 // Export factory function for dependency injection
@@ -742,17 +818,7 @@ export const createKnowledgeBaseService = (knowledgeBaseRepository: KnowledgeBas
   return new KnowledgeBaseService(knowledgeBaseRepository);
 };
 
-// Export singleton instance (will need to be initialized with repository)
-let _knowledgeBaseServiceInstance: KnowledgeBaseService | null = null;
+// Export singleton instance (auto-initialized)
+const _knowledgeBaseServiceInstance = new KnowledgeBaseService(knowledgeBaseRepository);
 
-export const knowledgeBaseService = {
-  getInstance: (knowledgeBaseRepository?: KnowledgeBaseRepository): KnowledgeBaseService => {
-    if (!_knowledgeBaseServiceInstance) {
-      if (!knowledgeBaseRepository) {
-        throw new Error('KnowledgeBaseRepository is required for first initialization');
-      }
-      _knowledgeBaseServiceInstance = new KnowledgeBaseService(knowledgeBaseRepository);
-    }
-    return _knowledgeBaseServiceInstance;
-  }
-};
+export const knowledgeBaseService = _knowledgeBaseServiceInstance;

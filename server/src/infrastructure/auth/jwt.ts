@@ -126,7 +126,7 @@ export class JWTService {
 
       const expiresIn = options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN;
       const signOptions: jwt.SignOptions = {
-        expiresIn,
+        expiresIn: expiresIn as any,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
       };
@@ -187,12 +187,23 @@ export class JWTService {
   /**
    * Verify and decode refresh token
    */
-  verifyRefreshToken(token: string): Pick<JWTPayload, 'userId' | 'tenantId' | 'sessionId' | 'iat' | 'exp'> {
+  verifyRefreshToken(token: string): {
+    userId: string;
+    tenantId: string;
+    sessionId: string | undefined;
+    iat: number;
+    exp: number;
+  } {
     try {
       const decoded = jwt.verify(token, this.refreshTokenSecret, {
         issuer: this.defaultIssuer,
         audience: this.defaultAudience,
       }) as JWTPayload;
+
+      // JWT always has iat and exp when verified, but TypeScript doesn't know that
+      if (!decoded.iat || !decoded.exp) {
+        throw new Error('Invalid token: missing timestamps');
+      }
 
       return {
         userId: decoded.userId,
@@ -256,7 +267,7 @@ export class JWTService {
 
       const expiresIn = options?.expiresIn || '1h'; // Voice tokens expire in 1 hour
       const signOptions: jwt.SignOptions = {
-        expiresIn,
+        expiresIn: expiresIn as any,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
       };
