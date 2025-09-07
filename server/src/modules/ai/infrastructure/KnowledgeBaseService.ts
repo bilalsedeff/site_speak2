@@ -517,5 +517,13 @@ export class KnowledgeBaseService {
   }
 }
 
-// Export singleton instance
-export const knowledgeBaseService = new KnowledgeBaseService();
+// Export singleton instance using lazy initialization pattern  
+let _knowledgeBaseServiceInstance: KnowledgeBaseService | null = null;
+
+export function getKnowledgeBaseService(): KnowledgeBaseService {
+  if (!_knowledgeBaseServiceInstance) {
+    _knowledgeBaseServiceInstance = new KnowledgeBaseService();
+    logger.debug('Knowledge Base Service singleton initialized');
+  }
+  return _knowledgeBaseServiceInstance;
+}

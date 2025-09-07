@@ -31,7 +31,7 @@ export class HealthController {
       if (!draining) {
         // Quick health check for readiness
         const healthChecks = await metricsService.performHealthChecks();
-        const criticalServices = ['database', 'openai'];
+        const criticalServices = ['database']; // OpenAI is not critical for basic readiness
         
         for (const check of healthChecks) {
           if (check.status === 'unhealthy' && criticalServices.includes(check.service)) {
@@ -170,21 +170,27 @@ export class HealthController {
       // Build dependency status map
       const deps: Record<string, string> = {};
       const failed: string[] = [];
+      const criticalFailures: string[] = [];
       
       for (const check of healthChecks) {
         if (check.status === 'healthy') {
           deps[check.service] = 'ok';
         } else if (check.status === 'degraded') {
           deps[check.service] = 'degraded';
+          // Degraded services are not considered failed for readiness
         } else {
           deps[check.service] = 'fail';
           failed.push(check.service);
+          
+          // Only critical services with unhealthy status cause readiness failure
+          const criticalServices = ['database']; // OpenAI and memory issues are non-critical for readiness
+          if (criticalServices.includes(check.service)) {
+            criticalFailures.push(check.service);
+          }
         }
       }
 
-      // Determine readiness - fail if any critical dependencies are unhealthy
-      const criticalServices = ['database', 'openai'];
-      const criticalFailures = failed.filter(service => criticalServices.includes(service));
+      // Determine readiness - fail only if critical dependencies are truly unhealthy
       const isReady = criticalFailures.length === 0;
       
       const httpStatus = isReady ? 200 : 503;

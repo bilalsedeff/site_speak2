@@ -18,10 +18,17 @@ const logger = createLogger({ service: 'ai-tools' });
 
 // ==================== INITIALIZATION ====================
 
+let isInitialized = false;
+
 /**
- * Initialize all AI tools in the registry
+ * Initialize all AI tools in the registry (singleton pattern)
  */
 export function initializeAITools(): void {
+  if (isInitialized) {
+    logger.debug('AI tools already initialized, skipping');
+    return;
+  }
+  
   logger.info('Initializing AI tools system');
   
   const startTime = Date.now();
@@ -52,6 +59,8 @@ export function initializeAITools(): void {
     },
     initializationTime: initTime,
   });
+  
+  isInitialized = true;
 }
 
 // ==================== EXPORTS ====================
@@ -223,5 +232,5 @@ export function getAIToolsStats(): {
 
 // ==================== AUTO-INITIALIZATION ====================
 
-// Auto-initialize tools when module is imported
-initializeAITools();
+// Note: Tools are now initialized on-demand via UniversalAIAssistantService
+// to prevent multiple initializations. Auto-initialization removed.

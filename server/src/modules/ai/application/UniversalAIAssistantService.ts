@@ -2,7 +2,7 @@ import { createLogger } from '../../../shared/utils.js';
 import { AIOrchestrationService, ConversationRequest } from './AIOrchestrationService';
 import { ActionExecutorService } from './ActionExecutorService';
 import { LanguageDetectorService } from './LanguageDetectorService';
-import { KnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
+import { getKnowledgeBaseService, KnowledgeBaseService, SemanticSearchResult } from '../infrastructure/KnowledgeBaseService';
 import { SiteAction } from '../../../shared/types';
 
 // Voice handler interface - making it compatible with actual implementation
@@ -174,7 +174,7 @@ export class UniversalAIAssistantService {
     this.actionExecutor = new ActionExecutorService();
 
     // Create knowledge base adapter
-    const kbServiceAdapter = this.createKnowledgeBaseAdapter(new KnowledgeBaseService());
+    const kbServiceAdapter = this.createKnowledgeBaseAdapter(getKnowledgeBaseService());
     
     // Initialize orchestration service with dependencies
     const orchestrationDependencies: {
@@ -777,7 +777,7 @@ export class UniversalAIAssistantService {
           });
 
           // Transform results to match expected interface
-          return searchResults.map(result => ({
+          return searchResults.map((result: SemanticSearchResult) => ({
             id: result.id,
             content: result.content,
             url: result.url,
@@ -807,5 +807,21 @@ export class UniversalAIAssistantService {
   }
 }
 
-// Export singleton instance
-export const universalAIAssistantService = new UniversalAIAssistantService();
+// Singleton instance
+let _instance: UniversalAIAssistantService | null = null;
+
+/**
+ * Get or create singleton instance of Universal AI Assistant Service
+ */
+export function getUniversalAIAssistantService(
+  config?: Partial<AIAssistantConfig>,
+  voiceHandler?: VoiceNotificationHandler
+): UniversalAIAssistantService {
+  if (!_instance) {
+    _instance = new UniversalAIAssistantService(config, voiceHandler);
+  }
+  return _instance;
+}
+
+// Export singleton instance (backwards compatibility)
+export const universalAIAssistantService = getUniversalAIAssistantService();

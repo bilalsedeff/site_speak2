@@ -16,10 +16,10 @@ import {
   LocaleSchema,
   toJsonSchema
 } from './validators';
-import { KnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
+import { getKnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
 
-// Create service instance
-const knowledgeBaseService = new KnowledgeBaseService();
+// Get singleton service instance
+const knowledgeBaseService = getKnowledgeBaseService();
 
 const logger = createLogger({ service: 'search-tools' });
 

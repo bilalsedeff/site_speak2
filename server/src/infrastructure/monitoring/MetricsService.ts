@@ -333,9 +333,9 @@ export class MetricsService {
       this.checkMemory(),
     ];
 
-    // Wait for all checks with a total timeout of 200ms
+    // Wait for all checks with a total timeout of 6000ms (to accommodate external API calls)
     const checks = await Promise.allSettled(checkPromises.map(promise => 
-      this.withTimeout(promise, 200, 'Health check timeout')
+      this.withTimeout(promise, 6000, 'Health check timeout')
     ));
 
     const results: HealthCheck[] = [];
@@ -481,7 +481,19 @@ export class MetricsService {
    */
   private async checkOpenAI(): Promise<HealthCheck> {
     const start = Date.now();
-    const timeoutMs = 100;
+    const timeoutMs = 5000; // Increased timeout for external API call
+    
+    // If OpenAI API key is not configured, return degraded status (not unhealthy)
+    if (!config.OPENAI_API_KEY || config.OPENAI_API_KEY.trim() === '') {
+      return {
+        service: 'openai',
+        status: 'degraded',
+        timestamp: new Date(),
+        latency: Date.now() - start,
+        message: 'OpenAI API key not configured',
+        details: { configured: false },
+      };
+    }
     
     try {
       // Use timeout wrapper for OpenAI API check
@@ -492,7 +504,6 @@ export class MetricsService {
             'Authorization': `Bearer ${config.OPENAI_API_KEY}`,
             'Content-Type': 'application/json',
           },
-          signal: AbortSignal.timeout(timeoutMs),
         }),
         timeoutMs,
         'OpenAI API timeout'
@@ -503,15 +514,26 @@ export class MetricsService {
       if (response.ok) {
         return {
           service: 'openai',
-          status: latency < 50 ? 'healthy' : latency < 100 ? 'degraded' : 'unhealthy',
+          status: latency < 1000 ? 'healthy' : latency < 3000 ? 'degraded' : 'unhealthy',
           timestamp: new Date(),
           latency,
           message: `OpenAI API responding in ${latency}ms`,
         };
-      } else {
+      } else if (response.status === 401) {
+        // Authentication error - this is truly unhealthy (bad API key)
         return {
           service: 'openai',
           status: 'unhealthy',
+          timestamp: new Date(),
+          latency,
+          message: `OpenAI API authentication failed (invalid API key)`,
+          details: { statusCode: response.status },
+        };
+      } else {
+        // Other API errors - treat as degraded to avoid unnecessary pod restarts
+        return {
+          service: 'openai',
+          status: 'degraded',
           timestamp: new Date(),
           latency,
           message: `OpenAI API returned ${response.status}`,
@@ -519,9 +541,10 @@ export class MetricsService {
         };
       }
     } catch (error) {
+      // Network errors, timeouts, etc. - treat as degraded
       return {
         service: 'openai',
-        status: 'unhealthy',
+        status: 'degraded',
         timestamp: new Date(),
         latency: Date.now() - start,
         message: 'OpenAI API connection failed or timed out',

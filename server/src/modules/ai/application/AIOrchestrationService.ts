@@ -2,7 +2,7 @@ import { createLogger } from '../../../shared/utils.js';
 import { LangGraphOrchestrator, SessionStateType } from '../domain/LangGraphOrchestrator';
 import { actionExecutorService } from './ActionExecutorService';
 import { languageDetectorService } from './LanguageDetectorService';
-import { KnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
+import { getKnowledgeBaseService } from '../infrastructure/KnowledgeBaseService';
 import type { SiteAction, ActionParameter } from '../../../shared/types';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniversalAgentGraph, UniversalAgentGraph } from '../orchestrator/graphs/UniversalAgent.graph';
@@ -760,7 +760,7 @@ export const aiOrchestrationService = new AIOrchestrationService({
       locale: string;
     }) {
       try {
-        const kbService = new KnowledgeBaseService();
+        const kbService = getKnowledgeBaseService();
         const searchResults = await kbService.semanticSearch({
           query: params.query,
           siteId: params.siteId,

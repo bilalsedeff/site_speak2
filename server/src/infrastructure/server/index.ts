@@ -227,13 +227,43 @@ export class SiteSeakServer {
       this.app.use('/sites', express.static(config.PUBLISHED_SITES_PATH));
     }
 
-    // 404 handler
+    // Root endpoint - health check and redirect to API docs
+    this.app.get('/', (_req: Request, res: Response) => {
+      res.status(200).json({
+        status: 'online',
+        message: 'SiteSpeak API Gateway is running',
+        version: '1.0.0',
+        environment: config.NODE_ENV,
+        docs: '/api/v1/docs',
+        api: '/api/v1/',
+        health: '/health',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Handle POST requests to root (likely from frontend webpack dev server)
+    this.app.post('/', (_req: Request, res: Response) => {
+      res.status(200).json({
+        message: 'SiteSpeak API is running',
+        version: '1.0.0',
+        docs: '/api/v1/docs',
+        health: '/health',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // 404 handler for other routes
     this.app.use('*', (req: Request, res: Response) => {
       res.status(404).json({
         error: 'Endpoint not found',
         code: 'NOT_FOUND',
         path: req.path,
         method: req.method,
+        availableEndpoints: {
+          api: '/api/v1',
+          docs: '/api/v1/docs',
+          health: '/health'
+        }
       });
     });
   }
@@ -247,9 +277,9 @@ export class SiteSeakServer {
     // Store voice handler for graceful shutdown
     (this as any).voiceHandler = voiceHandler;
 
-    // Initialize Universal AI Assistant with voice handler
-    const { UniversalAIAssistantService } = await import('../../modules/ai/application/UniversalAIAssistantService');
-    const aiAssistant = new UniversalAIAssistantService({
+    // Initialize Universal AI Assistant with voice handler (singleton)
+    const { getUniversalAIAssistantService } = await import('../../modules/ai/application/UniversalAIAssistantService');
+    const aiAssistant = getUniversalAIAssistantService({
       enableVoice: true,
       enableStreaming: true,
       defaultLocale: 'en-US',

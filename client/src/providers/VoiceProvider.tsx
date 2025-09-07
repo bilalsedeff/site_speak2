@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
 interface VoiceContextType {
   // Connection state
   isConnected: boolean
@@ -124,38 +126,54 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   useEffect(() => {
     const initializeVoiceConnection = async () => {
       try {
-        // Get voice session token from the API
-        const response = await fetch('/api/v1/voice/session/token', {
+        // Create voice session using API Gateway
+        const accessToken = localStorage.getItem('accessToken');
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        
+        if (accessToken) {
+          headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+        
+        const response = await fetch(`${API_BASE_URL}/api/v1/voice/session`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          },
+          headers,
           body: JSON.stringify({
             siteId: import.meta.env['VITE_SITE_ID'] || '00000000-0000-0000-0000-000000000000',
-            locale: language,
+            preferredTTSLocale: language,
+            preferredSTTLocale: language,
+            voice: 'alloy',
+            maxDuration: 300, // 5 minutes
+            enableVAD: true
           }),
         })
 
         if (!response.ok) {
-          throw new Error(`Failed to get voice token: ${response.statusText}`)
+          throw new Error(`Failed to create voice session: ${response.statusText}`)
         }
 
-        const tokenData = await response.json()
+        const sessionData = await response.json()
         
-        if (!tokenData.data) {
-          throw new Error('Invalid token response format')
+        if (!sessionData.success || !sessionData.data) {
+          throw new Error('Invalid session response format')
         }
         
-        const { token, websocketUrl } = tokenData.data
+        const { sessionId } = sessionData.data
 
-        // Connect to WebSocket with authentication token
-        const socketInstance = io(websocketUrl || import.meta.env.VITE_WS_URL || 'ws://localhost:5000', {
+        // Connect to WebSocket with session ID
+        const wsAuth: Record<string, string> = {
+          sessionId: sessionId,
+        };
+        
+        if (accessToken) {
+          wsAuth['accessToken'] = accessToken;
+        }
+        
+        const socketInstance = io(import.meta.env.VITE_WS_URL || 'ws://localhost:5000', {
           transports: ['websocket'],
           upgrade: true,
-          auth: {
-            token: token,
-          },
+          auth: wsAuth,
         })
 
         // Setup socket events

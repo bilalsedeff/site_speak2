@@ -1,42 +1,38 @@
 import jwt from 'jsonwebtoken';
-import { z } from 'zod';
+import { randomUUID } from 'crypto';
 
 import { config } from '../config';
 import { createLogger } from '../../shared/utils.js';
 
 const logger = createLogger({ service: 'jwt' });
 
-// JWT Payload Schema
-export const JWTPayloadSchema = z.object({
-  userId: z.string().uuid(),
-  tenantId: z.string().uuid(),
-  role: z.enum(['owner', 'admin', 'editor', 'viewer']),
-  email: z.string().email(),
-  permissions: z.array(z.string()).optional(),
-  sessionId: z.string().uuid().optional(),
-  siteId: z.string().uuid().optional(),
-  locale: z.string().optional(),
-  iat: z.number().optional(),
-  exp: z.number().optional(),
-  iss: z.string().optional(),
-  aud: z.string().optional(),
-});
+// Simplified JWT payload interfaces
+export interface JWTPayload {
+  userId: string;
+  tenantId: string;
+  role: string;
+  email: string;
+  permissions?: string[];
+  sessionId?: string;
+  siteId?: string;
+  locale?: string;
+  iat?: number;
+  exp?: number;
+  iss?: string;
+  aud?: string;
+}
 
 // Voice-specific JWT payload for WebSocket connections
-export const VoiceJWTPayloadSchema = z.object({
-  tenantId: z.string().uuid(),
-  siteId: z.string().uuid(),
-  userId: z.string().uuid().optional(),
-  locale: z.string().default('en-US'),
-  iat: z.number().optional(),
-  exp: z.number().optional(),
-  iss: z.string().optional(),
-  aud: z.string().optional(),
-});
-
-export type VoiceJWTPayload = z.infer<typeof VoiceJWTPayloadSchema>;
-
-export type JWTPayload = z.infer<typeof JWTPayloadSchema>;
+export interface VoiceJWTPayload {
+  tenantId: string;
+  siteId: string;
+  userId?: string;
+  locale?: string;
+  iat?: number;
+  exp?: number;
+  iss?: string;
+  aud?: string;
+}
 
 export interface TokenPair {
   accessToken: string;
@@ -86,22 +82,34 @@ export class JWTService {
    */
   generateAccessToken(payload: Omit<JWTPayload, 'iat' | 'exp' | 'iss' | 'aud'>, options?: TokenOptions): string {
     try {
-      const tokenPayload = {
+      const now = Math.floor(Date.now() / 1000);
+      const expiresIn = options?.expiresIn || config.JWT_ACCESS_EXPIRES_IN;
+      const expSeconds = typeof expiresIn === 'string' ? parseExpirationTime(expiresIn) : expiresIn;
+
+      const tokenPayload: JWTPayload = {
         ...payload,
+        iat: now,
+        exp: now + expSeconds,
         iss: options?.issuer || this.defaultIssuer,
         aud: options?.audience || this.defaultAudience,
+        sessionId: payload.sessionId || randomUUID(),
       };
 
-      const expiresIn = options?.expiresIn || config.JWT_ACCESS_EXPIRES_IN;
-      const signOptions: jwt.SignOptions = {
-        expiresIn: typeof expiresIn === 'string' ? parseExpirationTime(expiresIn) : expiresIn,
+      return jwt.sign(tokenPayload, this.accessTokenSecret, {
+        algorithm: 'HS256',
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
-      };
-      return jwt.sign(tokenPayload, this.accessTokenSecret, signOptions);
+      });
     } catch (error) {
-      logger.error('Failed to generate access token', { error, userId: payload.userId });
-      throw new Error('Token generation failed');
+      logger.error('Failed to generate access token', { 
+        error: error instanceof Error ? error.message : String(error), 
+        userId: payload.userId,
+        config: {
+          JWT_SECRET: config.JWT_SECRET ? 'SET' : 'NOT SET',
+          JWT_ACCESS_EXPIRES_IN: config.JWT_ACCESS_EXPIRES_IN
+        }
+      });
+      throw new Error(`Token generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -118,7 +126,7 @@ export class JWTService {
 
       const expiresIn = options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN;
       const signOptions: jwt.SignOptions = {
-        expiresIn: typeof expiresIn === 'string' ? parseExpirationTime(expiresIn) : expiresIn,
+        expiresIn,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
       };
@@ -133,7 +141,7 @@ export class JWTService {
    * Generate token pair (access + refresh)
    */
   generateTokenPair(payload: Omit<JWTPayload, 'iat' | 'exp' | 'iss' | 'aud'>, options?: TokenOptions): TokenPair {
-    const sessionId = payload.sessionId || crypto.randomUUID();
+    const sessionId = payload.sessionId || randomUUID();
     
     const accessToken = this.generateAccessToken({
       ...payload,
@@ -157,10 +165,9 @@ export class JWTService {
       const decoded = jwt.verify(token, this.accessTokenSecret, {
         issuer: this.defaultIssuer,
         audience: this.defaultAudience,
-      }) as jwt.JwtPayload;
+      }) as JWTPayload;
 
-      const payload = JWTPayloadSchema.parse(decoded);
-      return payload;
+      return decoded;
     } catch (error) {
       if (error instanceof jwt.JsonWebTokenError) {
         logger.warn('Invalid access token', { error: error.message });
@@ -172,12 +179,7 @@ export class JWTService {
         throw new Error('Token expired');
       }
 
-      if (error instanceof z.ZodError) {
-        logger.warn('Token payload validation failed', { error: error.errors });
-        throw new Error('Invalid token format');
-      }
-
-      logger.error('Token verification failed', { error });
+      logger.error('Token verification failed', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Token verification failed');
     }
   }
@@ -190,17 +192,15 @@ export class JWTService {
       const decoded = jwt.verify(token, this.refreshTokenSecret, {
         issuer: this.defaultIssuer,
         audience: this.defaultAudience,
-      }) as jwt.JwtPayload;
+      }) as JWTPayload;
 
-      const RefreshTokenSchema = JWTPayloadSchema.pick({
-        userId: true,
-        tenantId: true,
-        sessionId: true,
-        iat: true,
-        exp: true,
-      });
-
-      return RefreshTokenSchema.parse(decoded);
+      return {
+        userId: decoded.userId,
+        tenantId: decoded.tenantId,
+        sessionId: decoded.sessionId,
+        iat: decoded.iat,
+        exp: decoded.exp,
+      };
     } catch (error) {
       if (error instanceof jwt.JsonWebTokenError) {
         logger.warn('Invalid refresh token', { error: error.message });
@@ -212,7 +212,7 @@ export class JWTService {
         throw new Error('Token expired');
       }
 
-      logger.error('Refresh token verification failed', { error });
+      logger.error('Refresh token verification failed', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Token verification failed');
     }
   }
@@ -256,7 +256,7 @@ export class JWTService {
 
       const expiresIn = options?.expiresIn || '1h'; // Voice tokens expire in 1 hour
       const signOptions: jwt.SignOptions = {
-        expiresIn: typeof expiresIn === 'string' ? parseExpirationTime(expiresIn) : expiresIn,
+        expiresIn,
         issuer: tokenPayload.iss,
         audience: tokenPayload.aud,
       };
@@ -276,10 +276,9 @@ export class JWTService {
       const decoded = jwt.verify(token, this.accessTokenSecret, {
         issuer: this.defaultIssuer,
         audience: 'sitespeak-voice',
-      }) as jwt.JwtPayload;
+      }) as VoiceJWTPayload;
 
-      const payload = VoiceJWTPayloadSchema.parse(decoded);
-      return payload;
+      return decoded;
     } catch (error) {
       if (error instanceof jwt.JsonWebTokenError) {
         logger.warn('Invalid voice token', { error: error.message });
@@ -291,12 +290,7 @@ export class JWTService {
         throw new Error('Voice token expired');
       }
 
-      if (error instanceof z.ZodError) {
-        logger.warn('Voice token payload validation failed', { error: error.errors });
-        throw new Error('Invalid voice token format');
-      }
-
-      logger.error('Voice token verification failed', { error });
+      logger.error('Voice token verification failed', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Voice token verification failed');
     }
   }

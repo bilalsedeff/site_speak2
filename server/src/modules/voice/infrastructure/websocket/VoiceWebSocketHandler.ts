@@ -76,7 +76,7 @@ export class VoiceWebSocketHandler {
       this.cleanupInactiveSessions();
     }, 2 * 60 * 1000);
 
-    logger.info('Voice WebSocket Handler initialized');
+    logger.info('Voice WebSocket Handler initialized', { developmentAuth: process.env['NODE_ENV'] === 'development' });
   }
 
   /**
@@ -153,10 +153,26 @@ export class VoiceWebSocketHandler {
   }
 
   /**
-   * Authenticate WebSocket connection using JWT
+   * Authenticate WebSocket connection using JWT (optional in development)
    */
   private async authenticateConnection(socket: Socket): Promise<WsAuth> {
-    const token = socket.handshake.auth['token'] || socket.handshake.query['token'];
+    const token = socket.handshake.auth['token'] || socket.handshake.auth['accessToken'] || socket.handshake.query['token'];
+    const sessionId = socket.handshake.auth['sessionId'] || socket.handshake.query['sessionId'];
+    
+    // For development: Allow connections without authentication
+    if (process.env['NODE_ENV'] === 'development' && !token) {
+      logger.info('WebSocket connection authenticated (development mode)', {
+        socketId: socket.id,
+        sessionId: sessionId || 'none'
+      });
+      
+      return {
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        siteId: '00000000-0000-0000-0000-000000000000',
+        userId: `dev-ws-user-${Date.now()}`,
+        locale: 'en-US',
+      };
+    }
     
     if (!token) {
       throw new Error('No authentication token provided');

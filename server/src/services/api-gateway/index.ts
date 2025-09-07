@@ -44,13 +44,7 @@ export function createAPIGateway(config: APIGatewayConfig = {}): express.Router 
 
   const gateway = express.Router();
 
-  logger.info('Initializing API Gateway', {
-    enableAuth,
-    enableRateLimit,
-    enableCors,
-    corsOrigins,
-    apiPrefix
-  });
+  // Gateway router creation (logging handled by initializeAPIGateway)
 
   // 1. Request ID middleware (already handled by server)
   
@@ -136,8 +130,7 @@ export function createAPIGateway(config: APIGatewayConfig = {}): express.Router 
   // Mount v1 router
   gateway.use('/v1', v1Router);
 
-  // Health endpoints (public, no versioning)
-  setupHealthRoutes(gateway);
+  // Health endpoints handled by infrastructure/monitoring routes
 
   // 404 handler for unknown routes
   gateway.use('*', (req, res) => {
@@ -156,7 +149,6 @@ export function createAPIGateway(config: APIGatewayConfig = {}): express.Router 
   // Error handling middleware (must be last)
   gateway.use(problemDetailsHandler());
 
-  logger.info('API Gateway initialized successfully');
   return gateway;
 }
 
@@ -240,158 +232,7 @@ async function setupV1Routes(router: express.Router, config: { enableAuth: boole
   }
 }
 
-/**
- * Setup health check routes (unversioned)
- */
-function setupHealthRoutes(router: express.Router) {
-  // Basic health check
-  router.get('/health', async (_req, res) => {
-    try {
-      const health = await performHealthChecks();
-      const status = health.healthy ? 200 : 503;
-      
-      res.status(status).json({
-        status: health.healthy ? 'healthy' : 'unhealthy',
-        timestamp: new Date().toISOString(),
-        version: '1.0.0',
-        service: 'api-gateway',
-        checks: health.checks,
-        ...(health.issues.length > 0 && { issues: health.issues })
-      });
-    } catch (error) {
-      res.status(503).json({
-        status: 'error',
-        timestamp: new Date().toISOString(),
-        service: 'api-gateway',
-        error: 'Health check failed'
-      });
-    }
-  });
-
-  // Kubernetes liveness probe
-  router.get('/health/live', (_req, res) => {
-    res.json({
-      status: 'alive',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      service: 'api-gateway'
-    });
-  });
-
-  // Kubernetes readiness probe
-  router.get('/health/ready', async (_req, res) => {
-    try {
-      const health = await performHealthChecks();
-      const status = health.healthy ? 200 : 503;
-      
-      res.status(status).json({
-        status: health.healthy ? 'ready' : 'not-ready',
-        timestamp: new Date().toISOString(),
-        service: 'api-gateway',
-        checks: health.checks
-      });
-    } catch (error) {
-      res.status(503).json({
-        status: 'error',
-        timestamp: new Date().toISOString(),
-        service: 'api-gateway',
-        error: 'Readiness check failed'
-      });
-    }
-  });
-}
-
-/**
- * Perform comprehensive health checks
- */
-async function performHealthChecks(): Promise<{
-  healthy: boolean;
-  checks: Record<string, any>;
-  issues: string[];
-}> {
-  const checks: Record<string, any> = {};
-  const issues: string[] = [];
-
-  try {
-    // Check database connectivity
-    const { checkDatabaseHealth } = await import('../../infrastructure/database');
-    checks['database'] = await checkDatabaseHealth();
-  } catch (error) {
-    checks['database'] = { healthy: false, error: 'Database connection failed' };
-    issues.push('Database unavailable');
-  }
-
-  try {
-    // Check Redis connectivity (if available)
-    // This would be implemented when Redis is added
-    // Check Redis connectivity (if available)
-    // This would be implemented when Redis is added
-    checks['redis'] = { healthy: true, note: 'Not implemented yet' };
-  } catch (error) {
-    checks['redis'] = { healthy: false, error: 'Redis connection failed' };
-  }
-
-  try {
-    // Check OpenAI API connectivity
-    // Check OpenAI API connectivity
-    checks['openai'] = { 
-      healthy: !!process.env['OPENAI_API_KEY'],
-      note: process.env['OPENAI_API_KEY'] ? 'API key configured' : 'API key missing'
-    };
-    if (!process.env['OPENAI_API_KEY']) {
-      issues.push('OpenAI API key not configured');
-    }
-  } catch (error) {
-    checks['openai'] = { healthy: false, error: 'OpenAI check failed' };
-  }
-
-  try {
-    // Check voice services
-    const { voiceOrchestrator } = await import('../../services/voice');
-    const voiceStatus = voiceOrchestrator.getStatus();
-    checks['voice'] = { 
-      healthy: voiceStatus.isRunning,
-      activeSessions: voiceStatus.activeSessions,
-      performance: voiceStatus.performance
-    };
-  } catch (error) {
-    checks['voice'] = { healthy: false, error: 'Voice services check failed' };
-    issues.push('Voice services unavailable');
-  }
-
-  try {
-    // Check analytics service
-    const { checkAnalyticsHealth } = await import('../_shared/analytics');
-    const analyticsHealth = checkAnalyticsHealth();
-    checks['analytics'] = analyticsHealth;
-    if (!analyticsHealth.healthy) {
-      issues.push('Analytics service unavailable');
-    }
-  } catch (error) {
-    checks['analytics'] = { healthy: false, error: 'Analytics service check failed' };
-    issues.push('Analytics service unavailable');
-  }
-
-  // Memory check
-  const memUsage = process.memoryUsage();
-  const memoryHealthy = memUsage.heapUsed < 1000 * 1024 * 1024; // 1GB limit
-  checks['memory'] = {
-    healthy: memoryHealthy,
-    heapUsed: memUsage.heapUsed,
-    heapTotal: memUsage.heapTotal,
-    external: memUsage.external,
-    rss: memUsage.rss
-  };
-  if (!memoryHealthy) {
-    issues.push('High memory usage detected');
-  }
-
-  // Overall health
-  const healthy = Object.values(checks).every(check => check.healthy) && issues.length === 0;
-
-  return { healthy, checks, issues };
-}
+// Health check functionality moved to infrastructure/monitoring for consolidation
 
 /**
  * Create and initialize the API Gateway

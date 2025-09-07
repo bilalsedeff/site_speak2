@@ -103,11 +103,6 @@ export function VoiceAssistant() {
     }
   }
 
-  const handleMinimize = () => {
-    setIsMinimized(true)
-    setIsOpen(false)
-  }
-
   const handleSuggestionClick = (query: string) => {
     // This would trigger the AI service with the suggested query
     console.log('Suggestion clicked:', query)
@@ -161,9 +156,9 @@ export function VoiceAssistant() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={handleMinimize}
+                    onClick={handleClose}
                     className="touch-target"
-                    aria-label="Minimize voice assistant"
+                    aria-label="Close voice assistant"
                   >
                     <X className="h-4 w-4" />
                   </Button>
