@@ -1,61 +1,48 @@
 import express from 'express';
 import { siteContractController } from './SiteContractController';
-// import { PublishingController } from './PublishingController'; // TODO: Set up proper dependency injection
+import { SiteController } from './SiteController';
+import { SiteOrchestrator } from '../application/services/SiteOrchestrator';
+import { HttpHeaders } from '../adapters/http/HttpHeaders';
+import { problemDetailsErrorHandler } from '../adapters/http/ProblemDetails';
+import { EventBus } from '../../../services/_shared/events/eventBus';
 
 const router = express.Router();
 
+// Initialize dependencies (in production, use proper DI container)
+const eventBus = new EventBus();
+const siteOrchestrator = new SiteOrchestrator({} as any, eventBus); // Repository would be injected
+const siteController = new SiteController({} as any, siteOrchestrator); // Repository would be injected
+
+// Add CORS and security headers
+router.use(HttpHeaders.corsHeaders);
+router.use(HttpHeaders.securityHeaders);
+
 // Health check
 router.get('/health', (_req, res) => {
-  res.json({ status: 'healthy', service: 'sites' });
-});
-
-// Basic sites CRUD endpoints
-router.get('/', (_req, res) => {
-  // Return empty array for now - implement site listing later
-  res.json({
-    sites: [],
-    total: 0,
-    page: 1,
-    limit: 10
+  res.json({ 
+    status: 'healthy', 
+    service: 'sites',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
   });
 });
 
-router.get('/:siteId', (_req, res) => {
-  res.json({
-    id: _req.params.siteId,
-    name: 'Example Site',
-    domain: 'example.com',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
-});
+// Enhanced Sites CRUD endpoints with HTTP standards compliance
+router.get('/', siteController.listSites.bind(siteController));
+router.get('/:siteId', siteController.getSite.bind(siteController));
+router.post('/', siteController.createSite.bind(siteController));
+router.put('/:siteId', siteController.updateSite.bind(siteController));
+router.delete('/:siteId', siteController.deleteSite.bind(siteController));
 
-router.post('/', (_req, res) => {
-  res.status(201).json({
-    id: 'site-' + Date.now(),
-    name: 'New Site',
-    domain: 'new-site.com',
-    status: 'draft',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
-});
+// Publishing endpoints with orchestration
+router.post('/:siteId/publish', siteController.publishSite.bind(siteController));
+router.get('/:siteId/publish/:correlationId', siteController.getPublishStatus.bind(siteController));
 
-router.put('/:siteId', (_req, res) => {
-  res.json({
-    id: _req.params.siteId,
-    name: 'Updated Site',
-    domain: 'updated-site.com',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
-});
+// Domain management endpoints
+router.post('/:siteId/domains', siteController.connectDomain.bind(siteController));
 
-router.delete('/:siteId', (_req, res) => {
-  res.status(204).send();
-});
+// Asset upload endpoints
+router.post('/:siteId/assets/presign', siteController.presignAssetUpload.bind(siteController));
 
 // Legacy site contract endpoints (existing)
 router.post('/:siteId/contract/generate', siteContractController.generateContract.bind(siteContractController));
@@ -67,11 +54,8 @@ router.get('/:siteId/contract/sitemap.xml', siteContractController.generateSitem
 router.post('/:siteId/contract/validate', siteContractController.validateContract.bind(siteContractController));
 router.get('/:siteId/contract/analytics', siteContractController.getContractAnalytics.bind(siteContractController));
 
-// Publishing endpoints (deployment pipeline)
-// TODO: Implement proper dependency injection for PublishingController
-// router.post('/:siteId/publish', publishingController.publishSite.bind(publishingController));
-// router.get('/:siteId/deployments/:deploymentId', publishingController.getDeploymentStatus.bind(publishingController));
-// router.post('/:siteId/deployments/rollback', publishingController.rollbackDeployment.bind(publishingController));
-// router.get('/:siteId/deployments', publishingController.getDeploymentHistory.bind(publishingController));
+// Error handling middleware (must be last)
+router.use(problemDetailsErrorHandler);
 
-export { router as siteContractRoutes };
+export { router as sitesRoutes };
+export { router as siteContractRoutes }; // Backward compatibility alias

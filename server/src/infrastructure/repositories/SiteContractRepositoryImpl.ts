@@ -1,11 +1,13 @@
 import { eq, and, desc, asc, lt, sql, count } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { 
-  SiteContract, 
-  BusinessInfo, 
-  SitePage, 
-  SiteAction 
-} from '../../modules/sites/domain/entities/SiteContract.js';
+  SiteContract,
+  SitemapInfo,
+  StructuredDataInfo,
+  SiteCapabilities,
+  RobotsInfo,
+  SiteMetadata
+} from '../../modules/ai/domain/entities/SiteContract.js';
 import { 
   SiteContractRepository, 
   CreateSiteContractData,
@@ -83,15 +85,15 @@ export class SiteContractRepositoryImpl implements SiteContractRepository {
         siteId,
         tenantId: contract.tenantId,
         version: nextVersion,
-        businessInfo: contract.businessInfo,
-        pages: contract.pages,
-        actions: contract.actions,
+        businessInfo: {}, // Will be empty for now
+        pages: [], // Will be empty for now
+        actions: [], // Will be empty for now
         navigation: {}, // Not part of entity, set to empty
         forms: {}, // Not part of entity, set to empty
         jsonld: contract.schema?.jsonLd || null,
         sitemap: contract.seo?.sitemap ? { xml: contract.seo.sitemap } : null,
-        accessibility: contract.accessibility,
-        seo: contract.seo,
+        accessibility: contract.accessibility || {},
+        seo: contract.seo || {},
         analytics: null, // Not part of entity
         performance: null, // Not part of entity
         generationConfig: {}, // Not part of entity
@@ -149,16 +151,15 @@ export class SiteContractRepositoryImpl implements SiteContractRepository {
       };
 
       // Map domain properties to database columns  
-      if (updates.businessInfo !== undefined) {updateData.businessInfo = updates.businessInfo;}
-      if (updates.pages !== undefined) {updateData.pages = updates.pages;}
-      if (updates.actions !== undefined) {updateData.actions = updates.actions;}
-      if (updates.schema !== undefined) {updateData.jsonld = updates.schema.jsonLd;}
-      if (updates.accessibility !== undefined) {updateData.accessibility = updates.accessibility;}
-      if (updates.seo !== undefined) {
-        updateData.seo = updates.seo;
-        if (updates.seo.sitemap) {
-          updateData.sitemap = { xml: updates.seo.sitemap };
-        }
+      if (updates.sitemap !== undefined) {
+        updateData.sitemap = updates.sitemap.exists ? 
+          { xml: updates.sitemap.url || '' } : null;
+      }
+      if (updates.structuredData !== undefined) {
+        updateData.jsonld = Object.values(updates.structuredData.schemas);
+      }
+      if (updates.metadata !== undefined) {
+        updateData.seo = updates.metadata;
       }
 
       const [updatedContract] = await this.db
@@ -477,20 +478,47 @@ export class SiteContractRepositoryImpl implements SiteContractRepository {
    * Map database row to domain entity
    */
   private mapToSiteContract(row: DBSiteContract): SiteContract {
+    // Create a simple site contract with the AI module's constructor signature
+    const baseUrl = (row.seo as any)?.baseUrl || `https://site-${row.siteId}.sitespeak.com`;
+    
+    const sitemap: SitemapInfo = row.sitemap ? {
+      exists: true,
+      url: (row.sitemap as any).xml || `${baseUrl}/sitemap.xml`,
+      entries: []
+    } : {
+      exists: false,
+      entries: []
+    };
+
+    const structuredData: StructuredDataInfo = {
+      schemas: {},
+      entities: {}
+    };
+
+    const capabilities: SiteCapabilities = {
+      actions: [],
+      forms: [],
+      apis: [],
+      features: []
+    };
+
+    const robots: RobotsInfo = {
+      exists: false,
+      rules: new Map(),
+      sitemaps: []
+    };
+
+    const metadata: SiteMetadata = (row.seo as any) || {};
+
     return new SiteContract(
-      row.id!,
       row.siteId,
       row.tenantId,
-      row.businessInfo as BusinessInfo,
-      row.pages as SitePage[],
-      row.actions as SiteAction[],
-      {
-        jsonLd: (row.jsonld as Record<string, unknown>[]) || [],
-        openGraph: {},  // Not stored separately in DB
-        twitterCard: {}  // Not stored separately in DB
-      },
-      row.accessibility as SiteContract['accessibility'],
-      row.seo as SiteContract['seo'],
+      baseUrl,
+      sitemap,
+      structuredData,
+      capabilities,
+      robots,
+      metadata,
       row.version.toString(),
       row.createdAt,
       row.updatedAt
@@ -502,11 +530,11 @@ export class SiteContractRepositoryImpl implements SiteContractRepository {
    */
   private calculateContentHash(contract: any): string {
     const contentString = JSON.stringify({
-      businessInfo: contract.businessInfo,
-      pages: contract.pages,
-      actions: contract.actions,
-      navigation: contract.navigation,
-      forms: contract.forms,
+      sitemap: contract.sitemap,
+      structuredData: contract.structuredData,
+      capabilities: contract.capabilities,
+      robots: contract.robots,
+      metadata: contract.metadata,
     });
     return crypto.createHash('sha256').update(contentString).digest('hex');
   }

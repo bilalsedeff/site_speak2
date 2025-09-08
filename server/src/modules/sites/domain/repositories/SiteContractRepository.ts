@@ -1,67 +1,13 @@
-import { SiteContract, BusinessInfo, SitePage, SiteAction } from '../entities/SiteContract.js';
+import { SiteContract } from '../../../ai/domain/entities/SiteContract.js';
 
 /**
- * Data interface for creating site contracts
- */
-export interface CreateSiteContractData {
-  id: string;
-  tenantId: string;
-  businessInfo: BusinessInfo;
-  pages: SitePage[];
-  actions: SiteAction[];
-  schema: {
-    jsonLd: Record<string, unknown>[];
-    openGraph: Record<string, string>;
-    twitterCard: Record<string, string>;
-  };
-  accessibility: {
-    wcagLevel: 'A' | 'AA' | 'AAA';
-    features: string[];
-    testing: {
-      lastTested?: Date;
-      score?: number;
-      issues?: Array<{
-        type: string;
-        description: string;
-        severity: 'low' | 'medium' | 'high' | 'critical';
-      }>;
-    };
-  };
-  seo: {
-    sitemap: string;
-    robotsTxt: string;
-    metaTags: Record<string, string>;
-    structuredData: Record<string, unknown>[];
-  };
-}
-
-/**
- * Site Contract Repository interface
+ * Site Contract Repository Interface
  */
 export interface SiteContractRepository {
-  /**
-   * Find site contract by site ID
-   */
   findBySiteId(siteId: string): Promise<SiteContract | null>;
-
-  /**
-   * Create new site contract
-   */
   create(siteId: string, contract: CreateSiteContractData): Promise<SiteContract>;
-
-  /**
-   * Update existing site contract
-   */
-  update(siteId: string, contract: Partial<SiteContract>): Promise<SiteContract | null>;
-
-  /**
-   * Delete site contract
-   */
+  update(siteId: string, updates: Partial<SiteContract>): Promise<SiteContract | null>;
   delete(siteId: string): Promise<boolean>;
-
-  /**
-   * Find contracts by tenant ID with pagination
-   */
   findByTenantId(
     tenantId: string,
     options?: {
@@ -77,48 +23,51 @@ export interface SiteContractRepository {
     limit: number;
     totalPages: number;
   }>;
-
-  /**
-   * Search contracts by name or description
-   */
   search(query: string, tenantId?: string): Promise<SiteContract[]>;
-
-  /**
-   * Find contracts that need regeneration
-   */
   findOutdated(olderThanDays: number): Promise<SiteContract[]>;
-
-  /**
-   * Get contract version history
-   */
   getVersionHistory(siteId: string): Promise<SiteContract[]>;
-
-  /**
-   * Archive old contract versions
-   */
   archiveOldVersions(siteId: string, keepLatestN: number): Promise<number>;
 }
 
 /**
- * Site Contract repository errors
+ * Data required to create a new site contract
+ */
+export interface CreateSiteContractData {
+  tenantId: string;
+  sitemap?: import('../../../ai/domain/entities/SiteContract.js').SitemapInfo;
+  structuredData?: import('../../../ai/domain/entities/SiteContract.js').StructuredDataInfo;
+  capabilities?: import('../../../ai/domain/entities/SiteContract.js').SiteCapabilities;
+  robots?: import('../../../ai/domain/entities/SiteContract.js').RobotsInfo;
+  metadata?: import('../../../ai/domain/entities/SiteContract.js').SiteMetadata;
+  schema?: {
+    jsonLd?: Record<string, unknown>[];
+  };
+  accessibility?: unknown;
+  seo?: {
+    sitemap?: string;
+  };
+}
+
+/**
+ * Repository Error Classes
  */
 export class SiteContractNotFoundError extends Error {
   constructor(siteId: string) {
-    super(`Site contract not found: ${siteId}`);
+    super(`Site contract not found for site: ${siteId}`);
     this.name = 'SiteContractNotFoundError';
   }
 }
 
 export class SiteContractCreateError extends Error {
-  constructor(reason: string) {
-    super(`Failed to create site contract: ${reason}`);
+  constructor(message: string) {
+    super(`Failed to create site contract: ${message}`);
     this.name = 'SiteContractCreateError';
   }
 }
 
 export class SiteContractUpdateError extends Error {
-  constructor(reason: string) {
-    super(`Failed to update site contract: ${reason}`);
+  constructor(message: string) {
+    super(`Failed to update site contract: ${message}`);
     this.name = 'SiteContractUpdateError';
   }
 }

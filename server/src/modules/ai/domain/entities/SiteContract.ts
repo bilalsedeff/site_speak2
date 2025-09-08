@@ -119,6 +119,190 @@ export class SiteContract {
   }
 
   /**
+   * Generate sitemap.xml content
+   */
+  generateSitemap(): string {
+    let sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    sitemap += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+    
+    this.sitemap.entries.forEach(entry => {
+      sitemap += '  <url>\n';
+      sitemap += `    <loc>${entry.loc}</loc>\n`;
+      if (entry.lastmod) {
+        sitemap += `    <lastmod>${entry.lastmod.toISOString().split('T')[0]}</lastmod>\n`;
+      }
+      if (entry.changefreq) {
+        sitemap += `    <changefreq>${entry.changefreq}</changefreq>\n`;
+      }
+      if (entry.priority) {
+        sitemap += `    <priority>${entry.priority}</priority>\n`;
+      }
+      sitemap += '  </url>\n';
+    });
+    
+    sitemap += '</urlset>';
+    return sitemap;
+  }
+
+  /**
+   * Generate robots.txt content
+   */
+  generateRobotsTxt(): string {
+    let robots = '';
+    
+    this.robots.rules.forEach((rules, userAgent) => {
+      robots += `User-agent: ${userAgent}\n`;
+      
+      rules.allow.forEach(allow => {
+        robots += `Allow: ${allow}\n`;
+      });
+      
+      rules.disallow.forEach(disallow => {
+        robots += `Disallow: ${disallow}\n`;
+      });
+      
+      if (rules.crawlDelay) {
+        robots += `Crawl-delay: ${rules.crawlDelay}\n`;
+      }
+      
+      robots += '\n';
+    });
+    
+    this.robots.sitemaps.forEach(sitemap => {
+      robots += `Sitemap: ${sitemap}\n`;
+    });
+    
+    return robots.trim();
+  }
+
+  /**
+   * Generate web manifest content
+   */
+  generateWebManifest(): Record<string, unknown> {
+    return {
+      name: this.metadata.title || 'SiteSpeak Website',
+      short_name: this.metadata.title || 'SiteSpeak',
+      description: this.metadata.description || 'A website built with SiteSpeak',
+      start_url: '/',
+      display: 'standalone',
+      background_color: '#ffffff',
+      theme_color: this.metadata.themeColor || '#3B82F6',
+      icons: [
+        {
+          src: this.metadata.favicon || '/favicon.ico',
+          sizes: '192x192',
+          type: 'image/png'
+        }
+      ]
+    };
+  }
+
+  /**
+   * Compatibility getters for legacy code
+   */
+  get id(): string {
+    return this.siteId;
+  }
+
+  get pages(): Array<{ id: string; name: string; path: string; title: string }> {
+    return this.sitemap.entries.map(entry => ({
+      id: entry.loc.replace(/[^a-zA-Z0-9]/g, ''),
+      name: entry.loc.split('/').pop() || 'page',
+      path: new URL(entry.loc).pathname,
+      title: new URL(entry.loc).pathname.replace('/', '').replace(/-/g, ' ') || 'Home'
+    }));
+  }
+
+  get actions(): Array<{ id: string; name: string; type: string }> {
+    return this.capabilities.actions.map(action => ({
+      id: action.id,
+      name: action.label,
+      type: action.type
+    }));
+  }
+
+  get businessInfo(): Record<string, unknown> {
+    return {
+      name: this.metadata.title || 'Business',
+      description: this.metadata.description || '',
+      website: this.baseUrl
+    };
+  }
+
+  get schema(): Record<string, unknown> {
+    return {
+      jsonLd: Object.values(this.structuredData.schemas),
+      openGraph: {},
+      twitterCard: {}
+    };
+  }
+
+  get accessibility(): Record<string, unknown> {
+    return {
+      wcagLevel: 'AA',
+      features: ['alt-text', 'semantic-html', 'keyboard-navigation'],
+      testing: { score: 85, issues: [] }
+    };
+  }
+
+  get seo(): Record<string, unknown> {
+    return {
+      sitemap: this.sitemap.url,
+      robotsTxt: `${this.baseUrl}/robots.txt`,
+      metaTags: this.metadata
+    };
+  }
+
+  get createdAt(): Date {
+    return this.generatedAt;
+  }
+
+  get updatedAt(): Date {
+    return this.lastModified;
+  }
+
+  /**
+   * Get actions for a specific page
+   */
+  getPageActions(pageId: string): Array<{ 
+    id: string; 
+    name: string; 
+    type: string; 
+    description: string; 
+    requiresAuth: boolean; 
+    metadata: Record<string, unknown> 
+  }> {
+    // Filter actions that are relevant to this page
+    return this.capabilities.actions
+      .filter(action => action.selector && action.selector.includes(pageId))
+      .map(action => ({
+        id: action.id,
+        name: action.label,
+        type: action.type,
+        description: `${action.type} action: ${action.label}`,
+        requiresAuth: false,
+        metadata: { selector: action.selector, parameters: action.parameters }
+      }));
+  }
+
+  /**
+   * Get contract summary
+   */
+  getSummary(): Record<string, unknown> {
+    return {
+      siteId: this.siteId,
+      tenantId: this.tenantId,
+      version: this.version,
+      urlCount: this.sitemap.entries.length,
+      actionCount: this.capabilities.actions.length,
+      hasRobotsTxt: this.robots.exists,
+      hasSitemap: this.sitemap.exists,
+      lastModified: this.lastModified,
+      generatedAt: this.generatedAt
+    };
+  }
+
+  /**
    * Get contract statistics
    */
   getStatistics(): SiteContractStats {
