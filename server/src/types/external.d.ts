@@ -136,11 +136,7 @@ declare module 'stripe' {
 
 declare module '@discordjs/opus' {
   export class OpusEncoder {
-    constructor(options: {
-      rate: number;
-      channels: number;
-      application: number;
-    });
+    constructor(sampleRate: number, channels: number);
 
     encode(buffer: Int16Array): Buffer;
     applyEncoderCTL(ctl: number, value: number): void;
@@ -161,5 +157,19 @@ declare module '@wasm-codecs/opus' {
     encode(buffer: Int16Array): Buffer;
     encodeFloat(buffer: Float32Array): Buffer;
     cleanup(): Promise<void>;
+  }
+}
+
+declare module 'opus-media-recorder' {
+  export default class OpusMediaRecorder {
+    constructor(stream: MediaStream, options?: {
+      mimeType?: string;
+      audioBitsPerSecond?: number;
+    });
+    
+    start(): void;
+    stop(): void;
+    ondataavailable?: (event: { data: Blob }) => void;
+    onstop?: () => void;
   }
 }

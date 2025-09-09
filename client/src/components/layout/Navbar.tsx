@@ -16,7 +16,6 @@ import {
 import { useAppSelector, useAppDispatch } from '@/store'
 import { toggleSidebar, openModal } from '@/store/slices/uiSlice'
 import { Button } from '@/components/ui/Button'
-import { useVoice } from '@/providers/VoiceProvider'
 import { cn } from '@/lib/utils'
 
 const navigationItems = [
@@ -56,21 +55,10 @@ export function Navbar() {
   const [location, navigate] = useLocation()
   const dispatch = useAppDispatch()
   const { isOpen: sidebarOpen } = useAppSelector(state => state.ui.sidebar)
-  const { isListening, startListening } = useVoice()
   const [isCollapsed, setIsCollapsed] = useState(false)
 
   const handleNavigation = (path: string) => {
     navigate(path)
-  }
-
-  const handleVoiceToggle = async () => {
-    if (!isListening) {
-      try {
-        await startListening()
-      } catch (error) {
-        console.error('Failed to start listening:', error)
-      }
-    }
   }
 
   if (!sidebarOpen) {
@@ -133,22 +121,6 @@ export function Navbar() {
         </div>
       </div>
 
-      {/* Voice Assistant Quick Access */}
-      <div className="p-4 border-b border-border">
-        <Button
-          onClick={handleVoiceToggle}
-          className={cn(
-            "w-full justify-start voice-button",
-            isCollapsed && "justify-center px-2",
-            isListening && "listening"
-          )}
-        >
-          <Mic className={cn("h-4 w-4", !isCollapsed && "mr-2")} />
-          {!isCollapsed && (
-            <span>{isListening ? 'Listening...' : 'Voice Assistant'}</span>
-          )}
-        </Button>
-      </div>
 
       {/* Navigation Items */}
       <div className="flex-1 py-4">

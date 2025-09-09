@@ -68,7 +68,7 @@ export class OpusFramer extends EventEmitter {
   private stats: FrameStats;
   private encodingTimes: number[] = [];
   private frameSizes: number[] = [];
-  private opusEncoder: any = null; // Lazy-loaded Opus encoder
+  private opusEncoder: import('./OpusEncoder.js').OpusEncoder | null = null; // Lazy-loaded Opus encoder
 
   // Frame timing
   private frameSize: number; // Samples per frame
@@ -103,7 +103,7 @@ export class OpusFramer extends EventEmitter {
   /**
    * Start the Opus framer
    */
-  start(): void {
+  async start(): Promise<void> {
     if (this.isActive) {
       logger.warn('OpusFramer already active');
       return;
@@ -330,54 +330,23 @@ export class OpusFramer extends EventEmitter {
       const encodedFrame = await this.opusEncoder.encode(pcmData);
       
       if (encodedFrame) {
-        return encodedFrame.data.buffer.slice(
+        const buffer = encodedFrame.data.buffer;
+        const arrayBuffer = buffer instanceof SharedArrayBuffer 
+          ? (buffer.slice(0) as unknown as ArrayBuffer) 
+          : buffer;
+        return arrayBuffer.slice(
           encodedFrame.data.byteOffset,
           encodedFrame.data.byteOffset + encodedFrame.data.byteLength
         );
       } else {
-        // Fallback to mock encoding if real encoder fails
-        logger.warn('Opus encoder failed, falling back to mock');
-        return this.simulateOpusEncoding(pcmData);
+        throw new Error('Opus encoder returned no data');
       }
     } catch (error) {
-      logger.error('Opus encoding error, falling back to mock', { error });
-      return this.simulateOpusEncoding(pcmData);
+      logger.error('Opus encoding error', { error });
+      throw error;
     }
   }
 
-  /**
-   * Fallback mock encoding for when real encoder is not available
-   */
-  private async simulateOpusEncoding(pcmData: Int16Array): Promise<ArrayBuffer> {
-    // Simple compression simulation: downsample and pack
-    const compressionRatio = 0.1; // Opus typically achieves ~10:1 for speech
-    const outputSize = Math.floor(pcmData.byteLength * compressionRatio);
-    const outputBuffer = new ArrayBuffer(outputSize);
-    const outputView = new Int16Array(outputBuffer);
-
-    // Simulate Opus compression by downsampling and applying simple encoding
-    const step = Math.floor(pcmData.length / outputView.length);
-    for (let i = 0; i < outputView.length; i++) {
-      const sourceIndex = i * step;
-      if (sourceIndex < pcmData.length) {
-        // Simple compression: average nearby samples
-        let sum = 0;
-        let count = 0;
-        for (let j = 0; j < step && sourceIndex + j < pcmData.length; j++) {
-          const sample = pcmData[sourceIndex + j];
-          if (sample !== undefined) {
-            sum += sample;
-            count++;
-          }
-        }
-        if (outputView && count > 0) {
-          outputView[i] = Math.floor(sum / count);
-        }
-      }
-    }
-
-    return outputBuffer;
-  }
 
   /**
    * Generate redundant frame for error recovery

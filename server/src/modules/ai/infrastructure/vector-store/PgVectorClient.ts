@@ -329,14 +329,13 @@ export class PgVectorClient {
    * Semantic search with auto-embedding generation
    */
   async semanticSearch(request: SemanticSearchRequest): Promise<SemanticSearchResult[]> {
-    // This would typically generate embeddings for the query
-    // For now, we'll simulate it
-    const mockEmbedding = Array.from({ length: 1536 }, () => Math.random());
+    const { embeddingService } = await import('../../application/services/EmbeddingService.js');
+    const queryEmbedding = await embeddingService.generateEmbedding(request.query);
 
     const query: NNQuery = {
       tenantId: request.tenantId,
       siteId: request.siteId,
-      embedding: mockEmbedding,
+      embedding: queryEmbedding,
       k: request.topK || 8,
       ...(request.locale && { locale: request.locale }),
       ...(request.filters && { filter: request.filters }),

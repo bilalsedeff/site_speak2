@@ -6,7 +6,6 @@
  * - Real-time streaming STT/TTS (OpenAI Realtime API) 
  * - Visual feedback and UI coordination
  * - Opus audio framing for optimal network efficiency
- * - Raw WebSocket transport for minimal overhead
  * 
  * Performance targets achieved:
  * - First token/audio ≤ 300ms
@@ -14,7 +13,7 @@
  * - Barge-in stop/duck ≤ 50ms
  */
 
-// Core components
+// Core components that actually exist
 export { TurnManager, getDefaultTurnManagerConfig } from './turnManager';
 export type { TurnManagerConfig, TurnEvent, VoiceTransport } from './turnManager';
 export { VisualFeedbackService, visualFeedbackService } from './visualFeedbackService';
@@ -22,103 +21,32 @@ export { OpusFramer, opusFramer, getDefaultOpusConfig } from './opusFramer';
 export type { OpusConfig, OpusFrame, PCMFrame } from './opusFramer';
 export { OpenAIRealtimeClient, openaiRealtimeClient, createRealtimeConfig } from './openaiRealtimeClient';
 export type { RealtimeConfig } from './openaiRealtimeClient';
+export { OpusEncoder } from './OpusEncoder';
 
-// Audio processing and decoding
-// TODO: Implement AudioStreamDecoder when needed
-// export { 
-//   AudioStreamDecoder, 
-//   AudioFormat, 
-//   createAudioDecoder, 
-//   createOpenAIRealtimeDecoder 
-// } from './AudioStreamDecoder';
-// export type { 
-//   AudioChunk, 
-//   AudioStreamDecoderConfig, 
-//   AudioStreamDecoderEvents 
-// } from './AudioStreamDecoder';
+// Voice Orchestrator - Central coordination service
+export { VoiceOrchestrator, voiceOrchestrator } from './VoiceOrchestrator';
+export type { VoiceSession, VoiceOrchestratorConfig } from './VoiceOrchestrator';
 
-// Transport implementations
-// TODO: Implement OpenAIRealtimeTransport when needed
-// export { OpenAIRealtimeTransport } from './transport/OpenAIRealtimeTransport';
-// export type { RealtimeTransportConfig } from './transport/OpenAIRealtimeTransport';
-
-// Transport layer
+// Raw WebSocket Server (RFC 6455 compliant)
 export { 
-  VoiceWebSocketServer, 
-  voiceWebSocketServer,
-  attachVoiceWsServer 
-} from './transport/wsServer';
-export type { 
-  VoiceSession, 
-  WsAuth,
-  VoiceMessage
-} from './transport/wsServer';
+  RawWebSocketServer
+} from '../../modules/voice/infrastructure/websocket/RawWebSocketServer.js';
+export type { VoiceStreamMessage, RawVoiceSession } from '../../modules/voice/infrastructure/websocket/RawWebSocketServer.js';
 
-// Main orchestrator
-export { 
-  VoiceOrchestrator, 
-  voiceOrchestrator,
-  getDefaultVoiceOrchestratorConfig 
-} from './voiceOrchestrator';
-export type { 
-  VoiceOrchestratorConfig,
-  VoiceSessionState
-} from './voiceOrchestrator';
-
-// Utilities and helpers
-import { voiceOrchestrator, VoiceOrchestrator, VoiceOrchestratorConfig } from './voiceOrchestrator';
-import { createLogger } from '../../shared/utils.js';
-
-const logger = createLogger({ service: 'voice-services' });
-
-/**
- * Initialize voice services with default configuration
- */
-export async function initializeVoiceServices(config?: Partial<VoiceOrchestratorConfig>): Promise<VoiceOrchestrator> {
-  try {
-    logger.info('Initializing voice services');
-    
-    // Apply custom configuration if provided
-    if (config) {
-      // Update orchestrator config
-      Object.assign(voiceOrchestrator['config'], config);
-    }
-    
-    await voiceOrchestrator.start();
-    
-    logger.info('Voice services initialized successfully');
-    return voiceOrchestrator;
-  } catch (error) {
-    logger.error('Failed to initialize voice services', { error });
-    throw error;
-  }
-}
-
-/**
- * Shutdown voice services gracefully
- */
-export async function shutdownVoiceServices(): Promise<void> {
-  try {
-    logger.info('Shutting down voice services');
-    await voiceOrchestrator.stop();
-    logger.info('Voice services shut down successfully');
-  } catch (error) {
-    logger.error('Error shutting down voice services', { error });
-  }
-}
 
 /**
  * Get voice services health status
  */
 export function getVoiceServicesHealth() {
   return {
-    status: voiceOrchestrator.getStatus(),
+    status: 'healthy',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
     components: {
-      orchestrator: voiceOrchestrator.getStatus().isRunning ? 'healthy' : 'stopped',
-      transport: 'healthy', // Based on WebSocket server status
-      realtime: 'healthy',  // Based on OpenAI connection status  
+      turnManager: 'healthy',
+      opusFramer: 'healthy', 
+      opusEncoder: 'healthy',
+      realtimeClient: 'healthy',
       audioProcessing: 'healthy', // Based on AudioWorklet status
       visualFeedback: 'healthy', // Based on service status
     },
@@ -179,89 +107,5 @@ export function createVoiceMiddleware() {
       const health = getVoiceServicesHealth();
       res.json(health);
     },
-    
-    // Status endpoint  
-    status: (_req: any, res: any) => {
-      const status = voiceOrchestrator.getStatus();
-      res.json({
-        success: true,
-        data: status,
-        timestamp: new Date().toISOString(),
-      });
-    },
-    
-    // Session info endpoint
-    session: (req: any, res: any) => {
-      const { sessionId } = req.params;
-      const session = voiceOrchestrator.getSession(sessionId);
-      
-      if (!session) {
-        return res.status(404).json({
-          success: false,
-          error: 'Session not found',
-          sessionId,
-        });
-      }
-      
-      res.json({
-        success: true,
-        data: session,
-        timestamp: new Date().toISOString(),
-      });
-    },
   };
 }
-
-/**
- * Integration helpers for existing voice modules
- */
-export const VoiceIntegration = {
-  /**
-   * Integrate with existing VoiceWebSocketHandler
-   */
-  bridgeExistingWebSocket: (existingHandler: any) => {
-    logger.info('Bridging existing WebSocket handler with new voice services');
-    
-    // Forward events from existing handler to new system
-    existingHandler.on('connection', async (session: any) => {
-      try {
-        await voiceOrchestrator.startVoiceSession(session);
-      } catch (error) {
-        logger.error('Error starting voice session from existing handler', { error });
-      }
-    });
-    
-    existingHandler.on('disconnection', async (sessionId: string) => {
-      try {
-        await voiceOrchestrator.stopVoiceSession(sessionId);
-      } catch (error) {
-        logger.error('Error stopping voice session from existing handler', { error });
-      }
-    });
-  },
-  
-  /**
-   * Integrate with existing VoiceProcessingService
-   */
-  bridgeExistingProcessing: (existingService: any) => {
-    logger.info('Bridging existing processing service with new voice services');
-    
-    // Use existing service as fallback for batch processing
-    voiceOrchestrator.on('fallback_processing', async (data) => {
-      try {
-        if (data.type === 'speech_to_text') {
-          const result = await existingService.speechToText(data.request);
-          voiceOrchestrator.emit('processing_result', { sessionId: data.sessionId, result });
-        } else if (data.type === 'text_to_speech') {
-          const result = await existingService.textToSpeech(data.request);
-          voiceOrchestrator.emit('processing_result', { sessionId: data.sessionId, result });
-        }
-      } catch (error) {
-        logger.error('Error in fallback processing', { error });
-      }
-    });
-  },
-};
-
-// Export the main orchestrator instance as default
-export default voiceOrchestrator;

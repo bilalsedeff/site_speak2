@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 // Express Request extensions declared in server/src/types/express.d.ts — no runtime import
 import { createLogger } from '../../../shared/utils.js';
-import { universalAIAssistantService } from '../application/UniversalAIAssistantService.js';
+import { getUniversalAIAssistantService } from '../application/UniversalAIAssistantService.js';
 import { authenticateRequest, requireTenantAccess, requireAdminAccess } from '../../../shared/middleware/auth.js';
 import { createRateLimiter } from '../../../shared/middleware/rateLimit.js';
 import { actionDispatchController } from './ActionDispatchController.js';
@@ -46,7 +46,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
     // Extract tenantId from request context (will be properly implemented with auth middleware)
     const tenantId = req.headers['x-tenant-id'] as string || 'default-tenant';
 
-    const response = await universalAIAssistantService.processConversation({
+    const response = await getUniversalAIAssistantService().processConversation({
       input, 
       siteId, 
       tenantId,
@@ -100,7 +100,7 @@ router.post('/actions/register', async (req: Request, res: Response) => {
     // Extract tenantId from request context (will be properly implemented with auth middleware)
     const tenantId = req.headers['x-tenant-id'] as string || 'default-tenant';
 
-    await universalAIAssistantService.registerSiteActions(siteId, tenantId, actions);
+    await getUniversalAIAssistantService().registerSiteActions(siteId, tenantId, actions);
 
     res.json({
       success: true,
@@ -124,7 +124,7 @@ router.post('/actions/register', async (req: Request, res: Response) => {
 router.get('/actions/:siteId', async (req, res) => {
   try {
     const { siteId } = req.params;
-    const actions = universalAIAssistantService.getSiteActions(siteId);
+    const actions = getUniversalAIAssistantService().getSiteActions(siteId);
 
     res.json({
       success: true,
@@ -173,7 +173,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
       'Access-Control-Allow-Headers': 'Cache-Control',
     });
 
-    const streamGenerator = universalAIAssistantService.streamConversation({
+    const streamGenerator = getUniversalAIAssistantService().streamConversation({
       input,
       siteId,
       tenantId,
@@ -229,7 +229,7 @@ router.post('/actions/execute', async (req: Request, res: Response) => {
       correlationId: req.correlationId
     });
 
-    const result = await universalAIAssistantService.executeAction({
+    const result = await getUniversalAIAssistantService().executeAction({
       siteId,
       tenantId,
       actionName,
@@ -276,7 +276,7 @@ router.get('/sessions/:sessionId/history', async (req: Request, res: Response) =
       });
     }
     
-    const history = await universalAIAssistantService.getSessionHistory(sessionId);
+    const history = await getUniversalAIAssistantService().getSessionHistory(sessionId);
 
     res.json({
       success: true,
@@ -304,7 +304,7 @@ router.get('/sessions/:sessionId/history', async (req: Request, res: Response) =
  */
 router.get('/metrics', async (req: Request, res: Response) => {
   try {
-    const metrics = universalAIAssistantService.getMetrics();
+    const metrics = getUniversalAIAssistantService().getMetrics();
     
     res.json({
       success: true,

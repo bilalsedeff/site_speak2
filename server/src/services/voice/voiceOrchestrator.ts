@@ -1,77 +1,118 @@
 /**
- * Voice Orchestrator - Integration service for all voice components
+ * Voice Orchestrator - Central coordination service for voice interactions
  * 
- * Orchestrates the complete voice interaction pipeline:
- * - TurnManager (AudioWorklet, VAD, barge-in)
- * - VisualFeedbackService (UI hints and feedback)
- * - OpusFramer (low-latency audio encoding)
- * - VoiceWebSocketServer (real-time transport)
- * - OpenAIRealtimeClient (streaming STT/TTS)
- * 
- * Provides high-level API for voice features while coordinating
- * all components to meet performance targets.
+ * Bridges API routes with voice services, managing:
+ * - Session lifecycle and state management
+ * - WebSocket connections (Raw + Socket.IO hybrid)
+ * - Performance monitoring and health checks
+ * - Integration with AI services and real-time processing
  */
 
 import { EventEmitter } from 'events';
 import { createLogger } from '../../shared/utils.js';
-import { TurnManager, TurnManagerConfig, TurnEvent } from './turnManager';
-import { VisualFeedbackService, visualFeedbackService } from './visualFeedbackService';
-import { OpusFramer, opusFramer, PCMFrame } from './opusFramer';
-import { VoiceWebSocketServer, VoiceSession } from './transport/wsServer';
-import { OpenAIRealtimeClient, createRealtimeConfig, RealtimeConfig } from './openaiRealtimeClient';
-import { analyticsHelpers } from '../_shared/analytics/index.js';
+import { TurnManager } from './turnManager.js';
+import { VisualFeedbackService } from './visualFeedbackService.js';
+import { OpusFramer, getDefaultOpusConfig } from './opusFramer.js';
+import { OpenAIRealtimeClient, createRealtimeConfig } from './openaiRealtimeClient.js';
+import type { VoiceWebSocketHandler } from '../../modules/voice/infrastructure/websocket/VoiceWebSocketHandler.js';
+import type { RawWebSocketServer } from '../../modules/voice/infrastructure/websocket/RawWebSocketServer.js';
+import type { UniversalAIAssistantService } from '../../modules/ai/application/UniversalAIAssistantService.js';
 
 const logger = createLogger({ service: 'voice-orchestrator' });
 
-// Orchestrator configuration
-export interface VoiceOrchestratorConfig {
-  turnManager: Partial<TurnManagerConfig>;
-  realtime: Partial<RealtimeConfig>;
-  transport: {
-    port: number;
-    maxConnections: number;
-  };
-  performance: {
-    targetFirstTokenMs: number;
-    targetPartialLatencyMs: number;
-    targetBargeInMs: number;
-  };
-}
-
-// Voice session state
-export interface VoiceSessionState {
+export interface VoiceSession {
   id: string;
   tenantId: string;
-  siteId: string;
+  siteId?: string;
   userId?: string;
-  status: 'initializing' | 'ready' | 'listening' | 'processing' | 'speaking' | 'error';
+  status: 'initializing' | 'ready' | 'listening' | 'processing' | 'speaking' | 'ended' | 'error';
+  
+  // Core components
   turnManager?: TurnManager;
   realtimeClient?: OpenAIRealtimeClient;
+  
+  // WebSocket connections
+  socketIOConnection?: any; // Socket.IO connection
+  rawWebSocketConnection?: any; // Raw WebSocket connection
+  
+  // Session metadata
+  createdAt: Date;
+  lastActivity: Date;
+  expiresAt: Date;
+  
+  // Performance metrics
   metrics: {
     sessionsStarted: Date;
     totalTurns: number;
     avgResponseTime: number;
-    errors: number[];
+    errors: Array<{ timestamp: Date; error: string; code?: string }>;
     performance: {
       firstTokenLatencies: number[];
       partialLatencies: number[];
       bargeInLatencies: number[];
     };
   };
+  
+  // Configuration
+  config: {
+    locale: string;
+    voice: string;
+    maxDuration: number;
+    audioConfig: {
+      sampleRate: number;
+      frameMs: number;
+      inputFormat: string;
+      outputFormat: string;
+      enableVAD: boolean;
+    };
+  };
+}
+
+export interface VoiceOrchestratorConfig {
+  // Service integrations
+  maxSessions?: number;
+  sessionTimeout?: number;
+  cleanupInterval?: number;
+  
+  // Performance targets
+  performance: {
+    targetFirstTokenMs: number;
+    targetPartialLatencyMs: number;
+    targetBargeInMs: number;
+  };
+  
+  // Default session settings
+  defaults: {
+    locale: string;
+    voice: string;
+    maxDuration: number;
+    audioConfig: {
+      sampleRate: number;
+      frameMs: number;
+      inputFormat: string;
+      outputFormat: string;
+      enableVAD: boolean;
+    };
+  };
 }
 
 /**
- * Voice Orchestrator - Main coordination service
+ * Voice Orchestrator - Central coordination service
  */
 export class VoiceOrchestrator extends EventEmitter {
+  private sessions = new Map<string, VoiceSession>();
   private config: VoiceOrchestratorConfig;
-  private wsServer: VoiceWebSocketServer;
-  private visualFeedback: VisualFeedbackService;
-  private opusFramer: OpusFramer;
-  private activeSessions = new Map<string, VoiceSessionState>();
   private isRunning = false;
-
-  // Performance monitoring
+  private cleanupTimer?: NodeJS.Timeout;
+  
+  // Service integrations
+  private socketIOHandler?: VoiceWebSocketHandler;
+  private rawWebSocketServer?: RawWebSocketServer;
+  private aiAssistantService?: UniversalAIAssistantService;
+  private visualFeedbackService: VisualFeedbackService;
+  private opusFramer: OpusFramer;
+  
+  // Performance tracking
   private performanceMetrics = {
     totalSessions: 0,
     activeSessions: 0,
@@ -79,23 +120,49 @@ export class VoiceOrchestrator extends EventEmitter {
     avgPartialLatency: 0,
     avgBargeInLatency: 0,
     errorRate: 0,
+    totalErrors: 0,
+    totalTurns: 0,
   };
 
-  constructor(config: VoiceOrchestratorConfig) {
+  constructor(config: Partial<VoiceOrchestratorConfig> = {}) {
     super();
-    this.config = config;
     
-    // Initialize components
-    this.wsServer = new VoiceWebSocketServer();
-    this.visualFeedback = visualFeedbackService;
-    this.opusFramer = opusFramer;
-
-    this.setupEventHandlers();
+    this.config = {
+      maxSessions: config.maxSessions || 100,
+      sessionTimeout: config.sessionTimeout || 300000, // 5 minutes
+      cleanupInterval: config.cleanupInterval || 60000, // 1 minute
+      performance: {
+        targetFirstTokenMs: 300,
+        targetPartialLatencyMs: 150,
+        targetBargeInMs: 50,
+        ...config.performance,
+      },
+      defaults: {
+        locale: 'en-US',
+        voice: 'alloy',
+        maxDuration: 300,
+        audioConfig: {
+          sampleRate: 48000,
+          frameMs: 20,
+          inputFormat: 'opus',
+          outputFormat: 'pcm16',
+          enableVAD: true,
+        },
+        ...config.defaults,
+      },
+    };
     
-    logger.info('Voice orchestrator initialized', {
-      targetFirstTokenMs: config.performance.targetFirstTokenMs,
-      targetPartialMs: config.performance.targetPartialLatencyMs,
-      targetBargeInMs: config.performance.targetBargeInMs,
+    // Initialize core services
+    this.visualFeedbackService = new VisualFeedbackService();
+    const opusConfig = getDefaultOpusConfig();
+    opusConfig.frameMs = this.config.defaults.audioConfig.frameMs;
+    opusConfig.sampleRate = this.config.defaults.audioConfig.sampleRate;
+    this.opusFramer = new OpusFramer(opusConfig);
+    
+    logger.info('VoiceOrchestrator initialized', {
+      maxSessions: this.config.maxSessions,
+      sessionTimeout: this.config.sessionTimeout,
+      performanceTargets: this.config.performance,
     });
   }
 
@@ -104,29 +171,26 @@ export class VoiceOrchestrator extends EventEmitter {
    */
   async start(): Promise<void> {
     if (this.isRunning) {
-      logger.warn('Voice orchestrator already running');
+      logger.warn('VoiceOrchestrator already running');
       return;
     }
 
     try {
-      // Start transport server
-      await this.wsServer.start(this.config.transport.port);
+      // Start core services
+      this.visualFeedbackService.start();
+      await this.opusFramer.start();
       
-      // Start visual feedback service
-      this.visualFeedback.start();
+      // Setup session cleanup
+      this.cleanupTimer = setInterval(() => {
+        this.cleanupExpiredSessions();
+      }, this.config.cleanupInterval);
       
-      // Start Opus framer
-      this.opusFramer.start();
-
       this.isRunning = true;
+      this.emit('started');
       
-      logger.info('Voice orchestrator started', {
-        transportPort: this.config.transport.port,
-      });
-
-      this.emit('orchestrator_started');
+      logger.info('VoiceOrchestrator started successfully');
     } catch (error) {
-      logger.error('Failed to start voice orchestrator', { error });
+      logger.error('Failed to start VoiceOrchestrator', { error });
       throw error;
     }
   }
@@ -135,558 +199,397 @@ export class VoiceOrchestrator extends EventEmitter {
    * Stop the voice orchestrator
    */
   async stop(): Promise<void> {
-    if (!this.isRunning) {return;}
+    if (!this.isRunning) {
+      return;
+    }
 
     try {
-      // Stop all active sessions
-      for (const sessionId of this.activeSessions.keys()) {
-        await this.stopVoiceSession(sessionId);
-      }
-
-      // Stop components
-      await this.wsServer.stop();
-      this.visualFeedback.stop();
-      this.opusFramer.stop();
-
-      this.isRunning = false;
+      // End all active sessions
+      const activeSessions = Array.from(this.sessions.values())
+        .filter(session => session.status !== 'ended');
       
-      logger.info('Voice orchestrator stopped');
-      this.emit('orchestrator_stopped');
+      await Promise.all(
+        activeSessions.map(session => this.stopVoiceSession(session.id))
+      );
+      
+      // Stop services
+      this.visualFeedbackService.stop();
+      await this.opusFramer.stop();
+      
+      // Clear cleanup timer
+      if (this.cleanupTimer) {
+        clearInterval(this.cleanupTimer);
+        delete (this as any).cleanupTimer;
+      }
+      
+      this.isRunning = false;
+      this.emit('stopped');
+      
+      logger.info('VoiceOrchestrator stopped', {
+        sessionsClosed: activeSessions.length,
+      });
     } catch (error) {
-      logger.error('Error stopping voice orchestrator', { error });
+      logger.error('Error stopping VoiceOrchestrator', { error });
+      throw error;
     }
   }
 
   /**
-   * Start voice session for a WebSocket connection
+   * Set Socket.IO handler integration
    */
-  async startVoiceSession(wsSession: VoiceSession): Promise<string> {
-    if (!this.isRunning) {
-      throw new Error('Voice orchestrator not running');
+  setSocketIOHandler(handler: VoiceWebSocketHandler): void {
+    this.socketIOHandler = handler;
+    logger.info('Socket.IO handler connected to VoiceOrchestrator');
+  }
+
+  /**
+   * Set Raw WebSocket server integration
+   */
+  setRawWebSocketServer(server: RawWebSocketServer): void {
+    this.rawWebSocketServer = server;
+    logger.info('Raw WebSocket server connected to VoiceOrchestrator');
+  }
+
+  /**
+   * Set AI Assistant service integration
+   */
+  setAIAssistantService(service: UniversalAIAssistantService): void {
+    this.aiAssistantService = service;
+    logger.info('AI Assistant service connected to VoiceOrchestrator');
+  }
+
+  /**
+   * Start a new voice session
+   */
+  async startVoiceSession(params: {
+    tenantId: string;
+    siteId?: string;
+    userId?: string;
+    sessionId?: string;
+    config?: Partial<VoiceSession['config']>;
+  }): Promise<string> {
+    
+    if (this.sessions.size >= this.config.maxSessions!) {
+      throw new Error('Maximum number of voice sessions reached');
     }
 
-    const sessionId = wsSession.id;
-    const { tenantId, siteId, userId } = wsSession.auth;
+    const sessionId = params.sessionId || `voice-session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + this.config.sessionTimeout!);
+
+    const session: VoiceSession = {
+      id: sessionId,
+      tenantId: params.tenantId,
+      ...(params.siteId && { siteId: params.siteId }),
+      ...(params.userId && { userId: params.userId }),
+      status: 'initializing',
+      createdAt: now,
+      lastActivity: now,
+      expiresAt,
+      metrics: {
+        sessionsStarted: now,
+        totalTurns: 0,
+        avgResponseTime: 0,
+        errors: [],
+        performance: {
+          firstTokenLatencies: [],
+          partialLatencies: [],
+          bargeInLatencies: [],
+        },
+      },
+      config: {
+        ...this.config.defaults,
+        ...params.config,
+      },
+    };
 
     try {
-      logger.info('Starting voice session', { 
-        sessionId, 
-        tenantId, 
-        siteId,
-        userId 
-      });
-
-      // Create session state
-      const sessionState: VoiceSessionState = {
-        id: sessionId,
-        tenantId,
-        siteId,
-        ...(userId && { userId }),
-        status: 'initializing',
-        metrics: {
-          sessionsStarted: new Date(),
-          totalTurns: 0,
-          avgResponseTime: 0,
-          errors: [],
-          performance: {
-            firstTokenLatencies: [],
-            partialLatencies: [],
-            bargeInLatencies: [],
-          },
-        },
-      };
-
-      // Initialize OpenAI Realtime client
+      // Initialize OpenAI Realtime Client
       const realtimeConfig = createRealtimeConfig({
-        ...this.config.realtime,
-        // Add tenant-specific configuration if needed
-      });
-      
-      sessionState.realtimeClient = new OpenAIRealtimeClient(realtimeConfig);
-      await sessionState.realtimeClient.connect();
-
-      // Initialize TurnManager
-      const turnManagerConfig: TurnManagerConfig = {
-        vad: {
+        voice: session.config.voice as 'alloy',
+        inputAudioFormat: session.config.audioConfig.inputFormat as 'pcm16',
+        outputAudioFormat: session.config.audioConfig.outputFormat as 'pcm16',
+        turnDetection: {
+          type: 'server_vad',
           threshold: 0.5,
-          hangMs: 500,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 800,
         },
-        opus: {
-          frameMs: 20,
-          bitrate: 24000,
-        },
-        tts: {
-          enable: true,
-          duckOnVAD: true,
-        },
-        ...this.config.turnManager,
-        transport: {
-          send: async (data) => {
-            if (data instanceof ArrayBuffer) {
-              // Send audio frame to OpenAI
-              await sessionState.realtimeClient!.sendAudio(data);
-            } else {
-              // Send control message
-              wsSession.ws.send(JSON.stringify(data));
-            }
-          },
-          on: (event, callback) => {
-            // Bridge events from WebSocket to TurnManager
-            this.wsServer.on(event, callback);
-          },
-          disconnect: () => {
-            wsSession.ws.close();
-          },
-        },
-      };
-
-      sessionState.turnManager = new TurnManager(turnManagerConfig);
-      
-      // Setup session-specific event handlers
-      this.setupSessionEventHandlers(sessionState, wsSession);
-      
-      // Start components
-      await sessionState.turnManager.start();
-      
-      sessionState.status = 'ready';
-      this.activeSessions.set(sessionId, sessionState);
-      this.performanceMetrics.totalSessions++;
-      this.performanceMetrics.activeSessions++;
-
-      // Update visual feedback
-      this.visualFeedback.updateMicState('idle', sessionId);
-
-      // Track analytics event for voice session started
-      try {
-        await analyticsHelpers.trackVoiceMetrics(tenantId, siteId, sessionId, {
-          // Will track specific metrics when turn events occur
-        });
-      } catch (error) {
-        logger.warn('Failed to track voice session analytics', { error, sessionId });
-      }
-
-      logger.info('Voice session started successfully', { sessionId });
-      
-      this.emit('session_started', { sessionId, sessionState });
-      return sessionId;
-
-    } catch (error) {
-      logger.error('Failed to start voice session', { 
-        error, 
-        sessionId,
-        tenantId 
       });
       
-      // Cleanup on error
-      if (this.activeSessions.has(sessionId)) {
-        await this.stopVoiceSession(sessionId);
+      session.realtimeClient = new OpenAIRealtimeClient(realtimeConfig);
+
+      // Setup event handlers
+      this.setupSessionEventHandlers(session);
+
+      // Store session
+      this.sessions.set(sessionId, session);
+      this.performanceMetrics.totalSessions++;
+      this.performanceMetrics.activeSessions = this.sessions.size;
+
+      session.status = 'ready';
+      this.emit('session_created', session);
+
+      logger.info('Voice session created', {
+        sessionId,
+        tenantId: params.tenantId,
+        siteId: params.siteId,
+        expiresAt: expiresAt.toISOString(),
+      });
+
+      return sessionId;
+    } catch (error) {
+      logger.error('Failed to create voice session', {
+        sessionId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      
+      // Clean up failed session
+      this.sessions.delete(sessionId);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop a voice session
+   */
+  async stopVoiceSession(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      logger.warn('Attempted to stop non-existent voice session', { sessionId });
+      return;
+    }
+
+    try {
+      session.status = 'ended';
+      session.lastActivity = new Date();
+
+      // Stop TurnManager if active
+      if (session.turnManager) {
+        await session.turnManager.stop();
       }
+
+      // Close Realtime client
+      if (session.realtimeClient) {
+        await session.realtimeClient.disconnect();
+      }
+
+      // Update metrics
+      this.performanceMetrics.activeSessions = Math.max(0, this.performanceMetrics.activeSessions - 1);
+      this.performanceMetrics.totalTurns += session.metrics.totalTurns;
+
+      // Remove from sessions
+      this.sessions.delete(sessionId);
+
+      this.emit('session_ended', session);
+
+      logger.info('Voice session ended', {
+        sessionId,
+        duration: new Date().getTime() - session.createdAt.getTime(),
+        totalTurns: session.metrics.totalTurns,
+        errors: session.metrics.errors.length,
+      });
+    } catch (error) {
+      logger.error('Error stopping voice session', {
+        sessionId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      
+      // Force remove session even if cleanup failed
+      this.sessions.delete(sessionId);
+      this.performanceMetrics.activeSessions = Math.max(0, this.performanceMetrics.activeSessions - 1);
+    }
+  }
+
+  /**
+   * Get voice session by ID
+   */
+  getSession(sessionId: string): VoiceSession | undefined {
+    return this.sessions.get(sessionId);
+  }
+
+  /**
+   * Get orchestrator status
+   */
+  getStatus() {
+    return {
+      isRunning: this.isRunning,
+      activeSessions: this.sessions.size,
+      performance: {
+        totalSessions: this.performanceMetrics.totalSessions,
+        avgFirstTokenLatency: this.performanceMetrics.avgFirstTokenLatency,
+        avgPartialLatency: this.performanceMetrics.avgPartialLatency,
+        avgBargeInLatency: this.performanceMetrics.avgBargeInLatency,
+        errorRate: this.performanceMetrics.totalSessions > 0 
+          ? this.performanceMetrics.totalErrors / this.performanceMetrics.totalSessions 
+          : 0,
+      },
+      components: {
+        visualFeedback: this.visualFeedbackService.getCurrentState(),
+        opusFramer: { isRunning: true }, // OpusFramer doesn't expose state
+        socketIO: !!this.socketIOHandler,
+        rawWebSocket: !!this.rawWebSocketServer,
+        aiAssistant: !!this.aiAssistantService,
+      },
+    };
+  }
+
+  /**
+   * Setup event handlers for a session
+   */
+  private setupSessionEventHandlers(session: VoiceSession): void {
+    if (!session.realtimeClient) {
+      return;
+    }
+
+    const client = session.realtimeClient;
+
+    // Handle realtime events
+    client.on('conversation.item.created', (event) => {
+      logger.debug('Conversation item created', { sessionId: session.id, event });
+    });
+
+    client.on('response.audio.delta', (event) => {
+      // Forward audio delta to clients
+      if (this.socketIOHandler) {
+        this.socketIOHandler.sendAudio(session.id, event.delta as ArrayBuffer);
+      }
+      if (this.rawWebSocketServer && session.rawWebSocketConnection) {
+        session.rawWebSocketConnection.send(event.delta);
+      }
+    });
+
+    client.on('conversation.item.input_audio_transcription.completed', (event) => {
+      // Update visual feedback
+      this.visualFeedbackService.showFinalTranscript(
+        event.transcript || '',
+        session.config.locale,
+        session.id
+      );
+      
+      session.lastActivity = new Date();
+      session.metrics.totalTurns++;
+    });
+
+    client.on('error', (event) => {
+      logger.error('Realtime client error', { sessionId: session.id, event });
+      
+      session.metrics.errors.push({
+        timestamp: new Date(),
+        error: event.error?.message || 'Unknown realtime client error',
+        code: event.error?.code,
+      });
+      
+      this.performanceMetrics.totalErrors++;
+      
+      // Show error feedback
+      this.visualFeedbackService.showErrorToast({
+        type: 'error',
+        title: 'Voice Processing Error',
+        message: 'There was an issue processing your voice input. Please try again.',
+      }, session.id);
+    });
+  }
+
+  /**
+   * Clean up expired sessions
+   */
+  private cleanupExpiredSessions(): void {
+    const now = new Date();
+    const expiredSessions: string[] = [];
+
+    for (const [sessionId, session] of this.sessions.entries()) {
+      if (session.expiresAt < now || session.status === 'error') {
+        expiredSessions.push(sessionId);
+      }
+    }
+
+    if (expiredSessions.length > 0) {
+      logger.info('Cleaning up expired sessions', {
+        count: expiredSessions.length,
+        sessionIds: expiredSessions,
+      });
+
+      expiredSessions.forEach(sessionId => {
+        this.stopVoiceSession(sessionId).catch(error => {
+          logger.error('Error cleaning up expired session', { sessionId, error });
+        });
+      });
+    }
+  }
+
+  /**
+   * Process voice input for a session
+   */
+  async processVoiceInput(sessionId: string, audioData: ArrayBuffer): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || !session.realtimeClient) {
+      throw new Error('Invalid session or realtime client not available');
+    }
+
+    try {
+      session.lastActivity = new Date();
+      session.status = 'processing';
+
+      // Send audio to OpenAI Realtime API
+      await session.realtimeClient.sendAudio(audioData);
+
+      logger.debug('Voice input processed', {
+        sessionId,
+        audioSize: audioData.byteLength,
+      });
+    } catch (error) {
+      session.status = 'error';
+      session.metrics.errors.push({
+        timestamp: new Date(),
+        error: error instanceof Error ? error.message : 'Unknown error processing voice input',
+      });
+      
+      logger.error('Failed to process voice input', {
+        sessionId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       
       throw error;
     }
   }
 
   /**
-   * Stop voice session
+   * Process text input for a session
    */
-  async stopVoiceSession(sessionId: string): Promise<void> {
-    const sessionState = this.activeSessions.get(sessionId);
-    if (!sessionState) {
-      logger.warn('Voice session not found', { sessionId });
-      return;
+  async processTextInput(sessionId: string, text: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || !session.realtimeClient) {
+      throw new Error('Invalid session or realtime client not available');
     }
 
     try {
-      logger.info('Stopping voice session', { sessionId });
+      session.lastActivity = new Date();
+      session.status = 'processing';
 
-      // Stop components
-      if (sessionState.turnManager) {
-        await sessionState.turnManager.stop();
-      }
+      // Send text to OpenAI Realtime API
+      await session.realtimeClient.sendText(text);
 
-      if (sessionState.realtimeClient) {
-        await sessionState.realtimeClient.disconnect();
-      }
-
-      // Clear visual feedback
-      this.visualFeedback.clearAll(sessionId);
-
-      // Remove session
-      this.activeSessions.delete(sessionId);
-      this.performanceMetrics.activeSessions--;
-
-      logger.info('Voice session stopped', { 
+      logger.debug('Text input processed', {
         sessionId,
-        duration: Date.now() - sessionState.metrics.sessionsStarted.getTime(),
-        totalTurns: sessionState.metrics.totalTurns,
+        textLength: text.length,
       });
-
-      this.emit('session_stopped', { sessionId, sessionState });
-
     } catch (error) {
-      logger.error('Error stopping voice session', { error, sessionId });
-    }
-  }
-
-  /**
-   * Setup component event handlers
-   */
-  private setupEventHandlers(): void {
-    // WebSocket transport events
-    this.wsServer.on('connection', async (sessionData) => {
-      await this.startVoiceSession(sessionData.session);
-    });
-
-    this.wsServer.on('disconnection', async (sessionData) => {
-      await this.stopVoiceSession(sessionData.sessionId);
-    });
-
-    this.wsServer.on('audio_frame', async (data) => {
-      await this.handleIncomingAudioFrame(data);
-    });
-
-    this.wsServer.on('text_input', async (data) => {
-      await this.handleIncomingTextInput(data);
-    });
-
-    this.wsServer.on('control', async (data) => {
-      await this.handleControlMessage(data);
-    });
-
-    // Opus framer events
-    this.opusFramer.on('opus_frame', (frame) => {
-      this.handleOpusFrame(frame);
-    });
-  }
-
-  /**
-   * Setup session-specific event handlers
-   */
-  private setupSessionEventHandlers(sessionState: VoiceSessionState, _wsSession: VoiceSession): void {
-    const { turnManager, realtimeClient } = sessionState;
-    const sessionId = sessionState.id;
-
-    if (!turnManager || !realtimeClient) {return;}
-
-    // TurnManager events
-    turnManager.on('event', (event: TurnEvent) => {
-      this.handleTurnManagerEvent(sessionState, event);
-    });
-
-    // OpenAI Realtime events
-    realtimeClient.on('session_ready', () => {
-      logger.debug('Realtime session ready', { sessionId });
-    });
-
-    realtimeClient.on('transcription', (data) => {
-      this.visualFeedback.showFinalTranscript(data.transcript, undefined, sessionId);
-      
-      // Track transcription latency
-      sessionState.metrics.performance.partialLatencies.push(data.latency);
-      this.updatePerformanceMetrics();
-      
-      this.emit('transcription', { sessionId, ...data });
-    });
-
-    realtimeClient.on('transcript_delta', (data) => {
-      this.visualFeedback.showPartialTranscript(data.delta, undefined, sessionId);
-      this.emit('transcript_partial', { sessionId, ...data });
-    });
-
-    realtimeClient.on('audio_delta', async (data) => {
-      // Send audio response back to client
-      await this.wsServer.sendAudio(sessionId, data.delta.buffer);
-      
-      this.visualFeedback.updateMicState('processing', sessionId);
-      this.emit('audio_response', { sessionId, ...data });
-    });
-
-    realtimeClient.on('response_complete', () => {
-      sessionState.metrics.totalTurns++;
-      this.visualFeedback.updateMicState('idle', sessionId);
-      
-      // Track first token latency
-      const metrics = realtimeClient.getMetrics();
-      if (metrics.firstTokenLatency.length > 0) {
-        const latency = metrics.firstTokenLatency[metrics.firstTokenLatency.length - 1];
-        if (latency !== undefined) {
-          sessionState.metrics.performance.firstTokenLatencies.push(latency);
-          this.updatePerformanceMetrics();
-          
-          // Warn if performance target missed
-          if (latency > this.config.performance.targetFirstTokenMs) {
-          logger.warn('First token latency exceeded target', {
-            sessionId,
-            latency,
-            target: this.config.performance.targetFirstTokenMs,
-          });
-          }
-        }
-      }
-      
-      this.emit('response_complete', { sessionId });
-    });
-
-    realtimeClient.on('error', (error) => {
-      logger.error('Realtime API error', { sessionId, error });
-      sessionState.metrics.errors.push(error);
-      this.visualFeedback.showErrorToast({
-        type: 'error',
-        title: 'Voice Processing Error',
-        message: 'There was an issue processing your voice input. Please try again.',
-      }, sessionId);
-    });
-  }
-
-  /**
-   * Handle TurnManager events
-   */
-  private handleTurnManagerEvent(sessionState: VoiceSessionState, event: TurnEvent): void {
-    const sessionId = sessionState.id;
-
-    switch (event.type) {
-      case 'ready':
-        sessionState.status = 'ready';
-        break;
-
-      case 'mic_opened':
-        this.visualFeedback.updateMicState('listening', sessionId);
-        sessionState.status = 'listening';
-        break;
-
-      case 'mic_closed':
-        this.visualFeedback.updateMicState('idle', sessionId);
-        sessionState.status = 'ready';
-        break;
-
-      case 'vad':
-        this.visualFeedback.updateAudioLevel(event.level ?? 0, sessionId);
-        if (event.active && sessionState.status !== 'listening') {
-          sessionState.status = 'listening';
-        }
-        break;
-
-      case 'barge_in':
-        { const bargeInLatency = Date.now();
-        sessionState.metrics.performance.bargeInLatencies.push(bargeInLatency);
-        this.updatePerformanceMetrics();
-        
-        if (bargeInLatency > this.config.performance.targetBargeInMs) {
-          logger.warn('Barge-in latency exceeded target', {
-            sessionId,
-            latency: bargeInLatency,
-            target: this.config.performance.targetBargeInMs,
-          });
-        }
-        break; }
-
-      case 'partial_asr':
-        this.visualFeedback.showPartialTranscript(event.text, event.confidence, sessionId);
-        break;
-
-      case 'final_asr':
-        this.visualFeedback.showFinalTranscript(event.text, event.lang, sessionId);
-        sessionState.status = 'processing';
-        break;
-
-      case 'error':
-        logger.error('TurnManager error', { sessionId, error: event });
-        sessionState.status = 'error';
-        sessionState.metrics.errors.push(Date.now());
-        break;
-    }
-
-    this.emit('turn_event', { sessionId, event });
-  }
-
-  /**
-   * Handle incoming audio frame from WebSocket
-   */
-  private async handleIncomingAudioFrame(data: any): Promise<void> {
-    const sessionState = this.activeSessions.get(data.sessionId);
-    if (!sessionState) {return;}
-
-    try {
-      // Convert to PCM frame for processing
-      const pcmFrame: PCMFrame = {
-        data: new Int16Array(data.data),
-        sampleRate: 48000, // Assuming 48kHz
-        channels: 1,
-        timestamp: data.timestamp,
-      };
-
-      // Process through Opus framer
-      await this.opusFramer.processPCMFrame(pcmFrame);
-
-    } catch (error) {
-      logger.error('Error processing audio frame', { 
-        error, 
-        sessionId: data.sessionId 
+      session.status = 'error';
+      session.metrics.errors.push({
+        timestamp: new Date(),
+        error: error instanceof Error ? error.message : 'Unknown error processing text input',
       });
-    }
-  }
-
-  /**
-   * Handle incoming text input
-   */
-  private async handleIncomingTextInput(data: any): Promise<void> {
-    const sessionState = this.activeSessions.get(data.sessionId);
-    if (!sessionState?.realtimeClient) {return;}
-
-    try {
-      await sessionState.realtimeClient.sendText(data.text);
-      sessionState.status = 'processing';
       
-      this.visualFeedback.showFinalTranscript(data.text, undefined, data.sessionId);
-      
-    } catch (error) {
-      logger.error('Error processing text input', { 
-        error, 
-        sessionId: data.sessionId 
+      logger.error('Failed to process text input', {
+        sessionId,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
+      
+      throw error;
     }
   }
-
-  /**
-   * Handle control messages
-   */
-  private async handleControlMessage(data: any): Promise<void> {
-    const sessionState = this.activeSessions.get(data.sessionId);
-    if (!sessionState) {return;}
-
-    switch (data.action) {
-      case 'start_recording':
-        if (sessionState.turnManager) {
-          // Trigger mic opening through turn manager
-          this.visualFeedback.updateMicState('listening', data.sessionId);
-        }
-        break;
-
-      case 'stop_recording':
-        if (sessionState.realtimeClient) {
-          await sessionState.realtimeClient.commitAudioBuffer();
-        }
-        break;
-
-      case 'clear_session':
-        if (sessionState.realtimeClient) {
-          await sessionState.realtimeClient.clearAudioBuffer();
-        }
-        this.visualFeedback.clearAll(data.sessionId);
-        break;
-    }
-  }
-
-  /**
-   * Handle Opus frame for transmission
-   */
-  private handleOpusFrame(frame: any): void {
-    // Send frame to all active sessions that are listening
-    for (const [_sessionId, sessionState] of this.activeSessions.entries()) {
-      if (sessionState.status === 'listening' && sessionState.realtimeClient) {
-        // Convert Opus frame back to PCM for OpenAI (they expect PCM16)
-        // In a real implementation, you'd decode the Opus frame
-        sessionState.realtimeClient.sendAudio(frame.data);
-      }
-    }
-  }
-
-  /**
-   * Update performance metrics
-   */
-  private updatePerformanceMetrics(): void {
-    let totalFirstToken = 0;
-    let totalPartial = 0;
-    let totalBargeIn = 0;
-    let totalSamples = 0;
-
-    for (const session of this.activeSessions.values()) {
-      const perf = session.metrics.performance;
-      totalFirstToken += perf.firstTokenLatencies.reduce((a, b) => a + b, 0);
-      totalPartial += perf.partialLatencies.reduce((a, b) => a + b, 0);
-      totalBargeIn += perf.bargeInLatencies.reduce((a, b) => a + b, 0);
-      totalSamples += perf.firstTokenLatencies.length + 
-                     perf.partialLatencies.length + 
-                     perf.bargeInLatencies.length;
-    }
-
-    if (totalSamples > 0) {
-      this.performanceMetrics.avgFirstTokenLatency = totalFirstToken / totalSamples;
-      this.performanceMetrics.avgPartialLatency = totalPartial / totalSamples;
-      this.performanceMetrics.avgBargeInLatency = totalBargeIn / totalSamples;
-    }
-
-    // Calculate error rate
-    const totalErrors = Array.from(this.activeSessions.values())
-      .reduce((sum, s) => sum + s.metrics.errors.length, 0);
-    this.performanceMetrics.errorRate = totalErrors / Math.max(this.performanceMetrics.totalSessions, 1);
-  }
-
-  /**
-   * Get orchestrator status and metrics
-   */
-  getStatus() {
-    return {
-      isRunning: this.isRunning,
-      activeSessions: this.activeSessions.size,
-      performance: this.performanceMetrics,
-      sessions: Array.from(this.activeSessions.values()).map(s => ({
-        id: s.id,
-        tenantId: s.tenantId,
-        status: s.status,
-        turns: s.metrics.totalTurns,
-        errors: s.metrics.errors.length,
-      })),
-      components: {
-        wsServer: this.wsServer.getMetrics(),
-        visualFeedback: this.visualFeedback.getCurrentState(),
-        opusFramer: this.opusFramer.getStats(),
-      },
-    };
-  }
-
-  /**
-   * Get session by ID
-   */
-  getSession(sessionId: string): VoiceSessionState | undefined {
-    return this.activeSessions.get(sessionId);
-  }
-}
-
-// Default configuration
-export function getDefaultVoiceOrchestratorConfig(): VoiceOrchestratorConfig {
-  return {
-    turnManager: {
-      locale: 'en-US',
-      vad: {
-        threshold: 0.01,
-        hangMs: 800,
-      },
-      opus: {
-        frameMs: 20,
-        bitrate: 16000,
-      },
-      tts: {
-        enable: true,
-        duckOnVAD: true,
-      },
-    },
-    realtime: {
-      voice: 'alloy',
-      inputAudioFormat: 'pcm16',
-      outputAudioFormat: 'pcm16',
-    },
-    transport: {
-      port: 8080,
-      maxConnections: 100,
-    },
-    performance: {
-      targetFirstTokenMs: 300,
-      targetPartialLatencyMs: 150,
-      targetBargeInMs: 50,
-    },
-  };
 }
 
 // Export singleton instance
-export const voiceOrchestrator = new VoiceOrchestrator(getDefaultVoiceOrchestratorConfig());
+export const voiceOrchestrator = new VoiceOrchestrator();

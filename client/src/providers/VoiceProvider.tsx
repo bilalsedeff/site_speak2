@@ -22,6 +22,7 @@ interface VoiceContextType {
   startListening: () => Promise<void>
   stopListening: () => void
   clearTranscript: () => void
+  processText: (text: string) => Promise<void>
   
   // Settings
   language: string
@@ -65,7 +66,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   
   // Settings
   const [language, setLanguage] = useState('en-US')
-  const [voice, setVoice] = useState('alloy')
+  const [voice, setVoice] = useState('shimmer') // Soft, gentle female voice
   const [hasPermission, setHasPermission] = useState(false)
   
   // Refs for audio handling
@@ -143,7 +144,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
             siteId: import.meta.env['VITE_SITE_ID'] || '00000000-0000-0000-0000-000000000000',
             preferredTTSLocale: language,
             preferredSTTLocale: language,
-            voice: 'alloy',
+            voice: voice, // Use the selected voice (shimmer by default)
             maxDuration: 300, // 5 minutes
             enableVAD: true
           }),
@@ -331,6 +332,26 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
     setResponse('')
   }
 
+  // Process text input (for suggestion chips or direct text input)
+  const processText = async (text: string): Promise<void> => {
+    if (!socket || !isConnected) {
+      throw new Error('Socket not connected')
+    }
+
+    try {
+      setTranscript(text)
+      setIsProcessing(true)
+      
+      // Send text directly to voice processing
+      socket.emit('voice:text', { text, language, voice })
+      
+    } catch (error) {
+      console.error('Failed to process text:', error)
+      setIsProcessing(false)
+      throw error
+    }
+  }
+
   // Check for permission on mount
   useEffect(() => {
     if ('permissions' in navigator) {
@@ -347,6 +368,24 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         })
     }
   }, [])
+
+  // Global keyboard shortcut for voice activation
+  useEffect(() => {
+    const handleGlobalKeydown = (event: KeyboardEvent) => {
+      // Ctrl/Cmd + Space to toggle voice
+      if ((event.ctrlKey || event.metaKey) && event.code === 'Space') {
+        event.preventDefault()
+        if (isListening) {
+          stopListening()
+        } else if (hasPermission && isConnected) {
+          startListening().catch(console.error)
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleGlobalKeydown)
+    return () => document.removeEventListener('keydown', handleGlobalKeydown)
+  }, [isListening, hasPermission, isConnected, startListening, stopListening])
 
   const value: VoiceContextType = {
     // Connection state
@@ -367,6 +406,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
     startListening,
     stopListening,
     clearTranscript,
+    processText,
     
     // Settings
     language,

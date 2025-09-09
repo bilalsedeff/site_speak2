@@ -159,7 +159,7 @@ export class UniversalAIAssistantService {
     voiceHandler?: VoiceNotificationHandler
   ) {
     this.config = {
-      enableVoice: config.enableVoice || false,
+      enableVoice: config.enableVoice ?? false,
       enableStreaming: config.enableStreaming || true,
       defaultLocale: config.defaultLocale || 'en-US',
       maxSessionDuration: config.maxSessionDuration || 30 * 60 * 1000, // 30 minutes
@@ -829,5 +829,8 @@ export function getUniversalAIAssistantService(
   return _instance;
 }
 
-// Export singleton instance (backwards compatibility)
-export const universalAIAssistantService = getUniversalAIAssistantService();
+// Lazy singleton instance getter (backwards compatibility)
+// Note: Use getUniversalAIAssistantService() with proper config instead
+export function getUniversalAIAssistantServiceLazy(): UniversalAIAssistantService {
+  return getUniversalAIAssistantService();
+}

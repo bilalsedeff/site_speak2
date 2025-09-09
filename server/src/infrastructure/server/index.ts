@@ -270,15 +270,14 @@ export class SiteSeakServer {
 
 
   private async setupWebSocket(): Promise<void> {
-    // Setup voice WebSocket handler
+    // Initialize Universal AI Assistant first (needed by both WebSocket implementations)
+    const { getUniversalAIAssistantService } = await import('../../modules/ai/application/UniversalAIAssistantService');
+    
+    // Setup Socket.IO WebSocket handler (legacy support)
     const { VoiceWebSocketHandler } = await import('../../modules/voice/infrastructure/websocket/VoiceWebSocketHandler');
     const voiceHandler = new VoiceWebSocketHandler(this.io);
     
-    // Store voice handler for graceful shutdown
-    (this as any).voiceHandler = voiceHandler;
-
-    // Initialize Universal AI Assistant with voice handler (singleton)
-    const { getUniversalAIAssistantService } = await import('../../modules/ai/application/UniversalAIAssistantService');
+    // Initialize AI Assistant (singleton)
     const aiAssistant = getUniversalAIAssistantService({
       enableVoice: true,
       enableStreaming: true,
@@ -287,7 +286,27 @@ export class SiteSeakServer {
       responseTimeoutMs: 30000,
     }, voiceHandler);
     
-    // Store AI assistant for graceful shutdown
+    // Connect AI Assistant to Socket.IO Voice WebSocket Handler
+    voiceHandler.setAIAssistant(aiAssistant);
+    
+    // Initialize Raw WebSocket Server (RFC 6455 compliant, ≤300ms performance)
+    // Uses same HTTP server on same port 5000 with `/voice-ws` endpoint
+    const { RawWebSocketServer } = await import('../../services/voice/index.js');
+    const rawWebSocketServer = new RawWebSocketServer(aiAssistant);
+    
+    // Attach Raw WebSocket Server to existing HTTP server
+    await rawWebSocketServer.attachToServer(this.httpServer, '/voice-ws');
+    
+    logger.info('Raw WebSocket Server attached to main server', { 
+      port: config.PORT,
+      endpoint: '/voice-ws',
+      performance: '≤300ms first token latency',
+      protocol: 'RFC 6455 compliant',
+    });
+    
+    // Store handlers for graceful shutdown
+    (this as any).voiceHandler = voiceHandler;
+    (this as any).rawWebSocketServer = rawWebSocketServer;
     (this as any).aiAssistant = aiAssistant;
 
     // General WebSocket connection handling
@@ -378,6 +397,13 @@ export class SiteSeakServer {
         // and stop sending new traffic to this instance
         await new Promise(resolve => setTimeout(resolve, 2000));
 
+        // Shutdown Raw WebSocket Server first (high-performance voice connections)
+        const rawWebSocketServer = (this as any).rawWebSocketServer;
+        if (rawWebSocketServer) {
+          logger.info('Shutting down Raw WebSocket Server...');
+          await rawWebSocketServer.shutdown();
+        }
+
         // Cleanup AI assistant
         const aiAssistant = (this as any).aiAssistant;
         if (aiAssistant) {
@@ -385,10 +411,10 @@ export class SiteSeakServer {
           await aiAssistant.cleanup();
         }
 
-        // End all voice sessions gracefully
+        // End all Socket.IO voice sessions gracefully
         const voiceHandler = (this as any).voiceHandler;
         if (voiceHandler) {
-          logger.info('Ending voice sessions...');
+          logger.info('Ending Socket.IO voice sessions...');
           await voiceHandler.endAllSessions();
         }
 

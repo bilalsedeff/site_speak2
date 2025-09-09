@@ -13,8 +13,7 @@
  */
 
 import { createLogger } from '../../../../services/_shared/telemetry/logger';
-import { createArtifactStoreFromEnv } from '../../../publishing/adapters/ArtifactStore';
-import type { ArtifactStore } from '../../../publishing/adapters/ArtifactStore';
+import { createArtifactStoreFromEnv, ArtifactStore } from '../../../publishing/adapters/ArtifactStore';
 
 const logger = createLogger({ service: 'asset-upload-service' });
 

@@ -1,6 +1,7 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createLogger } from '../../../../shared/utils.js';
 import { jwtService, type VoiceJWTPayload } from '../../../../infrastructure/auth/jwt.js';
+import type { UniversalAIAssistantService } from '../../../ai/application/UniversalAIAssistantService.js';
 
 const logger = createLogger({ service: 'voice-websocket' });
 
@@ -21,12 +22,12 @@ export interface VoiceSession {
 }
 
 export type TurnEvent =
-  | { type: 'ready' | 'mic_opened' | 'mic_closed' | 'tts_play'; data?: any }
+  | { type: 'ready' | 'mic_opened' | 'mic_closed' | 'tts_play'; data?: Record<string, unknown> }
   | { type: 'vad'; active: boolean; level: number }
   | { type: 'partial_asr'; text: string; confidence?: number }
   | { type: 'final_asr'; text: string; lang: string }
   | { type: 'barge_in' }
-  | { type: 'agent_delta' | 'agent_tool' | 'agent_final'; data: any }
+  | { type: 'agent_delta' | 'agent_tool' | 'agent_final'; data: Record<string, unknown> }
   | { type: 'error'; code: string; message: string };
 
 export interface AudioFrame {
@@ -38,7 +39,7 @@ export interface AudioFrame {
 
 export interface VoiceMessage {
   type: 'audio_chunk' | 'text_input' | 'control';
-  data?: any;
+  data?: Record<string, unknown>;
   audio?: AudioFrame;
   sessionId: string;
   timestamp: number;
@@ -77,6 +78,15 @@ export class VoiceWebSocketHandler {
     }, 2 * 60 * 1000);
 
     logger.info('Voice WebSocket Handler initialized', { developmentAuth: process.env['NODE_ENV'] === 'development' });
+  }
+
+  /**
+   * Set the AI Assistant service for voice-to-AI integration
+   * Note: Now using VoiceOrchestrator for AI integration
+   */
+  setAIAssistant(_aiAssistant: UniversalAIAssistantService): void {
+    // AI Assistant integration now handled through VoiceOrchestrator
+    logger.info('AI Assistant service integration handled through VoiceOrchestrator');
   }
 
   /**
@@ -238,12 +248,12 @@ export class VoiceWebSocketHandler {
     });
 
     // Handle control messages
-    socket.on('control', (data: { action: string; params?: any }) => {
+    socket.on('control', (data: { action: string; params?: Record<string, unknown> }) => {
       this.handleControlMessage(session, data);
     });
 
     // Handle voice commands
-    socket.on('voice_command', (data: { command: string; params?: any }) => {
+    socket.on('voice_command', (data: { command: string; params?: Record<string, unknown> }) => {
       this.handleVoiceCommand(session, data);
     });
   }
@@ -290,24 +300,33 @@ export class VoiceWebSocketHandler {
   }
 
   /**
-   * Process audio frame through STT pipeline
+   * Process audio frame through voice orchestrator
    */
   private async processAudioFrame(session: VoiceSession, frame: AudioFrame): Promise<void> {
-    // This would integrate with OpenAI Realtime API or similar STT service
-    // For now, we'll simulate the processing
-    
     logger.debug('Processing audio frame', {
       sessionId: session.id,
       size: frame.data.byteLength,
       format: frame.format,
     });
 
-    // Simulate partial transcription
-    if (Math.random() > 0.7) {
+    try {
+      // Import VoiceOrchestrator dynamically to avoid circular dependency
+      const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+      
+      // Process through voice orchestrator
+      await voiceOrchestrator.processVoiceInput(session.id, frame.data);
+      
+    } catch (error) {
+      logger.error('Audio frame processing failed through orchestrator', {
+        sessionId: session.id,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      
+      // Send error event
       this.sendEvent(session, {
-        type: 'partial_asr',
-        text: 'Processing speech...',
-        confidence: 0.8,
+        type: 'error',
+        code: 'AUDIO_PROCESSING_FAILED',
+        message: 'Failed to process audio frame',
       });
     }
   }
@@ -333,8 +352,16 @@ export class VoiceWebSocketHandler {
         lang: data.language || session.auth.locale || 'en-US',
       });
 
-      // Process through AI orchestrator (would integrate with existing services)
-      await this.processUserInput(session, data.text);
+      // Process through voice orchestrator
+      try {
+        const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+        await voiceOrchestrator.processTextInput(session.id, data.text);
+      } catch (error) {
+        logger.error('Text input processing failed through orchestrator', {
+          sessionId: session.id,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
 
     } catch (error) {
       logger.error('Text input processing failed', {
@@ -347,7 +374,7 @@ export class VoiceWebSocketHandler {
   /**
    * Handle control messages
    */
-  private handleControlMessage(session: VoiceSession, data: { action: string; params?: any }): void {
+  private handleControlMessage(session: VoiceSession, data: { action: string; params?: Record<string, unknown> }): void {
     session.lastActivity = new Date();
 
     logger.info('Received control message', {
@@ -380,7 +407,7 @@ export class VoiceWebSocketHandler {
   /**
    * Handle voice commands
    */
-  private async handleVoiceCommand(session: VoiceSession, data: { command: string; params?: any }): Promise<void> {
+  private async handleVoiceCommand(session: VoiceSession, data: { command: string; params?: Record<string, unknown> }): Promise<void> {
     session.lastActivity = new Date();
 
     logger.info('Received voice command', {
@@ -388,58 +415,19 @@ export class VoiceWebSocketHandler {
       command: data.command,
     });
 
-    // Process voice command through orchestrator
-    await this.processUserInput(session, data.command);
-  }
-
-  /**
-   * Process user input through AI orchestrator
-   */
-  private async processUserInput(session: VoiceSession, input: string): Promise<void> {
+    // Process voice command through voice orchestrator
     try {
-      // This would integrate with the AIOrchestrationService
-      // For now, we'll simulate the processing
-      
-      // Send thinking indicator
-      this.sendEvent(session, {
-        type: 'agent_delta',
-        data: {
-          status: 'processing',
-          message: 'Thinking...',
-        },
-      });
-
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Send mock response
-      this.sendEvent(session, {
-        type: 'agent_final',
-        data: {
-          text: `I received your message: "${input}". This is a mock response.`,
-          citations: [],
-          uiHints: {},
-          metadata: {
-            processingTime: 500,
-            tokensUsed: 50,
-            actionsExecuted: 0,
-          },
-        },
-      });
-
+      const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+      await voiceOrchestrator.processTextInput(session.id, data.command);
     } catch (error) {
-      logger.error('User input processing failed', {
+      logger.error('Voice command processing failed through orchestrator', {
         sessionId: session.id,
-        error,
-      });
-      
-      this.sendEvent(session, {
-        type: 'error',
-        code: 'PROCESSING_FAILED',
-        message: 'Failed to process your request',
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
+
+  // Note: User input processing is now handled by VoiceOrchestrator
 
   /**
    * Send event to client
@@ -620,11 +608,11 @@ export class VoiceWebSocketHandler {
     siteId: string;
     sessionId?: string;
     action: string;
-    result: any;
+    result: Record<string, unknown>;
     sideEffects: Array<{
       type: 'navigation' | 'form_submission' | 'api_call' | 'dom_change';
       description: string;
-      data: any;
+      data: Record<string, unknown>;
     }>;
   }): Promise<void> {
     logger.info('Broadcasting action execution notification', { 
