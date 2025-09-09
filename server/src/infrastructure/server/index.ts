@@ -291,22 +291,23 @@ export class SiteSeakServer {
     
     // Initialize Raw WebSocket Server (RFC 6455 compliant, ≤300ms performance)
     // Uses same HTTP server on same port 5000 with `/voice-ws` endpoint
-    const { RawWebSocketServer } = await import('../../services/voice/index.js');
-    const rawWebSocketServer = new RawWebSocketServer(aiAssistant);
+    // TEMPORARILY DISABLED to test Socket.IO connection
+    // const { RawWebSocketServer } = await import('../../services/voice/index.js');
+    // const rawWebSocketServer = new RawWebSocketServer(aiAssistant);
     
     // Attach Raw WebSocket Server to existing HTTP server
-    await rawWebSocketServer.attachToServer(this.httpServer, '/voice-ws');
+    // await rawWebSocketServer.attachToServer(this.httpServer, '/voice-ws');
     
-    logger.info('Raw WebSocket Server attached to main server', { 
-      port: config.PORT,
-      endpoint: '/voice-ws',
-      performance: '≤300ms first token latency',
-      protocol: 'RFC 6455 compliant',
-    });
+    // logger.info('Raw WebSocket Server attached to main server', { 
+    //   port: config.PORT,
+    //   endpoint: '/voice-ws',
+    //   performance: '≤300ms first token latency',
+    //   protocol: 'RFC 6455 compliant',
+    // });
     
     // Store handlers for graceful shutdown
     (this as any).voiceHandler = voiceHandler;
-    (this as any).rawWebSocketServer = rawWebSocketServer;
+    // (this as any).rawWebSocketServer = rawWebSocketServer; // TEMPORARILY DISABLED
     (this as any).aiAssistant = aiAssistant;
 
     // General WebSocket connection handling

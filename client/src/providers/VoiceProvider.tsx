@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-
 interface VoiceContextType {
   // Connection state
   isConnected: boolean
@@ -87,31 +85,79 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       setIsConnected(false)
     })
 
-    // Voice processing events
-    socketInstance.on('voice:transcript', (data: { text: string; isFinal: boolean }) => {
-      setTranscript(data.text)
-      if (data.isFinal) {
-        setIsListening(false)
-        setIsProcessing(true)
-      }
-    })
-
-    socketInstance.on('voice:response', (data: { text: string; audioUrl?: string }) => {
-      setResponse(data.text)
-      setIsProcessing(false)
+    // Voice processing events - updated to match server event names
+    socketInstance.on('voice_event', (event: any) => {
+      console.log('Received voice event:', event)
       
-      // Play audio response if available
-      if (data.audioUrl) {
-        const audio = new Audio(data.audioUrl)
-        audio.play().catch(console.error)
+      switch (event.type) {
+        case 'ready':
+          console.log('Voice session ready:', event.data)
+          break
+        
+        case 'partial_asr':
+          setTranscript(event.text || '')
+          break
+        
+        case 'final_asr':
+          setTranscript(event.text || '')
+          setIsListening(false)
+          setIsProcessing(true)
+          break
+        
+        case 'agent_final':
+          setResponse(event.data?.text || '')
+          setIsProcessing(false)
+          break
+        
+        case 'agent_delta':
+          // Handle streaming response
+          if (event.data?.text) {
+            setResponse(prev => prev + event.data.text)
+          }
+          break
+        
+        case 'mic_opened':
+          setIsListening(true)
+          setIsRecording(true)
+          break
+        
+        case 'mic_closed':
+          setIsListening(false)
+          setIsRecording(false)
+          break
+        
+        case 'error':
+          console.error('Voice event error:', event)
+          setIsListening(false)
+          setIsProcessing(false)
+          setIsRecording(false)
+          break
+        
+        default:
+          console.log('Unknown voice event type:', event.type)
       }
     })
 
-    socketInstance.on('voice:error', (error: any) => {
-      console.error('Voice error:', error)
-      setIsListening(false)
-      setIsProcessing(false)
-      setIsRecording(false)
+    // Audio chunks from server
+    socketInstance.on('audio_chunk', (data: { data: ArrayBuffer; format: string; timestamp: number }) => {
+      // Play audio response if available
+      if (data.data) {
+        try {
+          const audioBlob = new Blob([data.data], { type: `audio/${data.format}` })
+          const audioUrl = URL.createObjectURL(audioBlob)
+          const audio = new Audio(audioUrl)
+          audio.play().catch(console.error)
+        } catch (error) {
+          console.error('Failed to play audio chunk:', error)
+        }
+      }
+    })
+
+    // Handle ping from server
+    socketInstance.on('ping', (data: any) => {
+      console.log('Received ping:', data)
+      // Respond with pong
+      socketInstance.emit('pong', data)
     })
 
     socketInstance.on('error', (error: any) => {
@@ -127,54 +173,20 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   useEffect(() => {
     const initializeVoiceConnection = async () => {
       try {
-        // Create voice session using API Gateway
-        const accessToken = localStorage.getItem('accessToken');
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
+        // For development, we'll connect directly to Socket.IO without creating a session first
+        // In production, this would create a session through the API
         
-        if (accessToken) {
-          headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-        
-        const response = await fetch(`${API_BASE_URL}/api/v1/voice/session`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            siteId: import.meta.env['VITE_SITE_ID'] || '00000000-0000-0000-0000-000000000000',
-            preferredTTSLocale: language,
-            preferredSTTLocale: language,
-            voice: voice, // Use the selected voice (shimmer by default)
-            maxDuration: 300, // 5 minutes
-            enableVAD: true
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to create voice session: ${response.statusText}`)
-        }
-
-        const sessionData = await response.json()
-        
-        if (!sessionData.success || !sessionData.data) {
-          throw new Error('Invalid session response format')
-        }
-        
-        const { sessionId } = sessionData.data
-
-        // Connect to WebSocket with session ID
-        const wsAuth: Record<string, string> = {
-          sessionId: sessionId,
-        };
-        
-        if (accessToken) {
-          wsAuth['accessToken'] = accessToken;
-        }
-        
-        const socketInstance = io(import.meta.env.VITE_WS_URL || 'ws://localhost:5000', {
-          transports: ['websocket'],
+        // Connect to Socket.IO server directly (development mode)
+        const socketInstance = io('http://localhost:5000', {
+          transports: ['polling', 'websocket'], // Start with polling, then upgrade to websocket
           upgrade: true,
-          auth: wsAuth,
+          timeout: 20000,
+          forceNew: true,
+          auth: {
+            // Development authentication - server allows connections without tokens in dev mode
+            tenantId: '00000000-0000-0000-0000-000000000000',
+            siteId: import.meta.env['VITE_SITE_ID'] || '00000000-0000-0000-0000-000000000000',
+          },
         })
 
         // Setup socket events
@@ -278,7 +290,12 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
-        socket.emit('voice:audio', audioBlob, { language, voice })
+        // Convert blob to ArrayBuffer and send as audio_frame
+        audioBlob.arrayBuffer().then(arrayBuffer => {
+          socket.emit('audio_frame', arrayBuffer)
+        }).catch(error => {
+          console.error('Failed to convert audio to ArrayBuffer:', error)
+        })
         
         // Cleanup
         stream.getTracks().forEach(track => track.stop())
@@ -296,8 +313,8 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       mediaRecorderRef.current.start(100) // Collect data every 100ms
       updateAudioLevel()
 
-      // Notify server that we're starting to listen
-      socket.emit('voice:start_session', { language, voice })
+      // Notify server that we're starting to record
+      socket.emit('control', { action: 'start_recording', params: { language, voice } })
 
     } catch (error) {
       console.error('Failed to start listening:', error)
@@ -322,7 +339,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
     }
 
     if (socket) {
-      socket.emit('voice:end_session')
+      socket.emit('control', { action: 'stop_recording' })
     }
   }
 
@@ -343,7 +360,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       setIsProcessing(true)
       
       // Send text directly to voice processing
-      socket.emit('voice:text', { text, language, voice })
+      socket.emit('text_input', { text, language })
       
     } catch (error) {
       console.error('Failed to process text:', error)
