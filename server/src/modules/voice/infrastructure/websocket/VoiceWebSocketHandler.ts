@@ -22,7 +22,7 @@ export interface VoiceSession {
 }
 
 export type TurnEvent =
-  | { type: 'ready' | 'mic_opened' | 'mic_closed' | 'tts_play'; data?: Record<string, unknown> }
+  | { type: 'ready' | 'mic_opened' | 'mic_closed' | 'tts_play' | 'speech_started' | 'speech_stopped'; data?: Record<string, unknown> }
   | { type: 'vad'; active: boolean; level: number }
   | { type: 'partial_asr'; text: string; confidence?: number }
   | { type: 'final_asr'; text: string; lang: string }
@@ -474,6 +474,28 @@ export class VoiceWebSocketHandler {
       logger.error('Failed to send audio chunk', {
         sessionId,
         size: audioData.byteLength,
+        error,
+      });
+    }
+  }
+
+  /**
+   * Send voice event to client
+   */
+  public sendVoiceEvent(sessionId: string, event: TurnEvent): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || !session.isActive) {
+      logger.warn('Attempted to send event to inactive session', { sessionId });
+      return;
+    }
+
+    try {
+      session.socket.emit('voice_event', event);
+      this.metrics.messagesSent++;
+    } catch (error) {
+      logger.error('Failed to send voice event', {
+        sessionId,
+        eventType: event.type,
         error,
       });
     }

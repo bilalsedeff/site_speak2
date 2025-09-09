@@ -319,6 +319,9 @@ export class VoiceOrchestrator extends EventEmitter {
       
       session.realtimeClient = new OpenAIRealtimeClient(realtimeConfig);
 
+      // Connect to OpenAI Realtime API
+      await session.realtimeClient.connect();
+
       // Setup event handlers
       this.setupSessionEventHandlers(session);
 
@@ -467,8 +470,74 @@ export class VoiceOrchestrator extends EventEmitter {
         session.id
       );
       
+      // Send transcription to client
+      if (this.socketIOHandler) {
+        this.socketIOHandler.sendVoiceEvent(session.id, {
+          type: 'final_asr',
+          text: event.transcript || '',
+          lang: session.config.locale,
+        });
+      }
+      
       session.lastActivity = new Date();
       session.metrics.totalTurns++;
+    });
+
+    // Handle partial transcription
+    client.on('conversation.item.input_audio_transcription.delta', (event) => {
+      if (this.socketIOHandler) {
+        this.socketIOHandler.sendVoiceEvent(session.id, {
+          type: 'partial_asr',
+          text: event.delta || '',
+          confidence: 0.8,
+        });
+      }
+    });
+
+    // Handle speech start/stop events for VAD
+    client.on('speech_started', (event) => {
+      logger.debug('Speech started detected', { sessionId: session.id, event });
+      if (this.socketIOHandler) {
+        this.socketIOHandler.sendVoiceEvent(session.id, {
+          type: 'speech_started',
+          data: { 
+            audioStartMs: event.audioStartMs || Date.now(),
+            itemId: event.itemId 
+          },
+        });
+      }
+    });
+
+    client.on('speech_stopped', (event) => {
+      logger.debug('Speech stopped detected', { sessionId: session.id, event });
+      if (this.socketIOHandler) {
+        this.socketIOHandler.sendVoiceEvent(session.id, {
+          type: 'speech_stopped',
+          data: { 
+            audioEndMs: event.audioEndMs || Date.now(),
+            itemId: event.itemId 
+          },
+        });
+      }
+    });
+
+    // Handle AI response text
+    client.on('response.text.delta', (event) => {
+      if (this.socketIOHandler) {
+        this.socketIOHandler.sendVoiceEvent(session.id, {
+          type: 'agent_delta',
+          data: { text: event.delta || '' },
+        });
+      }
+    });
+
+    client.on('response.text.done', (event) => {
+      if (this.socketIOHandler) {
+        this.socketIOHandler.sendVoiceEvent(session.id, {
+          type: 'agent_final',
+          data: { text: event.text || '' },
+        });
+      }
     });
 
     client.on('error', (event) => {

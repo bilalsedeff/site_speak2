@@ -6,6 +6,7 @@
  */
 
 import { ActionsBridge } from '../bridge/ActionsBridge';
+import { io, Socket } from 'socket.io-client';
 
 export interface VoiceWidgetConfig {
   siteId: string;
@@ -55,11 +56,12 @@ export class VoiceWidgetApp {
   private animationFrame: number | null = null;
   
   // Real-time voice processing
-  private websocket: WebSocket | null = null;
+  private websocket: Socket | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioStream: MediaStream | null = null;
   private audioChunks: Blob[] = [];
   private isConnected = false;
+  private audioContext: AudioContext | null = null;
 
   constructor(config: VoiceWidgetAppConfig) {
     this.config = config;
@@ -435,12 +437,12 @@ export class VoiceWidgetApp {
     this.log('Stopped listening, processing audio...');
     
     // Send end-of-turn signal to WebSocket
-    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-      this.websocket.send(JSON.stringify({
-        type: 'end_turn',
+    if (this.websocket && this.websocket.connected) {
+      this.websocket.emit('control', {
+        action: 'end_turn',
         sessionId: this.session.id,
         timestamp: Date.now()
-      }));
+      });
     }
   }
 
@@ -475,39 +477,168 @@ export class VoiceWidgetApp {
    */
   private async connectToVoiceService(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const wsUrl = `${this.config.config.wsEndpoint}/voice/stream?sessionId=${this.session.id}&siteId=${this.config.config.siteId}&tenantId=${this.config.config.tenantId}`;
-      
-      this.websocket = new WebSocket(wsUrl);
-      
-      this.websocket.onopen = () => {
+      // Connect to Socket.IO server directly (development mode)
+      this.websocket = io('http://localhost:5000', {
+        transports: ['polling', 'websocket'], // Start with polling, then upgrade to websocket
+        upgrade: true,
+        timeout: 20000,
+        forceNew: true,
+        auth: {
+          // Development authentication - server allows connections without tokens in dev mode
+          tenantId: '00000000-0000-0000-0000-000000000000',
+          siteId: this.config.config.siteId || '00000000-0000-0000-0000-000000000000',
+        },
+      });
+
+      this.websocket.on('connect', () => {
         this.isConnected = true;
-        this.log('Connected to voice service');
+        this.log('Connected to voice service via Socket.IO');
         resolve();
-      };
-      
-      this.websocket.onerror = (error) => {
-        this.log(`WebSocket error: ${error}`);
+      });
+
+      this.websocket.on('connect_error', (error: any) => {
+        this.log('Socket.IO connection error:', error);
         reject(new Error('Failed to connect to voice service'));
-      };
-      
-      this.websocket.onmessage = (event) => {
-        this.handleVoiceMessage(JSON.parse(event.data));
-      };
-      
-      this.websocket.onclose = () => {
+      });
+
+      // Setup voice event handlers
+      this.setupSocketEvents();
+
+      this.websocket.on('disconnect', () => {
         this.isConnected = false;
         this.log('Disconnected from voice service');
-      };
-      
+      });
+
       // Timeout after 5 seconds
       setTimeout(() => {
         if (!this.isConnected) {
-          reject(new Error('WebSocket connection timeout'));
+          reject(new Error('Socket.IO connection timeout'));
         }
       }, 5000);
     });
   }
+
+  private setupSocketEvents(): void {
+    if (!this.websocket) {
+      return;
+    }
+
+    // Voice event handling
+    this.websocket.on('voice_event', (event: any) => {
+      this.handleVoiceMessage(event);
+    });
+
+    // Audio chunks from server
+    this.websocket.on('audio_chunk', (data: { data: ArrayBuffer; format: string; timestamp: number }) => {
+      this.handleAudioChunk(data);
+    });
+
+    // Handle ping from server
+    this.websocket.on('ping', (data: any) => {
+      this.log('Received ping:', data);
+      // Respond with pong
+      this.websocket?.emit('pong', data);
+    });
+
+    this.websocket.on('error', (error: any) => {
+      this.log('Socket error:', error);
+      this.isConnected = false;
+    });
+  }
   
+  /**
+   * Handle audio chunk from server and play it
+   */
+  private async handleAudioChunk(message: any): Promise<void> {
+    try {
+      if (message.data && message.data instanceof ArrayBuffer) {
+        await this.playAudioChunk(message.data, message.format || 'pcm16');
+        this.updateSession({
+          state: 'speaking'
+        });
+      } else if (message.data && typeof message.data === 'string') {
+        // Handle base64 encoded audio
+        const binaryString = atob(message.data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        await this.playAudioChunk(bytes.buffer, message.format || 'pcm16');
+        this.updateSession({
+          state: 'speaking'
+        });
+      }
+    } catch (error) {
+      this.log('Failed to play audio chunk:', error);
+    }
+  }
+
+  /**
+   * Play audio chunk using Web Audio API
+   */
+  private async playAudioChunk(audioData: ArrayBuffer, format: string = 'pcm16'): Promise<void> {
+    try {
+      // Initialize audio context if needed
+      if (!this.audioContext) {
+        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      if (format === 'pcm16') {
+        // Handle PCM16 audio data
+        const int16Array = new Int16Array(audioData);
+        const float32Array = new Float32Array(int16Array.length);
+        
+        // Convert PCM16 to Float32 range [-1, 1]
+        for (let i = 0; i < int16Array.length; i++) {
+          float32Array[i] = int16Array[i]! / 32768.0;
+        }
+
+        // Create audio buffer
+        const audioBuffer = this.audioContext.createBuffer(1, float32Array.length, 24000);
+        audioBuffer.copyToChannel(float32Array, 0);
+
+        // Create and play buffer source
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.audioContext.destination);
+        source.start();
+
+        this.log('PCM16 audio chunk played', { 
+          samples: float32Array.length,
+          duration: audioBuffer.duration 
+        });
+      } else {
+        // For other formats (webm, opus), try to decode directly
+        try {
+          const audioBuffer = await this.audioContext.decodeAudioData(audioData.slice(0));
+          const source = this.audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(this.audioContext.destination);
+          source.start();
+
+          this.log('Audio chunk played', { 
+            format,
+            duration: audioBuffer.duration 
+          });
+        } catch (decodeError) {
+          this.log('Failed to decode audio data:', decodeError);
+          // Fallback: try to play as blob URL
+          const blob = new Blob([audioData], { type: `audio/${format}` });
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          await audio.play();
+          URL.revokeObjectURL(url);
+        }
+      }
+    } catch (error) {
+      this.log('Error playing audio chunk:', error);
+    }
+  }
+
   /**
    * Handle messages from the voice WebSocket service
    */
@@ -545,6 +676,11 @@ export class VoiceWidgetApp {
         }, 2000);
         break;
         
+      case 'audio_chunk':
+        // Handle audio response from AI
+        this.handleAudioChunk(message);
+        break;
+        
       case 'agent_tool':
         // Handle tool execution
         if (message.data?.tool_name) {
@@ -576,10 +712,10 @@ export class VoiceWidgetApp {
   }
   
   /**
-   * Send audio chunk to the WebSocket service
+   * Send audio chunk to the Socket.IO service
    */
   private async sendAudioChunk(audioBlob: Blob): Promise<void> {
-    if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+    if (!this.websocket || !this.isConnected) {
       return;
     }
     
@@ -587,22 +723,11 @@ export class VoiceWidgetApp {
       // Convert blob to ArrayBuffer
       const arrayBuffer = await audioBlob.arrayBuffer();
       
-      // Send as binary message
-      const message = {
-        type: 'audio_chunk',
-        sessionId: this.session.id,
-        timestamp: Date.now(),
-        format: 'webm', // or the actual format from MediaRecorder
-        sampleRate: 48000
-      };
+      // Send audio data to server
+      this.websocket.emit('audio_frame', arrayBuffer);
       
-      // Send metadata first
-      this.websocket.send(JSON.stringify(message));
-      
-      // Then send audio data
-      this.websocket.send(arrayBuffer);
     } catch (error) {
-      this.log(`Error sending audio chunk: ${error}`);
+      this.log('Error sending audio chunk:', error);
     }
   }
   
@@ -743,9 +868,13 @@ export class VoiceWidgetApp {
     this.animationFrame = requestAnimationFrame(update);
   }
 
-  private log(message: string): void {
+  private log(message: string, data?: any): void {
     if (this.config.config.debugMode) {
-      console.log(`[VoiceWidget] ${message}`);
+      if (data) {
+        console.log(`[VoiceWidget] ${message}`, data);
+      } else {
+        console.log(`[VoiceWidget] ${message}`);
+      }
     }
   }
 

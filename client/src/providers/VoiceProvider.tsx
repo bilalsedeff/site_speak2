@@ -100,13 +100,31 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         
         case 'final_asr':
           setTranscript(event.text || '')
-          setIsListening(false)
+          // Don't stop listening here - let the server VAD handle it
           setIsProcessing(true)
           break
         
         case 'agent_final':
           setResponse(event.data?.text || '')
           setIsProcessing(false)
+          // Keep listening for continuous conversation
+          if (isRecording) {
+            setIsListening(true)
+          }
+          break
+        
+        case 'speech_started':
+          // OpenAI Realtime VAD detected speech start
+          setIsListening(true)
+          setIsRecording(true)
+          setTranscript('') // Clear previous transcript
+          setResponse('') // Clear previous response
+          break
+          
+        case 'speech_stopped':
+          // OpenAI Realtime VAD detected speech end - but keep recording for continuous flow
+          setIsListening(false)
+          setIsProcessing(true)
           break
         
         case 'agent_delta':
@@ -139,14 +157,66 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
     })
 
     // Audio chunks from server
-    socketInstance.on('audio_chunk', (data: { data: ArrayBuffer; format: string; timestamp: number }) => {
+    socketInstance.on('audio_chunk', async (data: { data: ArrayBuffer; format: string; timestamp: number }) => {
       // Play audio response if available
       if (data.data) {
         try {
-          const audioBlob = new Blob([data.data], { type: `audio/${data.format}` })
-          const audioUrl = URL.createObjectURL(audioBlob)
-          const audio = new Audio(audioUrl)
-          audio.play().catch(console.error)
+          // Use Web Audio API for better real-time playback
+          if (!audioContextRef.current) {
+            audioContextRef.current = new AudioContext()
+          }
+
+          if (audioContextRef.current.state === 'suspended') {
+            await audioContextRef.current.resume()
+          }
+
+          if (data.format === 'pcm16') {
+            // Handle PCM16 audio data
+            const int16Array = new Int16Array(data.data)
+            const float32Array = new Float32Array(int16Array.length)
+            
+            // Convert PCM16 to Float32 range [-1, 1]
+            for (let i = 0; i < int16Array.length; i++) {
+              float32Array[i] = int16Array[i]! / 32768.0
+            }
+
+            // Create audio buffer
+            const audioBuffer = audioContextRef.current.createBuffer(1, float32Array.length, 24000)
+            audioBuffer.copyToChannel(float32Array, 0)
+
+            // Create and play buffer source
+            const source = audioContextRef.current.createBufferSource()
+            source.buffer = audioBuffer
+            source.connect(audioContextRef.current.destination)
+            source.start()
+
+            console.log('PCM16 audio chunk played', { 
+              samples: float32Array.length,
+              duration: audioBuffer.duration 
+            })
+          } else {
+            // For other formats, try to decode directly
+            try {
+              const audioBuffer = await audioContextRef.current.decodeAudioData(data.data.slice(0))
+              const source = audioContextRef.current.createBufferSource()
+              source.buffer = audioBuffer
+              source.connect(audioContextRef.current.destination)
+              source.start()
+
+              console.log('Audio chunk played', { 
+                format: data.format,
+                duration: audioBuffer.duration 
+              })
+            } catch (decodeError) {
+              console.warn('Failed to decode audio data, falling back to blob:', decodeError)
+              // Fallback: try to play as blob URL
+              const audioBlob = new Blob([data.data], { type: `audio/${data.format}` })
+              const audioUrl = URL.createObjectURL(audioBlob)
+              const audio = new Audio(audioUrl)
+              await audio.play()
+              URL.revokeObjectURL(audioUrl)
+            }
+          }
         } catch (error) {
           console.error('Failed to play audio chunk:', error)
         }

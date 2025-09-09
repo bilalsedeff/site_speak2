@@ -3,7 +3,7 @@ import { Suspense, lazy, useEffect } from 'react'
 import { Toaster } from 'sonner'
 
 import { Navbar } from '@/components/layout/Navbar'
-import { SimpleTalkButton } from '@/components/voice/SimpleTalkButton'
+import { SimpleVoiceCircle } from '@/components/voice/SimpleVoiceCircle'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { speculationRules } from '@/lib/speculation-rules'
 
@@ -67,8 +67,8 @@ function AppContent() {
         </main>
       </div>
       
-      {/* Global Voice Assistant - Simple Talk Button */}
-      <SimpleTalkButton />
+      {/* Global Voice Assistant - Simple Voice Circle */}
+      <SimpleVoiceCircle />
       
       {/* Global Toast Notifications */}
       <Toaster 
