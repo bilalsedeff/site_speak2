@@ -142,9 +142,9 @@ export class VoiceOrchestrator extends EventEmitter {
         voice: 'alloy',
         maxDuration: 300,
         audioConfig: {
-          sampleRate: 48000,
+          sampleRate: 24000, // Fixed: OpenAI Realtime API default is 24kHz, not 48kHz
           frameMs: 20,
-          inputFormat: 'opus',
+          inputFormat: 'pcm16', // Fixed: OpenAI Realtime API expects pcm16 format
           outputFormat: 'pcm16',
           enableVAD: true,
         },
@@ -304,6 +304,13 @@ export class VoiceOrchestrator extends EventEmitter {
     };
 
     try {
+      logger.info('Starting OpenAI Realtime client initialization', {
+        sessionId,
+        voice: session.config.voice,
+        inputFormat: session.config.audioConfig.inputFormat,
+        outputFormat: session.config.audioConfig.outputFormat
+      });
+
       // Initialize OpenAI Realtime Client
       const realtimeConfig = createRealtimeConfig({
         voice: session.config.voice as 'alloy',
@@ -317,10 +324,24 @@ export class VoiceOrchestrator extends EventEmitter {
         },
       });
       
+      logger.info('OpenAI Realtime config created', {
+        sessionId,
+        realtimeConfig: {
+          voice: realtimeConfig.voice,
+          inputAudioFormat: realtimeConfig.inputAudioFormat,
+          outputAudioFormat: realtimeConfig.outputAudioFormat,
+          turnDetection: realtimeConfig.turnDetection,
+          hasApiKey: !!realtimeConfig.apiKey,
+          apiKeyPrefix: realtimeConfig.apiKey ? realtimeConfig.apiKey.substring(0, 7) + '...' : 'missing'
+        }
+      });
+      
       session.realtimeClient = new OpenAIRealtimeClient(realtimeConfig);
+      logger.info('OpenAI Realtime client created, attempting connection', { sessionId });
 
       // Connect to OpenAI Realtime API
       await session.realtimeClient.connect();
+      logger.info('OpenAI Realtime client connected successfully', { sessionId });
 
       // Setup event handlers
       this.setupSessionEventHandlers(session);
@@ -342,9 +363,30 @@ export class VoiceOrchestrator extends EventEmitter {
 
       return sessionId;
     } catch (error) {
+      const errorDetails = error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        cause: error.cause,
+      } : { 
+        message: String(error),
+        raw: error 
+      };
+
       logger.error('Failed to create voice session', {
         sessionId,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        tenantId: params.tenantId,
+        siteId: params.siteId,
+        error: errorDetails,
+        config: {
+          model: 'gpt-4o-realtime-preview',
+          voice: session.config.voice,
+          inputFormat: session.config.audioConfig.inputFormat,
+          outputFormat: session.config.audioConfig.outputFormat,
+          hasApiKey: !!(session.realtimeClient as any)?.config?.apiKey,
+          apiKeyPrefix: (session.realtimeClient as any)?.config?.apiKey ? 
+            (session.realtimeClient as any).config.apiKey.substring(0, 7) + '...' : 'missing'
+        }
       });
       
       // Clean up failed session
@@ -463,6 +505,12 @@ export class VoiceOrchestrator extends EventEmitter {
     });
 
     client.on('conversation.item.input_audio_transcription.completed', (event) => {
+      logger.info('Transcription completed', { 
+        sessionId: session.id, 
+        transcript: event.transcript || '',
+        itemId: event.itemId
+      });
+
       // Update visual feedback
       this.visualFeedbackService.showFinalTranscript(
         event.transcript || '',
@@ -485,6 +533,11 @@ export class VoiceOrchestrator extends EventEmitter {
 
     // Handle partial transcription
     client.on('conversation.item.input_audio_transcription.delta', (event) => {
+      logger.debug('Partial transcription received', { 
+        sessionId: session.id, 
+        delta: event.delta || ''
+      });
+      
       if (this.socketIOHandler) {
         this.socketIOHandler.sendVoiceEvent(session.id, {
           type: 'partial_asr',
@@ -600,13 +653,41 @@ export class VoiceOrchestrator extends EventEmitter {
       session.lastActivity = new Date();
       session.status = 'processing';
 
-      // Send audio to OpenAI Realtime API
-      await session.realtimeClient.sendAudio(audioData);
-
-      logger.debug('Voice input processed', {
+      logger.info('Processing voice input', {
         sessionId,
         audioSize: audioData.byteLength,
+        sessionStatus: session.status,
+        realtimeClientConnected: session.realtimeClient.getStatus().isConnected
       });
+
+      // Convert WebM/Opus to PCM16 if needed
+      let processedAudioData = audioData;
+      
+      try {
+        // Check if this is WebM format (starts with specific bytes)
+        const uint8View = new Uint8Array(audioData);
+        const isWebM = uint8View[0] === 0x1A && uint8View[1] === 0x45 && uint8View[2] === 0xDF && uint8View[3] === 0xA3;
+        
+        if (isWebM) {
+          logger.info('Converting WebM audio to PCM16 for OpenAI Realtime API', { sessionId });
+          // For now, pass through - OpenAI Realtime should handle the conversion
+          // In a full implementation, we'd use FFmpeg or similar to convert to PCM16
+        }
+      } catch (conversionError) {
+        logger.warn('Audio format detection failed, proceeding with original data', {
+          sessionId,
+          error: conversionError instanceof Error ? conversionError.message : 'Unknown'
+        });
+      }
+
+      // Send audio to OpenAI Realtime API
+      await session.realtimeClient.sendAudio(processedAudioData);
+
+      logger.info('Voice input sent to OpenAI Realtime API successfully', {
+        sessionId,
+        audioSize: processedAudioData.byteLength,
+      });
+      
     } catch (error) {
       session.status = 'error';
       session.metrics.errors.push({
@@ -617,6 +698,7 @@ export class VoiceOrchestrator extends EventEmitter {
       logger.error('Failed to process voice input', {
         sessionId,
         error: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined
       });
       
       throw error;

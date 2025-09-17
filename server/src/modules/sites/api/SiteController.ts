@@ -151,9 +151,15 @@ export class SiteController {
       });
 
     } catch (error) {
+      const errorDetails = error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      } : { message: String(error) };
+      
       logger.error('Failed to list sites', {
         userId: req.user?.id,
-        error,
+        error: errorDetails,
         correlationId: HttpHeaders.getCorrelationId(req),
       });
       next(error);
@@ -224,10 +230,16 @@ export class SiteController {
       });
 
     } catch (error) {
+      const errorDetails = error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      } : { message: String(error) };
+      
       logger.error('Failed to get site', {
         userId: req.user?.id,
         siteId: req.params['siteId'],
-        error,
+        error: errorDetails,
         correlationId: HttpHeaders.getCorrelationId(req),
       });
       next(error);
@@ -301,9 +313,15 @@ export class SiteController {
       });
 
     } catch (error) {
+      const errorDetails = error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      } : { message: String(error) };
+      
       logger.error('Failed to create site', {
         userId: req.user?.id,
-        error,
+        error: errorDetails,
         correlationId: HttpHeaders.getCorrelationId(req),
       });
       next(error);
@@ -398,10 +416,16 @@ export class SiteController {
       });
 
     } catch (error) {
+      const errorDetails = error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      } : { message: String(error) };
+      
       logger.error('Failed to update site', {
         userId: req.user?.id,
         siteId: req.params['siteId'],
-        error,
+        error: errorDetails,
         correlationId: HttpHeaders.getCorrelationId(req),
       });
       next(error);

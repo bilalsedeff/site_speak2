@@ -695,11 +695,24 @@ export class VoiceWidgetApp {
         }
         break;
         
-      case 'error':
-        this.handleError(message.message || 'Voice processing error');
-        break;
-        
-      case 'vad':
+        case 'mic_closed':
+          this.updateSession({
+            state: 'idle',
+            isRecording: false
+          });
+          // Stop MediaRecorder if it's running
+          if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.stop();
+          }
+          break;
+          
+        case 'error':
+          this.handleError(message.message || 'Voice processing error');
+          // Stop MediaRecorder on error
+          if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.stop();
+          }
+          break;      case 'vad':
         // Voice Activity Detection - update audio level
         this.updateSession({
           audioLevel: message.level || 0
@@ -715,7 +728,7 @@ export class VoiceWidgetApp {
    * Send audio chunk to the Socket.IO service
    */
   private async sendAudioChunk(audioBlob: Blob): Promise<void> {
-    if (!this.websocket || !this.isConnected) {
+    if (!this.websocket || !this.isConnected || !this.session.isRecording) {
       return;
     }
     

@@ -142,6 +142,10 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         case 'mic_closed':
           setIsListening(false)
           setIsRecording(false)
+          // Stop recording immediately when server tells us to
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop()
+          }
           break
         
         case 'error':
@@ -149,6 +153,10 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
           setIsListening(false)
           setIsProcessing(false)
           setIsRecording(false)
+          // Stop recording immediately on error
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop()
+          }
           break
         
         default:
@@ -180,7 +188,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
               float32Array[i] = int16Array[i]! / 32768.0
             }
 
-            // Create audio buffer
+            // Create audio buffer with correct sample rate for OpenAI Realtime API
             const audioBuffer = audioContextRef.current.createBuffer(1, float32Array.length, 24000)
             audioBuffer.copyToChannel(float32Array, 0)
 
@@ -288,7 +296,9 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 44100,
+          autoGainControl: true,
+          sampleRate: 24000, // Match OpenAI Realtime API requirement
+          channelCount: 1,
         }
       })
       
@@ -321,7 +331,9 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 44100,
+          autoGainControl: true,
+          sampleRate: 24000, // Match OpenAI Realtime API requirement
+          channelCount: 1,
         }
       })
 
@@ -345,29 +357,123 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         }
       }
 
-      // Setup media recorder
-      mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus',
-      })
-
-      const audioChunks: BlobPart[] = []
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data)
+      // Setup media recorder for real-time streaming with better browser compatibility
+      let mediaRecorderOptions: MediaRecorderOptions
+      
+      // Try different MIME types for better compatibility
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mediaRecorderOptions = {
+          mimeType: 'audio/webm;codecs=opus',
+          audioBitsPerSecond: 16000,
+        }
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mediaRecorderOptions = {
+          mimeType: 'audio/webm',
+          audioBitsPerSecond: 16000,
+        }
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mediaRecorderOptions = {
+          mimeType: 'audio/mp4',
+          audioBitsPerSecond: 16000,
+        }
+      } else {
+        // Fallback - no specific MIME type
+        mediaRecorderOptions = {
+          audioBitsPerSecond: 16000,
         }
       }
 
-      mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
-        // Convert blob to ArrayBuffer and send as audio_frame
-        audioBlob.arrayBuffer().then(arrayBuffer => {
-          socket.emit('audio_frame', arrayBuffer)
-        }).catch(error => {
-          console.error('Failed to convert audio to ArrayBuffer:', error)
+      console.log('🎙️ MediaRecorder options:', mediaRecorderOptions)
+      mediaRecorderRef.current = new MediaRecorder(stream, mediaRecorderOptions)
+
+      // Buffer to accumulate audio data and send in proper chunks
+      let audioBuffer = new ArrayBuffer(0)
+      const MAX_CHUNK_SIZE = 4096
+      const TARGET_CHUNK_SIZE = 2048 // Target smaller chunks for better real-time performance
+
+      const sendBufferedChunks = () => {
+        // Only send if we're still recording and connected
+        if (!isRecording || !socket?.connected) {
+          return
+        }
+        
+        const uint8Array = new Uint8Array(audioBuffer)
+        let offset = 0
+        
+        while (offset + TARGET_CHUNK_SIZE <= uint8Array.length) {
+          const chunk = uint8Array.slice(offset, offset + TARGET_CHUNK_SIZE)
+          socket.emit('audio_frame', chunk.buffer)
+          offset += TARGET_CHUNK_SIZE
+        }
+        
+        // Keep remaining data for next batch
+        if (offset < uint8Array.length) {
+          const remaining = uint8Array.slice(offset)
+          audioBuffer = remaining.buffer.slice()
+        } else {
+          audioBuffer = new ArrayBuffer(0)
+        }
+      }
+
+      // Send audio chunks in real-time as they become available
+      mediaRecorderRef.current.ondataavailable = async (event) => {
+        console.log('📀 MediaRecorder ondataavailable triggered', { 
+          dataSize: event.data.size, 
+          isRecording,
+          socketConnected: socket?.connected,
+          mediaRecorderState: mediaRecorderRef.current?.state,
+          timestamp: Date.now()
         })
         
-        // Cleanup
+        if (event.data.size > 0 && isRecording) { // Only process if we're still recording
+          try {
+            const newData = await event.data.arrayBuffer()
+            
+            // Send raw audio data directly to server for processing
+            socket.emit('audio_frame', newData)
+            
+            console.log('🎵 Raw audio sent to server', { 
+              size: newData.byteLength,
+              timestamp: Date.now(),
+              mediaRecorderState: mediaRecorderRef.current?.state
+            })
+          } catch (error) {
+            console.error('Failed to process audio chunk:', error)
+          }
+        } else {
+          console.warn('⚠️ Audio data not sent', { 
+            dataSize: event.data.size, 
+            isRecording, 
+            socketConnected: socket?.connected 
+          })
+        }
+      }
+
+
+      mediaRecorderRef.current.onstart = () => {
+        console.log('✅ MediaRecorder started successfully')
+      }
+
+      mediaRecorderRef.current.onerror = (error) => {
+        console.error('❌ MediaRecorder error:', error)
+      }
+
+      mediaRecorderRef.current.onstop = () => {
+        console.log('🛑 MediaRecorder stopped')
+        
+        // Send any remaining buffered audio
+        if (audioBuffer.byteLength > 0) {
+          const finalChunk = new Uint8Array(audioBuffer)
+          if (finalChunk.byteLength <= MAX_CHUNK_SIZE) {
+            socket.emit('audio_frame', finalChunk.buffer)
+          } else {
+            // Split large final chunk
+            sendBufferedChunks()
+          }
+          audioBuffer = new ArrayBuffer(0)
+        }
+        
+        // Cleanup when recording stops
         stream.getTracks().forEach(track => track.stop())
         if (animationFrameRef.current) {
           cancelAnimationFrame(animationFrameRef.current)
@@ -380,10 +486,26 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       setTranscript('')
       setResponse('')
       
-      mediaRecorderRef.current.start(100) // Collect data every 100ms
+      console.log('🎤 About to start MediaRecorder', { 
+        state: mediaRecorderRef.current.state,
+        mimeType: mediaRecorderRef.current.mimeType || 'default',
+        stream: stream.active,
+        tracks: stream.getAudioTracks().length,
+        constraints: stream.getAudioTracks()[0]?.getSettings()
+      })
+      
+      // Use smaller intervals for real-time streaming (50ms chunks)
+      mediaRecorderRef.current.start(50)
+      
+      console.log('🎤 MediaRecorder started', { 
+        state: mediaRecorderRef.current.state,
+        interval: 50 
+      })
+      
       updateAudioLevel()
 
       // Notify server that we're starting to record
+      console.log('🎤 Starting voice recording session', { language, voice, sessionId: socket.id })
       socket.emit('control', { action: 'start_recording', params: { language, voice } })
 
     } catch (error) {

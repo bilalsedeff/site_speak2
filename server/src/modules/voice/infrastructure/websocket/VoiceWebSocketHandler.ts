@@ -18,6 +18,8 @@ export interface VoiceSession {
   auth: WsAuth;
   lastActivity: Date;
   isActive: boolean;
+  isRecording: boolean;
+  isInErrorState: boolean;
   pingInterval?: NodeJS.Timeout;
 }
 
@@ -113,6 +115,8 @@ export class VoiceWebSocketHandler {
           auth,
           lastActivity: new Date(),
           isActive: true,
+          isRecording: false,
+          isInErrorState: false,
         };
 
         this.sessions.set(socket.id, session);
@@ -266,6 +270,16 @@ export class VoiceWebSocketHandler {
       session.lastActivity = new Date();
       this.metrics.audioFramesProcessed++;
 
+      // Skip processing if session is not active or in error state
+      if (!session.isActive || session.isInErrorState) {
+        logger.debug('Skipping audio frame processing - session not ready', {
+          sessionId: session.id,
+          isActive: session.isActive,
+          isInErrorState: session.isInErrorState,
+        });
+        return;
+      }
+
       // Validate audio frame size
       if (audioData.byteLength > 4096) {
         logger.warn('Audio frame too large', {
@@ -291,10 +305,20 @@ export class VoiceWebSocketHandler {
         error,
       });
       
+      // Mark session as in error state to prevent further processing
+      session.isInErrorState = true;
+      session.isRecording = false;
+      
+      // Send error event and stop recording
       this.sendEvent(session, {
         type: 'error',
         code: 'AUDIO_PROCESSING_FAILED',
         message: 'Failed to process audio frame',
+      });
+
+      // Send mic_closed event to stop client from sending more audio
+      this.sendEvent(session, {
+        type: 'mic_closed',
       });
     }
   }
@@ -303,23 +327,44 @@ export class VoiceWebSocketHandler {
    * Process audio frame through voice orchestrator
    */
   private async processAudioFrame(session: VoiceSession, frame: AudioFrame): Promise<void> {
-    logger.debug('Processing audio frame', {
+    logger.info('Processing audio frame', {
       sessionId: session.id,
       size: frame.data.byteLength,
       format: frame.format,
+      tenantId: session.auth.tenantId,
+      siteId: session.auth.siteId
     });
 
     try {
       // Import VoiceOrchestrator dynamically to avoid circular dependency
       const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
       
+      // Ensure orchestrator is running
+      if (!voiceOrchestrator.getStatus().isRunning) {
+        logger.warn('VoiceOrchestrator not running, starting...');
+        await voiceOrchestrator.start();
+      }
+
+      // Check if session exists in orchestrator
+      const orchestratorSession = voiceOrchestrator.getSession(session.id);
+      if (!orchestratorSession) {
+        logger.warn('Session not found in orchestrator, creating new session');
+        await this.startVoiceSessionForClient(session);
+      }
+      
       // Process through voice orchestrator
       await voiceOrchestrator.processVoiceInput(session.id, frame.data);
+      
+      logger.debug('Audio frame processed successfully', {
+        sessionId: session.id,
+        frameSize: frame.data.byteLength
+      });
       
     } catch (error) {
       logger.error('Audio frame processing failed through orchestrator', {
         sessionId: session.id,
         error: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined
       });
       
       // Send error event
@@ -374,7 +419,7 @@ export class VoiceWebSocketHandler {
   /**
    * Handle control messages
    */
-  private handleControlMessage(session: VoiceSession, data: { action: string; params?: Record<string, unknown> }): void {
+  private async handleControlMessage(session: VoiceSession, data: { action: string; params?: Record<string, unknown> }): Promise<void> {
     session.lastActivity = new Date();
 
     logger.info('Received control message', {
@@ -385,10 +430,60 @@ export class VoiceWebSocketHandler {
 
     switch (data.action) {
       case 'start_recording':
-        this.sendEvent(session, { type: 'mic_opened' });
+        try {
+          // Reset error state and set recording state
+          session.isInErrorState = false;
+          session.isRecording = true;
+          
+          // Wait for voice session to be created before allowing audio input
+          await this.startVoiceSessionForClient(session, data.params);
+          
+          logger.info('Voice session initialized successfully', {
+            sessionId: session.id,
+            tenantId: session.auth.tenantId,
+            siteId: session.auth.siteId
+          });
+          
+          this.sendEvent(session, { type: 'mic_opened' });
+        } catch (error) {
+          const errorDetails = error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+            cause: error.cause,
+          } : { 
+            message: String(error),
+            raw: error 
+          };
+
+          logger.error('Failed to start voice session on start_recording', {
+            sessionId: session.id,
+            tenantId: session.auth.tenantId,
+            siteId: session.auth.siteId,
+            params: data.params,
+            error: errorDetails,
+          });
+          
+          // Set error state
+          session.isInErrorState = true;
+          session.isRecording = false;
+          
+          this.sendEvent(session, {
+            type: 'error',
+            code: 'SESSION_START_FAILED',
+            message: 'Failed to initialize voice session. Please check your OpenAI configuration.',
+          });
+        }
         break;
       
       case 'stop_recording':
+        // Reset recording state
+        session.isRecording = false;
+        
+        // Stop the voice session in VoiceOrchestrator
+        this.stopVoiceSessionForClient(session).catch(error => {
+          logger.error('Failed to stop voice session', { sessionId: session.id, error });
+        });
         this.sendEvent(session, { type: 'mic_closed' });
         break;
       
@@ -697,6 +792,89 @@ export class VoiceWebSocketHandler {
           data: { event, payload: data }
         });
       }
+    }
+  }
+
+  /**
+   * Start a voice session in VoiceOrchestrator for a client
+   */
+  private async startVoiceSessionForClient(session: VoiceSession, params?: Record<string, unknown>): Promise<void> {
+    try {
+      const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+      
+      // Ensure VoiceOrchestrator is running
+      if (!voiceOrchestrator.getStatus().isRunning) {
+        await voiceOrchestrator.start();
+      }
+
+      // Start voice session with client parameters
+      const sessionConfig = {
+        tenantId: session.auth.tenantId,
+        siteId: session.auth.siteId,
+        sessionId: session.id,
+        config: {
+          locale: params?.['language'] as string || session.auth.locale || 'en-US',
+          voice: params?.['voice'] as string || 'alloy',
+        }
+      };
+      
+      // Only include userId if it exists
+      if (session.auth.userId) {
+        Object.assign(sessionConfig, { userId: session.auth.userId });
+      }
+      
+      await voiceOrchestrator.startVoiceSession(sessionConfig);
+
+      logger.info('Voice session started in orchestrator', {
+        sessionId: session.id,
+        tenantId: session.auth.tenantId,
+      });
+    } catch (error) {
+      const errorDetails = error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        cause: error.cause,
+      } : { 
+        message: String(error),
+        raw: error 
+      };
+
+      logger.error('Failed to start voice session in orchestrator', {
+        sessionId: session.id,
+        tenantId: session.auth.tenantId,
+        siteId: session.auth.siteId,
+        params: params,
+        sessionConfig: {
+          locale: params?.['language'] as string || session.auth.locale || 'en-US',
+          voice: params?.['voice'] as string || 'alloy',
+        },
+        error: errorDetails,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Stop a voice session in VoiceOrchestrator for a client
+   */
+  private async stopVoiceSessionForClient(session: VoiceSession): Promise<void> {
+    try {
+      const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+      
+      // Stop the voice session
+      await voiceOrchestrator.stopVoiceSession(session.id);
+
+      logger.info('Voice session stopped in orchestrator', {
+        sessionId: session.id,
+        tenantId: session.auth.tenantId,
+      });
+    } catch (error) {
+      logger.error('Failed to stop voice session in orchestrator', {
+        sessionId: session.id,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      // Don't throw error for stop operations to avoid cascade failures
     }
   }
 }

@@ -149,7 +149,15 @@ export class OpenAIRealtimeClient extends EventEmitter {
       const connectStart = Date.now();
       const wsUrl = 'wss://api.openai.com/v1/realtime?model=' + this.config.model;
       
-      logger.info('Connecting to OpenAI Realtime API', { wsUrl });
+      logger.info('Initiating OpenAI Realtime API connection', { 
+        wsUrl,
+        model: this.config.model,
+        voice: this.config.voice,
+        inputAudioFormat: this.config.inputAudioFormat,
+        outputAudioFormat: this.config.outputAudioFormat,
+        hasApiKey: !!this.config.apiKey,
+        apiKeyPrefix: this.config.apiKey ? this.config.apiKey.substring(0, 7) + '...' : 'missing'
+      });
 
       this.ws = new WebSocket(wsUrl, {
         headers: {
@@ -157,6 +165,8 @@ export class OpenAIRealtimeClient extends EventEmitter {
           'OpenAI-Beta': 'realtime=v1',
         },
       });
+
+      logger.info('WebSocket created, waiting for connection', { wsUrl });
 
       this.ws.on('open', () => {
         this.metrics.connectionLatency = Date.now() - connectStart;
@@ -182,7 +192,29 @@ export class OpenAIRealtimeClient extends EventEmitter {
       });
 
       this.ws.on('error', (error) => {
-        logger.error('WebSocket error', { error });
+        const errorDetails = {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+          code: (error as any).code,
+          errno: (error as any).errno,
+          syscall: (error as any).syscall,
+          address: (error as any).address,
+          port: (error as any).port,
+          raw: error
+        };
+        
+        logger.error('WebSocket connection error - detailed diagnostics', { 
+          error: errorDetails,
+          connectionState: {
+            isConnected: this.isConnected,
+            wsReadyState: this.ws?.readyState,
+            hasApiKey: !!this.config.apiKey,
+            apiKeyPrefix: this.config.apiKey ? this.config.apiKey.substring(0, 7) + '...' : 'missing',
+            wsUrl: 'wss://api.openai.com/v1/realtime?model=' + this.config.model,
+            timeElapsed: Date.now() - connectStart + 'ms'
+          }
+        });
         this.metrics.errors++;
         
         if (!this.isConnected) {
@@ -267,10 +299,18 @@ export class OpenAIRealtimeClient extends EventEmitter {
     this.sendMessage(message);
     this.metrics.audioBytesSent += audioData.byteLength;
 
-    logger.debug('Audio data sent', { 
+    logger.info('Audio data sent to OpenAI Realtime API', { 
       size: audioData.byteLength,
-      base64Length: base64Audio.length 
+      base64Length: base64Audio.length,
+      timestamp: Date.now()
     });
+
+    // Auto-commit audio buffer for immediate processing
+    setTimeout(() => {
+      this.commitAudioBuffer().catch(error => {
+        logger.error('Auto-commit audio buffer failed', { error });
+      });
+    }, 100); // Small delay to ensure all audio chunks are appended
   }
 
   /**
@@ -384,6 +424,10 @@ export class OpenAIRealtimeClient extends EventEmitter {
           break;
 
         case 'input_audio_buffer.speech_started':
+          logger.info('Speech started detected', { 
+            audioStartMs: (message as any).audio_start_ms,
+            itemId: (message as any).item_id
+          });
           this.emit('speech_started', {
             audioStartMs: (message as any).audio_start_ms,
             itemId: (message as any).item_id,
@@ -391,6 +435,10 @@ export class OpenAIRealtimeClient extends EventEmitter {
           break;
 
         case 'input_audio_buffer.speech_stopped':
+          logger.info('Speech stopped detected', { 
+            audioEndMs: (message as any).audio_end_ms,
+            itemId: (message as any).item_id
+          });
           this.emit('speech_stopped', {
             audioEndMs: (message as any).audio_end_ms,
             itemId: (message as any).item_id,
@@ -403,7 +451,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
           this.metrics.transcriptionLatency.push(transcriptionLatency);
           delete this.audioBufferStart;
 
-          this.emit('transcription', {
+          this.emit('conversation.item.input_audio_transcription.completed', {
             itemId: (message as any).item_id,
             transcript: (message as any).transcript,
             latency: transcriptionLatency,
@@ -414,22 +462,22 @@ export class OpenAIRealtimeClient extends EventEmitter {
           { const audioData = Buffer.from((message as any).delta, 'base64');
           this.metrics.audioBytesReceived += audioData.length;
           
-          this.emit('audio_delta', {
+          this.emit('response.audio.delta', {
             delta: audioData,
             timestamp: Date.now(),
           });
           break; }
 
         case 'response.audio_transcript.delta':
-          this.emit('transcript_delta', {
+          this.emit('response.text.delta', {
             delta: (message as any).delta,
             timestamp: Date.now(),
           });
           break;
 
         case 'response.audio_transcript.done':
-          this.emit('transcript_final', {
-            transcript: (message as any).transcript,
+          this.emit('response.text.done', {
+            text: (message as any).transcript,
             timestamp: Date.now(),
           });
           break;
