@@ -17,7 +17,6 @@
 
 import {
   VoiceError,
-  VoiceErrorCode,
   ErrorContext,
   ClarificationRequest,
   ClarificationResponse,
@@ -74,11 +73,11 @@ export class ErrorRecoveryOrchestrator {
   private callbacks: ErrorRecoveryCallbacks;
   private state: ErrorRecoveryState;
 
-  private classificationEngine: ErrorClassificationEngine;
-  private clarificationOrchestrator: ClarificationOrchestrator;
-  private recoveryManager: RecoveryStrategyManager;
-  private uiOrchestrator: ErrorUIOrchestrator;
-  private learningService: ErrorLearningService;
+  private classificationEngine!: ErrorClassificationEngine;
+  private clarificationOrchestrator!: ClarificationOrchestrator;
+  private recoveryManager!: RecoveryStrategyManager;
+  private uiOrchestrator!: ErrorUIOrchestrator;
+  private learningService!: ErrorLearningService;
 
   private performanceTracker: PerformanceTracker;
   private eventBus: EventBus;
@@ -369,7 +368,7 @@ export class ErrorRecoveryOrchestrator {
           session.currentStep = step;
           this.uiOrchestrator.showRecoveryProgress(strategy, step, total, message);
         },
-        async (message, options) => {
+        async (_message, _options) => {
           // Confirmation callback
           return new Promise((resolve) => {
             // Would integrate with UI for user confirmation
@@ -391,7 +390,14 @@ export class ErrorRecoveryOrchestrator {
             duration: Date.now() - session.startTime.getTime(),
             userSatisfaction: 0.8, // Would get from user feedback
             timestamp: new Date(),
-            context: error.context
+            context: {
+              ...error.context,
+              pageType: 'unknown',
+              browserType: 'unknown',
+              timeOfDay: 'unknown',
+              sessionDuration: 0,
+              commandComplexity: 'simple'
+            } as any // Cast to avoid type mismatch
           }
         );
       }
@@ -594,20 +600,23 @@ export class ErrorRecoveryOrchestrator {
         theme: this.config.ui.theme
       },
       {
-        onErrorSeen: (errorId) => {
+        onErrorSeen: (_errorId) => {
           // Handle error seen event
         },
         onClarificationResponse: (response) => {
           this.processClarificationResponse(response.requestId, response);
         },
-        onRecoverySelected: (strategyId) => {
+        onRecoverySelected: (_strategyId) => {
           // Handle recovery selection
         },
         onUserFeedback: (feedback) => {
           this.provideFeedback(feedback.errorId, feedback);
         },
         onDismiss: (errorId, reason) => {
-          this.dismissError(errorId, reason);
+          // Cast reason to expected type since UI might send various strings
+          const dismissReason: 'user_action' | 'auto_hide' | 'resolved' = 
+            reason === 'auto_hide' || reason === 'resolved' ? reason : 'user_action';
+          this.dismissError(errorId, dismissReason);
         }
       }
     );
@@ -639,6 +648,8 @@ export class ErrorRecoveryOrchestrator {
       ...data
     };
 
+    // Emit the full event object and also emit data for backwards compatibility
+    this.eventBus.emit('recovery_event', event);
     this.eventBus.emit(type, data);
   }
 

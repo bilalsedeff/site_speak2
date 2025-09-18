@@ -3,6 +3,7 @@ import { ActionExecutorService, ActionExecutionRequest, ActionExecutionResult } 
 import { ActionManifestGenerator, SiteManifest } from './ActionManifestGenerator.js';
 import { WidgetActionBridge, BridgeConfig } from './WidgetActionBridge.js';
 import type { SiteAction } from '../../../../shared/types.js';
+import type { TypedActionResultData } from '../../types/action-execution.types.js';
 import { analyticsHelpers } from '../../../../services/_shared/analytics/index.js';
 
 const logger = createLogger({ service: 'action-dispatch' });
@@ -27,7 +28,11 @@ export interface ActionDispatchResult {
     type: 'navigation' | 'form_submission' | 'dom_interaction' | 'api_response' | 'custom_action';
     payload: any;
   };
-  error?: string;
+  error?: string | {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
   requestId?: string;
 }
 
@@ -471,16 +476,29 @@ export class ActionDispatchService {
       return undefined;
     }
 
+    // Type guard to check if result has a type property
+    const resultData = result.result as TypedActionResultData;
+
+    if (!resultData || typeof resultData !== 'object' || !('type' in resultData)) {
+      // Fallback for untyped results
+      return {
+        type: 'custom_action',
+        payload: {
+          data: result.result
+        }
+      };
+    }
+
     // Map result types to bridge instruction types
-    switch (result.result.type) {
+    switch (resultData.type) {
       case 'navigation':
         return {
           type: 'navigation',
           payload: {
-            target: result.result.target,
-            method: result.result.method || 'pushState',
-            scrollToTop: result.result.scrollToTop !== false,
-            highlightElement: result.result.highlightElement
+            target: resultData.target,
+            method: resultData.method || 'pushState',
+            scrollToTop: resultData.scrollToTop !== false,
+            highlightElement: resultData.highlightElement
           }
         };
 
@@ -488,10 +506,10 @@ export class ActionDispatchService {
         return {
           type: 'form_submission',
           payload: {
-            selector: result.result.selector,
-            formData: result.result.formData,
-            method: result.result.method || 'POST',
-            validation: result.result.validation
+            selector: resultData.selector,
+            formData: resultData.formData,
+            method: resultData.method || 'POST',
+            validation: resultData.validation
           }
         };
 
@@ -499,9 +517,9 @@ export class ActionDispatchService {
         return {
           type: 'dom_interaction',
           payload: {
-            action: result.result.action,
-            selector: result.result.selector,
-            parameters: result.result.parameters
+            action: resultData.action,
+            selector: resultData.selector,
+            parameters: resultData.parameters
           }
         };
 
@@ -509,9 +527,9 @@ export class ActionDispatchService {
         return {
           type: 'api_response',
           payload: {
-            status: result.result.status,
-            data: result.result.data,
-            headers: result.result.headers
+            status: resultData.status,
+            data: resultData.data,
+            headers: resultData.headers
           }
         };
 
@@ -519,15 +537,15 @@ export class ActionDispatchService {
         return {
           type: 'custom_action',
           payload: {
-            actionName: result.result.actionName,
-            parameters: result.result.parameters,
-            message: result.result.message
+            actionName: resultData.actionName,
+            parameters: resultData.parameters,
+            message: resultData.message
           }
         };
 
       default:
         logger.warn('Unknown result type for bridge transformation', {
-          resultType: result.result.type
+          resultType: (resultData as any).type
         });
         return undefined;
     }

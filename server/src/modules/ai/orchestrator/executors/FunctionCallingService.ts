@@ -268,7 +268,14 @@ export class FunctionCallingService {
         execution.status = 'cancelled';
         execution.result = {
           success: false,
-          data: null,
+          data: {
+            type: 'error',
+            success: false,
+            error: {
+              code: 'CONFIRMATION_REQUIRED',
+              message: 'User confirmation required but not provided'
+            }
+          },
           error: 'User confirmation required but not provided',
           executionTime: 0,
           sideEffects: []
@@ -521,7 +528,11 @@ Return JSON in this exact format:
         execution.result = {
           success: result.success,
           data: result.result,
-          ...(result.error && { error: result.error }),
+          ...(result.error && {
+            error: typeof result.error === 'string'
+              ? result.error
+              : JSON.stringify(result.error)
+          }),
           executionTime,
           sideEffects: (result.sideEffects || []).map(effect => ({
             type: effect.type || 'unknown',

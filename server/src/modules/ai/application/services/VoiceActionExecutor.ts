@@ -10,19 +10,17 @@
  */
 
 import { createLogger, getErrorMessage } from '../../../../shared/utils';
-import type { EnhancedSiteAction, SiteManifest } from './ActionManifestGenerator.js';
-import type { WidgetActionBridge, ActionContext } from './WidgetActionBridge.js';
-import { voiceElementSelector, type ElementDescriptor, type ElementMatch, type SelectionContext, type DOMElement as VoiceElementSelectorDOMElement } from './VoiceElementSelector.js';
-import { voicePropertyEditor, type PropertyEditCommand, type EditOperation } from './VoicePropertyEditor.js';
+import type { EnhancedSiteAction, SiteManifest } from './ActionManifestGenerator';
+import type { WidgetActionBridge, ActionContext } from './WidgetActionBridge';
+import { voiceElementSelector, type ElementMatch, type SelectionContext, type DOMElement as VoiceElementSelectorDOMElement } from './VoiceElementSelector';
+import { voicePropertyEditor, type EditOperation } from './VoicePropertyEditor';
 import {
   VoiceCommandParameters,
-  VoiceExecutionResult,
   VoiceResultData,
-  VoiceVisualFeedback,
-  VoiceExecutionMetadata,
-  ActionParameters,
-  DOMElement
+  VoiceVisualFeedback
 } from '../../../../../../shared/types';
+
+export type VoiceParameterValue = string | number | boolean | null;
 
 const logger = createLogger({ service: 'voice-action-executor' });
 
@@ -72,7 +70,7 @@ export interface EditorVoiceCommand {
 export class VoiceActionExecutor {
   private actionManifest: SiteManifest | null = null;
   private widgetBridge: WidgetActionBridge;
-  private editorCommands = new Map<string, Function>();
+  private editorCommands = new Map<string, (command: EditorVoiceCommand, context: ActionContext) => Promise<ActionExecutionResult>>();
   private pendingActions = new Map<string, Promise<ActionExecutionResult>>();
   private executionMetrics = {
     totalExecutions: 0,
@@ -157,8 +155,18 @@ export class VoiceActionExecutor {
 
       return {
         success: false,
-        action: {} as EnhancedSiteAction,
-        result: null,
+        action: {
+          id: 'error',
+          name: 'Error Action',
+          type: 'custom',
+          description: 'Action execution failed',
+          parameters: [],
+          requiresAuth: false,
+        } as EnhancedSiteAction,
+        result: {
+          error: getErrorMessage(error),
+          executionTime,
+        } as VoiceResultData,
         error: getErrorMessage(error),
         executionTime,
       };
@@ -213,17 +221,22 @@ export class VoiceActionExecutor {
     editorCommand: EditorVoiceCommand,
     context: ActionContext
   ): Promise<ActionExecutionResult> {
-    const { action, targets, parameters } = editorCommand;
+    const { action, targets } = editorCommand;
 
     switch (action) {
       case 'select_element':
-        { const elementMatch = await this.findElementByDescription(targets[0]!, context);
-
-        if (!elementMatch) {
-          throw new Error(`Could not find element: ${targets[0]}`);
+        { const target = targets[0];
+        if (!target) {
+          throw new Error('No target element specified for selection');
         }
 
-        const feedback = this.generateSelectionFeedback(elementMatch, targets[0]!);
+        const elementMatch = await this.findElementByDescription(target, context);
+
+        if (!elementMatch) {
+          throw new Error(`Could not find element: ${target}`);
+        }
+
+        const feedback = this.generateSelectionFeedback(elementMatch, target);
 
         return {
           success: true,
@@ -231,7 +244,7 @@ export class VoiceActionExecutor {
             id: 'editor_select',
             name: 'Select Element',
             type: 'custom',
-            description: `Select element: ${targets[0]}`,
+            description: `Select element: ${target}`,
             parameters: [],
             requiresAuth: false,
           } as EnhancedSiteAction,
@@ -290,63 +303,74 @@ export class VoiceActionExecutor {
    */
   private async executeEditingCommand(
     editorCommand: EditorVoiceCommand,
-    context: ActionContext
+    _context: ActionContext
   ): Promise<ActionExecutionResult> {
     const { action, targets, parameters } = editorCommand;
 
     switch (action) {
       case 'update_text':
+        { const target = targets[0];
+        const textValue = parameters['text'];
+        if (!target) {
+          throw new Error('No target element specified for text update');
+        }
         return {
           success: true,
           action: {
             id: 'editor_update_text',
             name: 'Update Text Content',
             type: 'custom',
-            description: `Update text to: ${parameters['text']}`,
+            description: `Update text to: ${textValue}`,
             parameters: [],
             requiresAuth: false,
           } as EnhancedSiteAction,
           result: {
             action: 'text_updated',
-            target: targets[0],
-            newText: parameters['text'],
-          },
+            target: target,
+            newText: textValue,
+          } as VoiceResultData,
           visualFeedback: [{
             type: 'animate',
-            target: targets[0],
+            target: target,
             duration: 1000,
             style: { animation: 'pulse 0.5s ease-in-out' },
             message: 'Text updated',
           }],
           executionTime: 100,
-        };
+        }; }
 
       case 'update_style':
+        { const target = targets[0];
+        const property = parameters['property'];
+        const value = parameters['value'];
+        if (!target) {
+          throw new Error('No target element specified for style update');
+        }
         return {
           success: true,
           action: {
             id: 'editor_update_style',
             name: 'Update Element Style',
             type: 'custom',
-            description: `Update ${parameters['property']} to ${parameters['value']}`,
+            description: `Update ${property} to ${value}`,
             parameters: [],
             requiresAuth: false,
           } as EnhancedSiteAction,
           result: {
             action: 'style_updated',
-            target: targets[0],
-            property: parameters['property'],
-            value: parameters['value'],
-          },
+            target: target,
+            property: property,
+            value: value,
+          } as VoiceResultData,
           visualFeedback: [{
             type: 'highlight',
-            target: targets[0],
+            target: target,
             duration: 1500,
             style: { outline: '2px solid #10b981' },
-            message: `${parameters['property']} updated`,
+            message: `${property} updated`,
           }],
           executionTime: 120,
-        };
+        }; }
 
       default:
         throw new Error(`Unknown editing command: ${action}`);
@@ -358,13 +382,16 @@ export class VoiceActionExecutor {
    */
   private async executeNavigationCommand(
     editorCommand: EditorVoiceCommand,
-    context: ActionContext
+    _context: ActionContext
   ): Promise<ActionExecutionResult> {
     const { action, targets, parameters } = editorCommand;
 
     switch (action) {
       case 'navigate_to_panel':
         { const panelName = targets[0];
+        if (!panelName) {
+          throw new Error('No panel name specified for navigation');
+        }
         return {
           success: true,
           action: {
@@ -378,7 +405,7 @@ export class VoiceActionExecutor {
           result: {
             action: 'panel_opened',
             panel: panelName,
-          },
+          } as VoiceResultData,
           visualFeedback: [{
             type: 'overlay',
             target: `[data-panel="${panelName}"]`,
@@ -390,6 +417,9 @@ export class VoiceActionExecutor {
 
       case 'switch_mode':
         { const mode = parameters['mode'];
+        if (!mode) {
+          throw new Error('No mode specified for switch operation');
+        }
         return {
           success: true,
           action: {
@@ -403,7 +433,7 @@ export class VoiceActionExecutor {
           result: {
             action: 'mode_switched',
             newMode: mode,
-          },
+          } as VoiceResultData,
           visualFeedback: [{
             type: 'toast',
             target: 'body',
@@ -425,14 +455,19 @@ export class VoiceActionExecutor {
     editorCommand: EditorVoiceCommand,
     context: ActionContext
   ): Promise<ActionExecutionResult> {
-    const { action, targets, parameters } = editorCommand;
+    const { action, targets } = editorCommand;
     const startTime = performance.now();
 
     // Find target element first
-    const elementMatch = await this.findElementByDescription(targets[0]!, context);
+    const target = targets[0];
+    if (!target) {
+      throw new Error('No target element specified for styling operation');
+    }
+
+    const elementMatch = await this.findElementByDescription(target, context);
 
     if (!elementMatch) {
-      throw new Error(`Could not find target element: ${targets[0]}`);
+      throw new Error(`Could not find target element: ${target}`);
     }
 
     switch (action) {
@@ -559,66 +594,77 @@ export class VoiceActionExecutor {
    */
   private async executeLayoutCommand(
     editorCommand: EditorVoiceCommand,
-    context: ActionContext
+    _context: ActionContext
   ): Promise<ActionExecutionResult> {
     const { action, targets, parameters } = editorCommand;
 
     switch (action) {
       case 'move_element':
+        { const target = targets[0];
+        const direction = parameters['direction'];
+        const distance = parameters['distance'];
+        if (!target) {
+          throw new Error('No target element specified for move operation');
+        }
         return {
           success: true,
           action: {
             id: 'editor_move_element',
             name: 'Move Element',
             type: 'custom',
-            description: `Move ${targets[0]} to ${parameters['direction']}`,
+            description: `Move ${target} to ${direction}`,
             parameters: [],
             requiresAuth: false,
           } as EnhancedSiteAction,
           result: {
             action: 'element_moved',
-            target: targets[0],
-            direction: parameters['direction'],
-            distance: parameters['distance'],
-          },
+            target: target,
+            direction: direction,
+            distance: distance,
+          } as VoiceResultData,
           visualFeedback: [{
             type: 'animate',
-            target: targets[0],
+            target: target,
             duration: 600,
             style: {
-              transform: `translate${parameters['direction'] === 'left' || parameters['direction'] === 'right' ? 'X' : 'Y'}(${parameters['distance']}px)`,
+              transform: `translate${direction === 'left' || direction === 'right' ? 'X' : 'Y'}(${distance}px)`,
               transition: 'transform 0.6s ease',
             },
-            message: `Moved ${parameters['direction']}`,
+            message: `Moved ${direction}`,
           }],
           executionTime: 130,
-        };
+        }; }
 
       case 'align_element':
+        { const target = targets[0];
+        const alignment = parameters['alignment'];
+        if (!target) {
+          throw new Error('No target element specified for align operation');
+        }
         return {
           success: true,
           action: {
             id: 'editor_align_element',
             name: 'Align Element',
             type: 'custom',
-            description: `Align ${targets[0]} to ${parameters['alignment']}`,
+            description: `Align ${target} to ${alignment}`,
             parameters: [],
             requiresAuth: false,
           } as EnhancedSiteAction,
           result: {
             action: 'element_aligned',
-            target: targets[0],
-            alignment: parameters['alignment'],
-          },
+            target: target,
+            alignment: alignment,
+          } as VoiceResultData,
           visualFeedback: [{
             type: 'highlight',
-            target: targets[0],
+            target: target,
             duration: 1200,
             style: { outline: '2px dashed #f59e0b' },
-            message: `Aligned ${parameters['alignment']}`,
+            message: `Aligned ${alignment}`,
           }],
           executionTime: 100,
-        };
+        }; }
 
       default:
         throw new Error(`Unknown layout command: ${action}`);
@@ -638,16 +684,16 @@ export class VoiceActionExecutor {
       // Parse the natural language description
       const selectionContext: SelectionContext = {
         mode: context.mode || 'editor',
-        activePanel: context.activePanel,
+        activePanel: context.activePanel || 'main',
         selectedElements: context.selectedElements ? [{
           tagName: 'div',
           cssSelector: context.selectedElements,
           attributes: {},
           computedStyle: {},
           boundingRect: { x: 0, y: 0, width: 0, height: 0 }
-        } as VoiceElementSelectorDOMElement] : undefined,
+        } as VoiceElementSelectorDOMElement] : [],
         viewport: context.viewport || { width: 1920, height: 1080, zoom: 1 },
-        constraints: context.constraints,
+        ...(context.constraints && { constraints: context.constraints }),
       };
 
       const descriptor = await voiceElementSelector.parseElementDescription(
@@ -718,7 +764,7 @@ export class VoiceActionExecutor {
   /**
    * Get DOM elements from current context
    */
-  private async getDOMElementsFromContext(context: ActionContext): Promise<unknown[]> {
+  private async getDOMElementsFromContext(_context: ActionContext): Promise<unknown[]> {
     // This would typically get DOM elements from the current page
     // For now, return mock data - in real implementation, this would
     // fetch actual DOM elements via the widget bridge
@@ -781,7 +827,7 @@ export class VoiceActionExecutor {
           category: 'editing',
           action: 'update_text',
           targets: this.extractTargets(text),
-          parameters: { text: command.parameters['text'] },
+          parameters: { text: command.parameters['text'] as VoiceParameterValue },
           requiresConfirmation: false,
         };
       }
@@ -821,7 +867,7 @@ export class VoiceActionExecutor {
           category: 'styling',
           action: 'change_color',
           targets: this.extractTargets(text),
-          parameters: { color: command.parameters['color'] },
+          parameters: { color: command.parameters['color'] as VoiceParameterValue },
           requiresConfirmation: false,
         };
       }
@@ -911,7 +957,7 @@ export class VoiceActionExecutor {
     action: EnhancedSiteAction,
     parameters: VoiceCommandParameters,
     context: ActionContext,
-    executionId: string
+    _executionId: string
   ): Promise<any> {
     // Send immediate visual feedback
     this.sendVisualFeedback({
@@ -979,8 +1025,8 @@ export class VoiceActionExecutor {
    */
   private generateVisualFeedback(
     action: EnhancedSiteAction,
-    result: unknown,
-    command: VoiceCommand
+    _result: unknown,
+    _command: VoiceCommand
   ): VisualFeedbackAction[] {
     const feedback: VisualFeedbackAction[] = [];
 
@@ -1010,7 +1056,7 @@ export class VoiceActionExecutor {
    */
   private generateFollowUpSuggestions(
     action: EnhancedSiteAction,
-    command: VoiceCommand
+    _command: VoiceCommand
   ): string[] {
     const suggestions: string[] = [];
 
@@ -1153,10 +1199,10 @@ export class VoiceActionExecutor {
     }
 
     // Property-based suggestions
-    if (elementMatch.properties.backgroundColor) {
+    if (elementMatch.properties?.backgroundColor) {
       suggestions.push('Change background color');
     }
-    if (elementMatch.properties.fontSize) {
+    if (elementMatch.properties?.fontSize) {
       suggestions.push('Adjust font size');
     }
 
@@ -1166,10 +1212,7 @@ export class VoiceActionExecutor {
   /**
    * Find elements similar to the current selection
    */
-  private async findSimilarElements(selectedElement: unknown, context: ActionContext): Promise<string[]> {
-    // Mock implementation - in real scenario, this would use element matching algorithms
-    return ['#similar-element-1', '.similar-class', '[data-similar="true"]'];
-  }
+  // Note: findSimilarElements method removed as it was unused and only served as a placeholder
 
   /**
    * Reconstruct command text from structured editor command

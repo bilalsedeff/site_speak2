@@ -1,240 +1,212 @@
-# Source-of-Truth: `/services/voice`
+# Voice & Real-Time UX
+
+Summary
+
+The Voice & Real-Time UX module of SiteSpeak delivers an interactive voice experience that feels instantaneous and natural. It covers everything from capturing the user’s speech, streaming it to the AI backend, to playing back the AI’s spoken responses – all in real time. The emphasis is on duplex audio streaming (the user and AI can speak/listen simultaneously) with ultra-low latency: users start hearing answers within a fraction of a second. The system supports “barge-in”, meaning the user can interrupt the AI’s speech by talking, and the system will immediately pause to listen. It also includes visual feedback elements (like a mic icon, levels, partial transcript text) to give users confidence that the system is hearing and thinking. In short, Voice & Real-Time UX is the layer that turns the static website into a live conversation partner, making interactions feel as fluid as talking to a person.
+
+Application Architecture
+
+Voice Capture & Turn Manager: On the client side, a TurnManager controls the microphone and audio pipeline. It uses the Web Audio API with an AudioWorklet to capture microphone input with minimal delay, perform Voice Activity Detection (VAD), and package audio into small frames (Opus encoded) for transmission
+GitHub
+GitHub
+. The TurnManager is responsible for starting and stopping voice capture and handling barge-in events (when user speech is detected over the AI’s voice).
+
+Realtime Transport (WebSocket Service): A dedicated WebSocket server on the backend maintains a live connection to each user for streaming audio and data. It receives the Opus audio frames from the client, and sends back partial text transcripts, final recognized text, and the AI’s response audio in chunks, as well as any control messages (like “action executed”)
+GitHub
+GitHub
+. This WebSocket connection is duplex and uses a small binary protocol: audio frames go up, and JSON plus audio chunks come down. It implements heartbeat messages (ping/pong) to monitor liveness
+GitHub
+.
+
+OpenAI Realtime Session: The backend connects to an OpenAI Realtime API (or similar streaming ASR/TTS service) which processes the incoming audio stream and produces live transcription and generated reply audio. This is the core that allows the AI’s thinking and speaking to happen in parallel. The service sends intermediate results (partial transcriptions of the user, partial AI reply text and corresponding audio) which we forward to the client immediately
+GitHub
+GitHub
+.
+
+Voice Widget UI & Visual Feedback: On the front-end (the website or admin interface), the voice widget presents the user with a microphone button and a status panel. This includes a live audio level meter (visualizing the loudness of speech), live captions of what the user is saying (partial ASR text that updates in real time), and indicators of the AI’s thinking and actions (e.g., “...” while the AI is formulating a response, or highlights on elements when the AI clicks something)
+GitHub
+GitHub
+. The widget runs in a Shadow DOM to avoid CSS conflicts, and it can be embedded on any site with a single script tag.
+
+Action Highlighter: As part of the voice UX, when the AI decides to execute an action like clicking a button or navigating, a visual highlight is briefly shown on that element (e.g., a glowing outline)
+GitHub
+GitHub
+. This feedback helps the user see what the AI is doing on the page in response to voice commands, building trust that the assistant is doing the right thing.
+
+Technical Details
+
+Low-Latency Audio Pipeline – The client uses getUserMedia to get microphone access with recommended constraints: enable echo cancellation, noise suppression, and auto gain control if available
+GitHub
+GitHub
+. The raw audio stream is immediately routed into an AudioWorkletProcessor – a special script that runs on the audio rendering thread, not the main UI thread
+GitHub
+GitHub
+. This is critical because it means audio processing (like detecting speech) isn’t blocked by UI or script execution, achieving latency on the order of a few milliseconds. The AudioWorklet implements a simple VAD (voice activity detector), analyzing audio frames (~10–20 ms chunks) to decide if speech is present
+GitHub
+. As soon as voice is detected, it emits an event to indicate “speech started” and similarly when speech stops (with a hangover period to avoid chopping). The audio is encoded into Opus format frames of about 20 ms each – Opus is a high-quality, low-latency codec ideal for speech
+GitHub
+GitHub
+ (used in WebRTC, etc.). These frames are sent via WebSocket to the server immediately in a continuous stream. The system targets about 150 ms or less from the time the user speaks to when the server receives an audio frame and starts transcription
+GitHub
+.
+
+Duplex Streaming & Partial Results – The WebSocket (/api/voice endpoint on the API Gateway) upgrades from HTTP when the user engages the mic. We authenticate this upgrade with a JWT token to ensure the user is allowed and to identify the tenant/site (no API keys are exposed in the front-end; the token is short-lived)
+GitHub
+. Over this socket, the client sends binary messages for audio. The server responds with JSON messages for things like {type: "partial_asr", text: "hello wor"} (partial speech-to-text) and audio data for the AI’s spoken reply (often sent as binary frames prefixed or indicated by a message)
+GitHub
+GitHub
+. Because of this design, the user can hear the AI’s answer while they are still speaking or immediately after – there’s no long silence. Typically, the first words from the AI can be heard ~300 ms after the user starts talking
+GitHub
+GitHub
+ (assuming the network and ASR model are fast), which is our target for interactivity. The partial transcripts are crucial; they’re displayed in real time on the interface (“Searching for EDM concerts…” appears word-by-word as the user speaks)
+GitHub
+. If the user changes what they’re saying mid-sentence, the partial text updates accordingly.
+
+Barge-In Handling – Barge-in is the ability for the user to interrupt the AI’s speech with their own voice. Our TurnManager is built to detect this: while the AI is speaking (we know this because we’re outputting audio to the speakers), the VAD is still monitoring the mic input. The moment VAD flags “user started talking” during the AI’s playback, the system triggers a barge_in event
+GitHub
+GitHub
+. The client immediately pauses or ducks (lowers volume of) the AI’s TTS audio playback
+GitHub
+GitHub
+. It then signals the backend to start a new turn. In practice, the WebSocket server or the orchestrator will treat that as the end of the previous turn – possibly cancelling the rest of the AI’s speech – and begin processing the user’s new utterance. This is implemented by the TurnManager emitting a barge_in message to the app, and our audio player either stops or greatly reduces volume on the existing TTS audio output within ~50 ms
+GitHub
+GitHub
+. Barge-in is considered “table stakes” for modern voice assistants: the user should never be stuck waiting if they already got the info they need or want to correct the assistant.
+
+WebSocket Protocol & Health – The voice WebSocket implements periodic ping/pong frames as per RFC 6455 to ensure the connection is alive
+GitHub
+GitHub
+. Every, say, 15 seconds the server sends a small ping, and the client must respond with a pong (the server expects the pong payload to mirror the ping, per spec). If pongs are not received (within a timeout like 10 seconds), the server assumes the connection is dead and closes it
+GitHub
+GitHub
+. This keeps ghost sessions from hanging around. The server also monitors the bufferedAmount of the socket (how much data is queued to send) – if it grows too large (meaning the client might not be reading or network is slow), it can start dropping non-critical messages (e.g., if volume level messages or partials are flooding, we can skip some) to apply backpressure
+GitHub
+GitHub
+. The audio streaming is binary, text messages are JSON; frames are kept relatively small (a few kilobytes at most). We also ensure the WebSocket is using the correct subprotocol or content type as needed, and masking rules: by spec, frames from browser to server are always masked, and we abide by that
+GitHub
+.
+
+Audio Playback & Output Handling – On receiving audio chunks for the AI’s speech, the client plays them with minimal delay. We have two strategies: if the chunks are in a playable format (like Opus in an Ogg container or WAV), we might use the Web Audio API or MediaSource Extensions to play seamlessly. In our case, since we already handle raw audio, we often choose to decode audio chunks via Web Audio. For example, using a WebCodecs decoder for Opus or feeding the bytes to another AudioWorklet that outputs to an AudioBufferSourceNode
+GitHub
+. Another simpler approach is to stream an `<audio>` tag source, but that can introduce buffering we don’t control. For fine control, we typically manage our own small jitter buffer: collecting a few packets (~40–100 ms of audio) then scheduling them one after the other. This ensures smooth playback even if network timing is irregular. Our widget thus either uses AudioBuffer in Web Audio or MediaStream, ensuring that as soon as the first chunk of TTS audio arrives, we start playing it. The result: the user hears a voice response that starts quickly and continues streaming out. If the user interrupts (barge-in), we immediately pause this playback. We also handle the end-of-speech detection – when the AI’s speech is done (or interrupted), the UI can transition back to idle/listening mode.
+
+Visual Feedback Elements – The voice widget UI is carefully designed to be informative yet unobtrusive. Key elements:
+
+A mic button that indicates state: idle (mic off), listening (mic on, capturing), and processing/responding. This might be color or icon changes. It is accessible, with an ARIA label like “Start voice assistant” and proper keyboard focus handling.
+
+A level meter around the mic icon, showing live volume levels. This is driven by the AudioWorklet’s analysis of the mic input; the VAD can output a volume level (RMS or dB level) which we use to animate bars or a circle around the button
+GitHub
+. This gives immediate feedback that sound is being heard.
+
+Partial Transcript Display: While the user is speaking, their words (as recognized so far) appear as live text (often in a subtle, gray italic style)
+GitHub
+GitHub
+. When the final transcript is done, it turns solid (confirming “this is what we heard”). This helps the user confirm that the system understood them correctly. The element is marked with aria-live="polite" so that if the user is using a screen reader, the partial text is announced without interrupting other speech (important for accessibility)
+GitHub
+.
 
-## *scope: real-time duplex voice UX (barge-in, partial ASR, low-latency TTS), transport, and visual feedback*
+Thinking/Typing Indicator: While the AI is formulating an answer (and not yet speaking), the widget can show a “typing dots” animation or a message like “Thinking…”. This is akin to a chatbot indicator and reassures users that the system is working on a response even if there’s a pause of a couple seconds.
 
-> **Owner note (my voice):** Voice is our “wow” layer. It must feel instant, interruptible, and calm. First audio/words in ≲300 ms, always. Barge-in should just work. All this sits on top of the orchestrator and tools you already specced.
+Action Highlights: When the AI takes an action (like navigates or clicks something), if the user’s view is on a page, a highlight briefly flashes on that element
+GitHub
+GitHub
+. For example, if it’s adding an item to cart, the “Add to Cart” button might glow. This is done by the front-end receiving an event (via the same WebSocket or another channel) or the widget polling some state. The highlight is important for transparency – the user should see what the AI is doing. We implement it by injecting a small CSS or using the existing DOM (the actions have known data-action selectors, so we can find the element and apply a temporary CSS animation).
 
----
+Edge Cases & Audio Quality – We request the microphone at 48 kHz which matches the OpenAI model’s expected sample rate (to avoid resampling overhead). The Opus encoder is set to a bitrate that balances quality and bandwidth (often around 16–24 kbps for voice, which is plenty for speech)
+GitHub
+. We also consider packet loss: Opus can handle a couple of missing frames per second without noticeable issues. We don’t implement our own forward error correction beyond what Opus gives, but we ensure the jitter buffer can stretch a bit if timing is off. If the network is very bad, the WebSocket might drop – in which case our client will notice and attempt to reconnect, or at least change the UI state to indicate it’s offline. The user might then try again.
 
-## Directory
+Permissions and Security – The voice widget must obtain mic permission from the user via the browser’s standard prompt (we can’t bypass that). We instruct users to allow it by explaining the benefit. For cross-origin iframes (like if the widget is embedded from a different domain), we need to use the Permissions Policy header to allow microphone access in iframes, and allow="microphone" on the iframe element hosting the widget
+GitHub
+. Also, since audio can contain personal data, we by default do not store raw recordings on the server (or only store them ephemerally for short durations for possible debugging, then delete). If recording is an option (for analytics or transcripts), it is off by default and explicitly opt-in, and even then we scrub or anonymize where possible
+GitHub
+. On the network, all voice WebSocket traffic is wss (TLS) so it’s encrypted in transit.
 
-```plaintext
-/services/voice
-  turnManager.ts            // dialog orchestration, STT/TTS/VAD, barge-in
-  visualFeedbackService.ts  // UI hints: mic/levels/partials/action glows
-  transport/wsServer.ts     // WebSocket duplex transport for text+audio
-```
+Best Practices
 
----
+Use AudioWorklet for Capture: Always capture microphone input on a dedicated audio thread (AudioWorklet) for lowest latency
+GitHub
+. This prevents UI jank from affecting voice capture and is specifically recommended for real-time audio processing.
 
-## 1) `turnManager.ts` — Dialog + Audio Runtime
+Frame Audio in Small Chunks: Use ~20ms Opus frames for streaming
+GitHub
+GitHub
+. Small frames reduce latency and Opus is designed to give good quality at these durations. Avoid waiting for large buffers of audio – send continuously to keep the pipeline full.
 
-### Mission
+Enable Barge-In:** Design the system to allow interruption. The assistant should immediately pause TTS output when the user starts speaking again
+GitHub
+. This means monitoring mic even during playback and coordinating the client and server to handle an interrupt as a new turn.
 
-Own a **single, full-duplex “turn”**: capture mic, stream audio frames up, receive partial transcripts & TTS audio down, handle **barge-in** (interrupt TTS when the user speaks), and mediate with the agent graph. Do this with **very low latency** using Web Audio `AudioWorklet` for capture/VAD and Opus framing for the wire.
+Stream Partial Results: Don’t wait for the user to finish speaking to start processing. Partial ASR (automatic speech recognition) results should be sent to the client and optionally displayed
+GitHub
+GitHub
+. This not only gives the user feedback but also can allow the AI to start formulating a response sooner (some systems do incremental intent recognition).
 
-### Design goals (non-negotiables)
+Low Latency First Response: Aim for the first spoken response token ≤ 300 ms from user speech start
+GitHub
+. Achieving this requires tight integration with a streaming speech-to-text and text-to-speech provider and possibly sending an initial “acknowledgment” sound or phrase if a full answer isn’t ready. Hitting this target makes the experience feel instantaneous.
 
-* **Low latency path.** Use `AudioWorklet` for capture/VAD and buffering on the audio thread; it exists precisely for low-latency processing. ([MDN Web Docs][1])
-* **Built-in DSP on the mic.** Request `echoCancellation`, `noiseSuppression`, and `autoGainControl` via `getUserMedia` constraints; read back actual settings with `MediaTrackSettings`. ([MDN Web Docs][2])
-* **Opus framing.** Encode 20 ms frames (typical for interactive speech; Opus supports 2.5–60 ms) at 48 kHz for network efficiency. ([tech-invite.com][3], [IETF Datatracker][4])
-* **Barge-in always.** When VAD detects speech while TTS is playing, **duck/pause** TTS immediately and mark a new user turn. (Industry agents treat barge-in as table-stakes.)
-* **Realtime ASR/TTS provider.** Integrate with Realtime APIs (OpenAI Realtime): stream audio over WebSocket, send/receive JSON events, and play downlinked audio chunks. ([OpenAI Platform][5])
+Core Web Vitals for Voice: Treat voice interaction performance like web performance. Monitor metrics like round-trip latency (user speaks to hearing AI) as the “INP” of voice. Ensure the UI thread isn’t blocked (so animations remain smooth) – e.g., use Web Workers for heavy tasks. Keep memory usage in check to avoid device slowdowns.
 
-### Public surface (TypeScript)
+Accessibility & ARIA: Implement all voice UI elements with accessibility in mind. Use aria-live="polite" for dynamic text like transcripts
+GitHub
+ so screen readers announce them appropriately. Ensure the mic button is keyboard-focusable and has an ARIA label (e.g., “Activate voice assistant”). Respect prefers-reduced-motion for any visualizations (e.g., don’t flash things aggressively if the user opts out of animation).
 
-```ts
-export type TurnEvent =
-  | { type:'ready'|'mic_opened'|'mic_closed'|'tts_play'; data?: any }
-  | { type:'vad', active:boolean, level:number }
-  | { type:'partial_asr', text:string }
-  | { type:'final_asr', text:string, lang:string }
-  | { type:'barge_in' }
-  | { type:'agent_delta'|'agent_tool'|'agent_final', data:any }
-  | { type:'error', code:string, message:string };
+Security: JWT and Origin Checks: Never expose API keys or secrets in the front-end; use short-lived JWT tokens for the voice WebSocket auth. The WebSocket endpoint should validate the token on connect. Also, any messages containing user-identifying info or commands should be validated server-side (e.g., ensure the siteId in a message matches the connection’s authenticated site). On the client’s side, configure the targetOrigin for any cross-window messaging (like if the widget is in an iframe controlling the parent page) to avoid eavesdropping
+GitHub
+GitHub
+.
 
-export interface TurnManagerCfg {
-  locale?: string;                 // BCP-47
-  vad: { threshold:number; hangMs:number };
-  opus: { frameMs:20|40; bitrate?:number };
-  tts: { enable:boolean; duckOnVAD:boolean };
-  transport: VoiceTransport;       // ws client abstraction
-}
+Robust Connection Management: Implement heartbeats (ping/pong) and auto-reconnect logic. The voice connection is long-lived; handle network blips by attempting to reconnect and perhaps buffering a short amount of recent audio to resend if needed. Clean up resources on disconnect (stop the mic, etc.).
 
-export interface TurnManager {
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  pushText(text:string): Promise<void>; // optional text-only turns
-  on(cb: (e:TurnEvent)=>void): () => void;
-}
-```
+Testing with Real Devices: Test the voice UX on various devices (high-end, low-end, mobile, desktop) and in different noise conditions. Fine-tune VAD thresholds for a good balance between quickly activating on speech and not being too sensitive to background noise
+GitHub
+. For mobile, ensure that if the screen locks or app goes background, the behavior is defined (usually we stop or pause the voice session).
 
-### Critical behaviors
+Privacy Considerations: Clearly indicate when the mic is active (e.g., mic icon changes) and only listen when expected (push-to-talk or explicit tap, unless user enabled a wake-word – which we don’t have here by default). Do not keep any raw voice data longer than necessary. Adhere to consent for analytics – if recording or transcripts are stored, inform the user. Also, avoid transmitting more data than needed: e.g., if only voice audio is needed, don’t send video or other sensor data.
 
-* **Mic open/capture.** `getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true } })`; verify actual values via `track.getSettings()` and surface to telemetry. ([MDN Web Docs][2])
-* **VAD.** Lightweight energy + zero-crossing gate in an `AudioWorkletProcessor` producing 10–20 ms decisions; debounce with `hangMs`. (AudioWorklet is designed for this: separate audio thread, very low latency.) ([MDN Web Docs][1])
-* **Opus framing.** Packetize PCM into 20 ms frames; 48 kHz mono; send as binary messages over WS. (Opus is the IETF standard for interactive speech.) ([IETF Datatracker][4], [opus-codec.org][6])
-* **Downlink TTS.** Accept server-pushed audio chunks (Opus/PCM). On the client, either:
+Optimize TTS for Speed: Use streaming TTS or pre-warm the TTS engine with a silent request so the first actual response is faster. If using a cloud TTS that’s too slow, consider a local on-device TTS for the first simple acknowledgments (“Sure, searching…”) while the cloud one generates the full answer.
 
-  * decode with **WebCodecs/AudioWorklet** and feed an `AudioBufferSourceNode`, or
-  * if provider streams playable containers, append to **MSE**; else decode in app and schedule frames with a small jitter buffer.
-* **Barge-in.** As soon as VAD transitions **active** while TTS plays: emit `{type:'barge_in'}`, pause/duck TTS, and start a fresh upstream turn. (This is how Realtime voice agents are demonstrated.) ([OpenAI Platform][7])
-* **Provider integration.** For OpenAI Realtime: maintain a WebSocket session, send `input_audio_buffer.append` events with base64/bytes, and consume `response` + audio chunks. ([OpenAI Platform][5])
+Frontend Performance: The voice widget should be lightweight (ideally a few tens of KB of JS) since it loads on every site. Use Shadow DOM to encapsulate styles. Defer loading heavy parts until user actually clicks the mic (e.g., don’t initialize audio capture or WebSocket until needed to save resources). Also ensure that integrating the widget doesn’t negatively impact the site’s Core Web Vitals (it should idle when not in use).
 
-### Performance targets
+Graceful Degradation: If the browser doesn’t support AudioWorklet (older browsers), have a fallback (like using ScriptProcessor, albeit with higher latency). If the WebSocket fails, perhaps provide a fallback mode (maybe a regular REST API with full-duplex polyfill or at least an error message to user). And always allow the user to fallback to typing if voice fails – the UI could provide a text input as a backup.
 
-* **First token/audio ≤ 300 ms** from user speech start.
-* **ASR partial latency ≤ 150 ms** median.
-* **Barge-in stop/duck ≤ 50 ms** from VAD active.
-* **Packet loss tolerance:** 1–2 lost 20 ms frames without user-visible artifacts (jitter buffer).
+Acceptance Criteria / Success Metrics
 
----
+First Response Latency: In production, the median time from when the user finishes speaking (or even from start of speech) to the start of the assistant’s spoken response is ≤ 300 ms, with partial words or sounds often earlier
+GitHub
+. Measured by: instrumentation events (client sends an event when user speaks, and when first TTS audio plays) aggregated in analytics – p50 and p90 should meet targets (e.g., p90 maybe ≤ 500 ms).
 
-## 2) `visualFeedbackService.ts` — Minimal, Calm UI
+Barge-in Reaction Time: When the user interrupts, the system halts AI speech within ≤ 50 ms
+GitHub
+GitHub
+, and begins processing the new query immediately. Test: During a long AI response, start speaking a trigger phrase; verify via logs that audio playback stopped almost instantly and new ASR started. Also, the AI should not complete the old action (e.g., if it was about to navigate, it should cancel that if appropriate).
 
-### Mission of visualFeedbackService
+Streaming Feedback: Users see visual feedback of their speech and the AI’s thinking in real time. Acceptance: In usability testing, users consistently report that “the system clearly shows it’s hearing me (levels and my words appear) and I see when it’s working or doing something.” Technically, this means partial transcripts appear within ~<150 ms of speech start (for at least 75% of utterances)
+GitHub
+GitHub
+, and the level meter is responsive to talking. We also ensure that every partial and final transcript is accurate as per the ASR output (no missing or out-of-order updates).
 
-Give the user confidence without clutter: show that we’re listening, thinking, acting—**and where**.
+Audio Quality & Continuity: The played TTS audio is clear and without jarring gaps. Criteria: No more than, say, 1% of user sessions encounter an audible glitch or cut-off in the AI’s speech. This is monitored by user feedback or by internal metrics (e.g., checking if audio frames were dropped frequently). Additionally, voice responses use a natural sounding voice and correct language (matching the site’s locale when possible).
 
-### Responsibilities
+Stability of Connection: The voice connection remains stable during typical interactions. Metric: WebSocket drop rate – less than a certain small percentage (e.g., < 0.1%) of voice sessions should terminate unexpectedly due to network issues. And if they do, the client properly indicates it (e.g., changing the mic icon or showing “Reconnecting…”).
 
-* **Mic state + levels.** Round mic button (idle/listening/sending), animated **level meter** driven by VAD level events.
-* **Partial transcripts.** Inline gray **partial ASR** that firm up to black on **final\_asr**.
-* **Action glow.** When the agent executes a tool (e.g., `navigate.goto`, `commerce.addToCart`), briefly **highlight** the target region; we already expose selectors/ARIA through the site contract.
-* **Streaming deltas.** Small “typing dots”/progress while we stream agent tokens and tool deltas.
-* **Error toasts.** Friendly, actionable messages on network/on-device mic errors.
+Security Checks Passing: Penetration testing and code review show that the voice service does not expose vulnerabilities. For example, attempt to use the voice WebSocket with a forged token or from a different origin – it should reject. Ensure that no sensitive user data is leaking in messages (we strip or hash IP addresses, etc.). Acceptance: all OWASP top 10 relevant to websockets (like injection via audio metadata or DoS via flooding) are mitigated. Ping/pong respects the protocol (verified by unit tests that Pong mirrors Ping payload)
+GitHub
+GitHub
+.
 
-### A11y & implementation notes
+Accessibility Verification: The voice UI is operable and understandable by users with disabilities. Test: Using a screen reader, confirm that the mic button and transcript have proper labels (the transcript field should be announced as the user’s dictated text, etc.). Using only keyboard, a user can activate voice and get results (the mic button can be focused and triggered with space/enter). Also test high contrast mode and reduced motion settings: the UI should adjust accordingly (no essential info lost with animations off). Achieve WCAG 2.1 AA compliance for the widget (color contrasts, focus indicators, etc.).
 
-* Respect **ARIA**: `aria-live="polite"` for partials; ensure controls have labels. (ARIA landmarks/roles improve both a11y and programmatic targeting.) ([Stack Overflow][8])
-* Use **Web Audio API** for level metering (AnalyserNode or from the VAD worklet). ([MDN Web Docs][9])
-* Keep motion subtle; prefer opacity/scale transitions; respect `prefers-reduced-motion`.
+Resource Footprint: The voice feature should not consume excessive resources on the client. Measure: When idle, the widget uses negligible CPU. During a voice interaction, CPU usage might spike (for encoding/decoding) but should not freeze the page (e.g., keep under 50 ms per frame on average for audio processing
+GitHub
+GitHub
+). Memory usage remains modest (no large leaks after many interactions). We consider it acceptable if after e.g. 10 minutes of continuous use, the memory is stable (any buffers are freed).
 
-### Success criteria
+User Satisfaction: In beta tests or user studies, the voice assistant is responsive and enjoyable to use – specifically, users don’t feel they have to wait or repeat themselves often. While subjective, we can gauge satisfaction via feedback forms or by usage frequency (if people find it too slow or inaccurate, they won’t use it again). Goal: a high percentage of users engage with voice successfully and a low bounce rate (not many give up immediately).
 
-* UI settles into **three** clear states: Idle ↔ Listening ↔ Responding.
-* Partial ASR visible within **150 ms** median of speech.
-* Tool highlights align with actual DOM targets.
+Error Handling: If speech recognition fails (no text or gibberish) or if the AI doesn’t respond, the system should time out and provide a graceful message (like “Sorry, I didn’t catch that.”). Acceptance: simulate no audio input or nonsense input, ensure the system prompts again appropriately. Likewise, if the AI’s answer audio fails to play (say a chunk missing), the UI detects silence and possibly shows a message. No infinite waiting states.
 
----
+Integration with Actions: Verify that when the voice command includes an actionable request (e.g., “click the first result” or “add that to cart”), the system triggers the corresponding site action through the orchestrator and the highlight is shown. Acceptance: In end-to-end testing on a sample site, voice commands that involve navigation or clicking indeed result in the correct page change or action (and are highlighted). This ties voice UX with the tool system – ensuring that pipeline is connected and quick (optimistic actions should occur concurrently with voice).
 
-## 3) `transport/wsServer.ts` — Duplex Transport (Node)
-
-### Mission of wsServer
-
-A **WebSocket** service that carries:
-(1) **binary audio upstream** (Opus frames),
-(2) **binary/JSON downstream** (TTS audio chunks, partials, tool/plan deltas),
-(3) health, backpressure, and **ping/pong**. Use JWT tenant auth.
-
-### Protocol & framing
-
-* **Wire:** WebSocket (RFC 6455). Implement **ping/pong** control frames for keepalive and liveness. A Pong must mirror the Ping payload. ([IETF Datatracker][10], [MDN Web Docs][11])
-* **Messages:**
-
-  * **Binary:** `audio/opusr` (20 ms frames) or raw PCM.
-  * **Text JSON:** `{type:'partial_asr'|'final_asr'|'agent_delta'|'tool'|'final'|'error', ...}`.
-* **Masking:** browsers **must** mask client→server frames; server must not mask. (Protocol rule.) ([Wikipedia][12])
-* **Fragmentation:** only control frames (ping/pong/close) may interleave fragments; handle accordingly. ([Open My Mind][13])
-
-### Server API (TS surface)
-
-```ts
-export interface WsAuth { tenantId:string; userId?:string; locale?:string; }
-export function attachVoiceWsServer(httpServer: import('http').Server): void;
-
-// Per-connection lifecycle
-interface VoiceSession {
-  id: string;
-  auth: WsAuth;
-  sendJson(msg:any): void;
-  sendAudio(chunk:ArrayBuffer): void;
-  close(code?:number, reason?:string): void;
-}
-```
-
-### Behaviors
-
-* **Auth.** Validate **JWT** (tenant, site, user claims) on `upgrade`. Reject if missing.
-* **Backpressure.** If `socket.bufferedAmount` exceeds threshold, **drop non-critical deltas** (e.g., VU levels) and apply flow control to audio.
-* **Ping/pong.** Send **ping** every 15 s; close idle connections that fail to pong within timeout. (That’s exactly what RFC 6455 suggests pings are for.) ([IETF Datatracker][10])
-* **ASR/TTS coupling.**
-
-  * Upstream audio → provider (e.g., OpenAI Realtime).
-  * Downlink provider events → JSON to client; audio chunks → **binary** to client. (Realtime guide shows WS audio with JSON events.) ([OpenAI Platform][5])
-* **Codec notes.** Prefer **Opus** at 48 kHz for interactivity (IETF RFC 6716); choose 20 ms frames. ([IETF Datatracker][4])
-
-### Ops & health
-
-* `/api/health` is separate (HTTP) but expose **internal gauges**: sessions, send queue sizes, ping RTT.
-* Per-tenant rate limits on message rate and audio bps.
-
-### Success criteria of health
-
-* Median **send → server ingest** < 15 ms (LAN) measured by ping RTT.
-* Zero frame leaks after Close handshake.
-* Clean backpressure under 3G; no event loop stalls.
-
----
-
-## End-to-end flow (happy path)
-
-1. **Mic opens** with AEC/NS/AGC; we stream 20 ms **Opus** frames to `wsServer`. ([MDN Web Docs][2])
-2. **ASR partials** arrive in ≤150 ms and render in gray; **visual meter** tracks VAD level.
-3. Planner streams **agent deltas**; we start **TTS playback immediately**. (OpenAI Realtime supports streaming audio & events over WS.) ([OpenAI Platform][5])
-4. User speaks mid-reply → **VAD active** → **barge-in**: pause/duck TTS, mark a new turn, continue capture.
-5. Final comes back; we play the remainder and transition to Idle.
-
----
-
-## Security & privacy
-
-* **Permissions:** Mic access follows browser permission UI; document **Permissions Policy** if widget is cross-origin. ([MDN Web Docs][14])
-* **No secrets in WS payloads.** IDs only; tokens stay server-side.
-* **Recordings:** Off by default. If enabled, store **ephemeral** and scrub PII.
-
----
-
-## Testing & DoD
-
-## **turnManager**
-
-* VAD toggles and levels stream at 20–50 Hz without starving UI thread (AudioWorklet). ([MDN Web Docs][1])
-* Barge-in stops TTS within **≤50 ms** from VAD active.
-* Opus encoder produces valid 20 ms frames at 48 kHz; packet loss simulation OK for 1–2 frames. (Opus designed for robust interactive audio.) ([IETF Datatracker][4])
-
-## **visualFeedbackService**
-
-* `aria-live` politeness verified; `prefers-reduced-motion` respected.
-* Highlights map to actual DOM selectors from the site contract.
-
-## **wsServer**
-
-* JWT auth enforced on `upgrade`; cross-tenant isolation verified.
-* **Ping/pong** works exactly as RFC 6455: Pong mirrors Ping payload; idle clients closed. ([IETF Datatracker][10], [MDN Web Docs][11])
-* Backpressure tests: throttle network, ensure graceful degradation (drop VU, keep ASR/TTS core).
-
----
-
-## Practical defaults
-
-* `frameMs=20`, `bitrate≈16–24 kbps` (Opus mono speech). ([IETF Datatracker][4])
-* `echoCancellation=true`, `noiseSuppression=true`, `autoGainControl=true` on mic. ([MDN Web Docs][2])
-* WS ping interval 15 s; timeout 10 s; close on two consecutive misses. ([IETF Datatracker][10])
-* Start with **OpenAI Realtime** for ASR+TTS; WS JSON event model as per docs. ([OpenAI Platform][5])
-
----
-
-### Why these choices
-
-* **AudioWorklet** is the web-native way to do low-latency capture/VAD safely off the main thread. ([MDN Web Docs][1])
-* **Opus** is the IETF standard for interactive speech; 20 ms frames hit the sweet spot for latency vs. quality. ([IETF Datatracker][4])
-* **WebSocket pings/pongs** give robust liveness & backpressure control; the RFC is explicit about echoing payloads. ([IETF Datatracker][10])
-* **Realtime API** (OpenAI) already defines WS audio/event semantics; we align to reduce bespoke glue. ([OpenAI Platform][5])
-
-If you want next, I can scaffold TypeScript stubs for these three files (types, events, state machine skeletons, WS adapter) so your agents can code against a concrete interface immediately.
-
-[1]: https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet?utm_source=chatgpt.com "AudioWorklet - MDN - Mozilla"
-[2]: https://developer.mozilla.org/en-US/docs/Web/API/Media_Capture_and_Streams_API/Constraints?utm_source=chatgpt.com "Capabilities, constraints, and settings - MDN"
-[3]: https://www.tech-invite.com/y65/tinv-ietf-rfc-6716.html?utm_source=chatgpt.com "RFC 6716 - Definition of the Opus Audio Codec"
-[4]: https://datatracker.ietf.org/doc/html/rfc6716?utm_source=chatgpt.com "RFC 6716 - Definition of the Opus Audio Codec"
-[5]: https://platform.openai.com/docs/guides/realtime-conversations?utm_source=chatgpt.com "Realtime conversations - OpenAI API"
-[6]: https://opus-codec.org/?utm_source=chatgpt.com "Opus Codec"
-[7]: https://platform.openai.com/docs/guides/voice-agents?utm_source=chatgpt.com "Voice agents - OpenAI API"
-[8]: https://stackoverflow.com/questions/10585355/sending-websocket-ping-pong-frame-from-browser?utm_source=chatgpt.com "Sending websocket ping/pong frame from browser"
-[9]: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API?utm_source=chatgpt.com "Web Audio API - MDN - Mozilla"
-[10]: https://datatracker.ietf.org/doc/html/rfc6455?utm_source=chatgpt.com "RFC 6455 - The WebSocket Protocol"
-[11]: https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers?utm_source=chatgpt.com "Writing WebSocket servers - MDN"
-[12]: https://en.wikipedia.org/wiki/WebSocket?utm_source=chatgpt.com "WebSocket"
-[13]: https://www.openmymind.net/WebSocket-Framing-Masking-Fragmentation-and-More/?utm_source=chatgpt.com "WebSocket Framing: Masking, Fragmentation and More"
-[14]: https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints?utm_source=chatgpt.com "MediaTrackConstraints - MDN"
+Cross-Browser/Device Support: The voice UX meets the criteria on all modern browsers (Chrome, Firefox, Safari, Edge) and on mobile (Android Chrome, iOS Safari WKWebView). Test: run through smoke tests on each; the experience should be consistent. Any exceptions (like Safari not supporting certain codecs or AudioWorklet on older versions) are handled with fallbacks or documented limits. Achieve broad compatibility or at least degrade gracefully where full features aren’t available

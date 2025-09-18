@@ -303,7 +303,7 @@ export class VoiceWebSocketHandler {
 
     try {
       // Import VoiceOrchestrator dynamically to avoid circular dependency
-      const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+      const { voiceOrchestrator } = await import('../../../../services/voice/index.js');
       
       // Ensure orchestrator is running
       if (!voiceOrchestrator.getStatus().isRunning) {
@@ -365,7 +365,7 @@ export class VoiceWebSocketHandler {
 
       // Process through voice orchestrator
       try {
-        const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+        const { voiceOrchestrator } = await import('../../../../services/voice/index.js');
         await voiceOrchestrator.processTextInput(session.id, data.text);
       } catch (error) {
         logger.error('Text input processing failed through orchestrator', {
@@ -478,7 +478,7 @@ export class VoiceWebSocketHandler {
 
     // Process voice command through voice orchestrator
     try {
-      const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+      const { voiceOrchestrator } = await import('../../../../services/voice/index.js');
       await voiceOrchestrator.processTextInput(session.id, data.command);
     } catch (error) {
       logger.error('Voice command processing failed through orchestrator', {
@@ -766,7 +766,7 @@ export class VoiceWebSocketHandler {
    */
   private async startVoiceSessionForClient(session: VoiceSession, params?: Record<string, unknown>): Promise<void> {
     try {
-      const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+      const { voiceOrchestrator } = await import('../../../../services/voice/index.js');
       
       // Ensure VoiceOrchestrator is running
       if (!voiceOrchestrator.getStatus().isRunning) {
@@ -826,7 +826,7 @@ export class VoiceWebSocketHandler {
    */
   private async stopVoiceSessionForClient(session: VoiceSession): Promise<void> {
     try {
-      const { voiceOrchestrator } = await import('../../../../services/voice/VoiceOrchestrator.js');
+      const { voiceOrchestrator } = await import('../../../../services/voice/index.js');
       
       // Stop the voice session
       await voiceOrchestrator.stopVoiceSession(session.id);

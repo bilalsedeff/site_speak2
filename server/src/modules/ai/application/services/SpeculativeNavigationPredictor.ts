@@ -14,11 +14,19 @@ import { EventEmitter } from 'events';
 import { createLogger } from '../../../../shared/utils.js';
 import OpenAI from 'openai';
 import { config } from '../../../../infrastructure/config/index.js';
-import type { NavigationStructure, NavigationCommand } from './VoiceNavigationOrchestrator.js';
-import type { VoiceCommand } from './VoiceActionExecutor.js';
+// Removed unused imports for cleaner dependencies
 import type { SelectionContext } from './VoiceElementSelector.js';
 
 const logger = createLogger({ service: 'speculative-navigation-predictor' });
+
+// Local type definitions (previously from VoiceNavigationOrchestrator, now consolidated in UnifiedVoiceOrchestrator)
+export interface NavigationStructure {
+  landmarks: any[];
+  menuSystems: any[];
+  breadcrumbs: any[];
+  pageStructure: any;
+  semanticRegions: any[];
+}
 
 export interface NavigationPrediction {
   id: string;
@@ -90,7 +98,6 @@ export interface PredictionMetrics {
  */
 export class SpeculativeNavigationPredictor extends EventEmitter {
   private openai: OpenAI;
-  private isInitialized = false;
 
   // Prediction state
   private activePredictions = new Map<string, NavigationPrediction>();
@@ -132,7 +139,7 @@ export class SpeculativeNavigationPredictor extends EventEmitter {
     try {
       this.setupPredictionLoop();
       this.loadGlobalPatterns();
-      this.isInitialized = true;
+      // Initialization completed
       logger.info('SpeculativeNavigationPredictor initialized');
       this.emit('initialized');
     } catch (error) {
@@ -171,7 +178,7 @@ export class SpeculativeNavigationPredictor extends EventEmitter {
       );
 
       // Pattern-based predictions
-      const patternPredictions = this.generatePatternPredictions(
+      const patternPredictions = await this.generatePatternPredictions(
         currentCommand,
         userProfile,
         navigationStructure
@@ -179,7 +186,7 @@ export class SpeculativeNavigationPredictor extends EventEmitter {
 
       // Combine and rank predictions
       const combinedPredictions = this.combinePredictions(
-        aiPredictions,
+        await aiPredictions,
         patternPredictions,
         userProfile
       );
@@ -430,7 +437,7 @@ Return JSON array with: [{"type": "navigation", "target": "settings", "confidenc
    */
   private generateResourceHints(
     prediction: NavigationPrediction,
-    navigationStructure: NavigationStructure
+    _navigationStructure: NavigationStructure
   ): ResourceHint[] {
     const hints: ResourceHint[] = [];
 
@@ -636,8 +643,8 @@ Return JSON array with: [{"type": "navigation", "target": "settings", "confidenc
     const targets: string[] = [];
 
     structure.landmarks.forEach(landmark => targets.push(landmark.type));
-    structure.menuSystems.forEach(menu => {
-      menu.items.forEach(item => targets.push(item.text));
+    structure.menuSystems.forEach((menu: any) => {
+      menu.items.forEach((item: any) => targets.push(item.text));
     });
     structure.semanticRegions.forEach(region => targets.push(region.role));
 
@@ -657,7 +664,7 @@ Return JSON array with: [{"type": "navigation", "target": "settings", "confidenc
       .slice(0, 3);
   }
 
-  private calculatePatternConfidence(pattern: ConversationPattern, profile: UserBehaviorProfile): number {
+  private calculatePatternConfidence(pattern: ConversationPattern, _profile: UserBehaviorProfile): number {
     const recencyWeight = Math.max(0.1, 1 - (Date.now() - pattern.lastUsed) / this.predictionConfig.patternMemoryDuration);
     const frequencyWeight = Math.min(1, pattern.frequency / 10);
     const successWeight = pattern.successRate;
@@ -783,7 +790,7 @@ Return JSON array with: [{"type": "navigation", "target": "settings", "confidenc
     return `/${target.toLowerCase().replace(/\s+/g, '-')}`;
   }
 
-  private extractExternalDomains(target: string): string[] {
+  private extractExternalDomains(_target: string): string[] {
     // Extract external domains that might be needed
     return []; // Would analyze navigation structure for external links
   }
@@ -807,7 +814,7 @@ Return JSON array with: [{"type": "navigation", "target": "settings", "confidenc
     command: string,
     target: string,
     sessionId: string,
-    matchedPrediction: NavigationPrediction | null
+    _matchedPrediction: NavigationPrediction | null
   ): void {
     const profile = this.getUserProfile(sessionId);
     const intent = this.extractIntent(command);

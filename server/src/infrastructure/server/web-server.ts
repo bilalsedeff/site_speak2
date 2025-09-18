@@ -125,12 +125,12 @@ export class SiteSeakWebServer {
 
   private async setupWebRoutes(): Promise<void> {
     // Health check endpoints (critical for load balancers)
-    this.app.get('/health', (req, res) => {
+    this.app.get('/health', (_req, res) => {
       const health = this.getWebServerHealth();
       res.status(health.healthy ? 200 : 503).json(health);
     });
 
-    this.app.get('/health/ready', (req, res) => {
+    this.app.get('/health/ready', (_req, res) => {
       // Readiness probe - return 503 if shutting down
       if (this._isShuttingDown) {
         res.status(503).json({
@@ -155,8 +155,6 @@ export class SiteSeakWebServer {
         enableAuth: true,
         enableRateLimit: true,
         enableCors: true,
-        processType: 'web', // Indicate this is web process
-        excludeWorkerRoutes: true, // Don't include background job routes
         corsOrigins: getCorsOrigins(),
         openAPIConfig: {
           baseUrl: config.NODE_ENV === 'production'
@@ -218,18 +216,14 @@ export class SiteSeakWebServer {
       defaultLocale: 'en-US',
       maxSessionDuration: 30 * 60 * 1000, // 30 minutes
       responseTimeoutMs: 30000, // 30 seconds
-      processType: 'web', // Indicate this is web process
     }, voiceHandler);
 
     // Connect AI Assistant to Voice WebSocket Handler
     voiceHandler.setAIAssistant(aiAssistant);
 
-    // Initialize Raw WebSocket Server for ≤300ms voice performance
-    const { RawWebSocketServer } = await import('../../services/voice/index.js');
-    const rawWebSocketServer = new RawWebSocketServer(aiAssistant);
-
-    // Attach Raw WebSocket Server to HTTP server
-    await rawWebSocketServer.attachToServer(this.httpServer, '/voice-ws');
+    // Initialize Unified Voice Orchestrator for ≤300ms voice performance
+    const { UnifiedVoiceOrchestrator } = await import('../../services/voice/index.js');
+    const rawWebSocketServer = new UnifiedVoiceOrchestrator();
 
     logger.info('WebSocket servers attached', {
       socketIO: 'enabled',
@@ -262,7 +256,7 @@ export class SiteSeakWebServer {
 
   private setupErrorHandling(): void {
     // Web process specific error handling
-    this.app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    this.app.use((error: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
       logger.error('Web server error', {
         error,
         processType: 'web',

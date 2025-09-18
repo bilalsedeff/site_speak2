@@ -17,7 +17,7 @@
 
 import { EventEmitter } from 'events';
 import { createLogger } from '../../shared/utils';
-import { OpenAIRealtimeClient, createRealtimeConfig, type RealtimeConfig } from './openaiRealtimeClient';
+import { OpenAIRealtimeClient, createRealtimeConfig } from './openaiRealtimeClient';
 
 const logger = createLogger({ service: 'realtime-connection-pool' });
 
@@ -304,7 +304,7 @@ export class RealtimeConnectionPool extends EventEmitter {
       const connection: PooledConnection = {
         client,
         tenantId,
-        sessionId,
+        ...(sessionId && { sessionId }),
         createdAt: new Date(),
         lastUsed: new Date(),
         useCount: 1,

@@ -4,6 +4,7 @@ import { actionExecutorService } from './ActionExecutorService';
 import { languageDetectorService } from './LanguageDetectorService';
 import { knowledgeBaseService } from './services/KnowledgeBaseService';
 import type { SiteAction, ActionParameter } from '../../../shared/types';
+import type { ActionParameters } from '../types/action-execution.types.js';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniversalAgentGraph, UniversalAgentGraph } from '../orchestrator/graphs/UniversalAgent.graph';
 import { FunctionCallingService } from '../orchestrator/executors/FunctionCallingService';
@@ -81,12 +82,16 @@ export class AIOrchestrationService {
           topK: number;
           locale: string;
           tenantId?: string;
+          threshold?: number;
+          filters?: Record<string, string | number | boolean | null>;
         }): Promise<Array<{
           id: string;
           content: string;
           url: string;
           score: number;
-          metadata: Record<string, unknown>;
+          metadata: Record<string, string | number | boolean | null>;
+          chunkIndex?: number;
+          relevantSnippet?: string;
         }>>;
       };
       websocketService?: {
@@ -361,7 +366,11 @@ export class AIOrchestrationService {
       success: executionResult.success,
       result: executionResult.result,
       executionTime: executionResult.executionTime,
-      ...(executionResult.error !== undefined && { error: executionResult.error }),
+      ...(executionResult.error !== undefined && {
+        error: typeof executionResult.error === 'string'
+          ? executionResult.error
+          : executionResult.error.message || 'Action execution failed'
+      }),
     };
   }
 
@@ -737,7 +746,7 @@ export class AIOrchestrationService {
       async execute(params: {
         siteId: string;
         actionName: string;
-        parameters: Record<string, unknown>;
+        parameters: ActionParameters;
         sessionId?: string;
         userId?: string;
         tenantId?: string;
@@ -755,10 +764,13 @@ export class AIOrchestrationService {
           success: result.success,
           result: result.result,
           executionTime: result.executionTime,
-          ...(result.error !== undefined && { error: result.error }),
+          ...(result.error !== undefined && {
+            error: typeof result.error === 'string'
+              ? result.error
+              : result.error.message || 'Action execution failed'
+          }),
           metadata: {
-            sideEffectsCount: result.sideEffects.length,
-            sideEffects: result.sideEffects,
+            sideEffectsCount: result.sideEffects.length.toString(),
           },
         };
       },
@@ -769,13 +781,9 @@ export class AIOrchestrationService {
           name: action.name,
           description: action.description,
           parameters: action.parameters.reduce((acc, param) => {
-            acc[param.name] = {
-              type: param.type,
-              required: param.required,
-              description: param.description,
-            };
+            acc[param.name] = param.type;
             return acc;
-          }, {} as Record<string, unknown>),
+          }, {} as Record<string, string | number | boolean | null>),
           ...(action.confirmation !== undefined && { confirmation: action.confirmation }),
         }));
       },
@@ -799,6 +807,9 @@ export const aiOrchestrationService = new AIOrchestrationService({
       query: string;
       topK: number;
       locale: string;
+      tenantId?: string;
+      threshold?: number;
+      filters?: Record<string, string | number | boolean>;
     }) {
       try {
         const kbService = knowledgeBaseService;
@@ -813,13 +824,29 @@ export const aiOrchestrationService = new AIOrchestrationService({
           }
         });
         
-        return searchResults.map(result => ({
-          id: result.id,
-          content: result.content,
-          url: result.url,
-          score: result.score,
-          metadata: result.metadata || {},
-        }));
+        return searchResults.map(result => {
+          // Sanitize metadata to match expected type constraints
+          const sanitizedMetadata: Record<string, string | number | boolean | null> = {};
+          if (result.metadata) {
+            for (const [key, value] of Object.entries(result.metadata)) {
+              if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) {
+                sanitizedMetadata[key] = value;
+              } else if (value !== undefined) {
+                sanitizedMetadata[key] = String(value);
+              }
+            }
+          }
+
+          return {
+            id: result.id,
+            content: result.content,
+            url: result.url,
+            score: result.score,
+            metadata: sanitizedMetadata,
+            chunkIndex: (result as any).chunkIndex,
+            relevantSnippet: (result as any).relevantSnippet,
+          };
+        });
       } catch (error) {
         logger.error('Knowledge base search failed in adapter', {
           siteId: params.siteId,

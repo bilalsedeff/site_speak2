@@ -383,22 +383,24 @@ export class TurnManager extends EventEmitter {
   private setupEventHandlers(): void {
     // Handle ASR partials
     this.config.transport.on('asr_partial', (data) => {
-      const latency = performance.now() - data.timestamp;
-      this.performanceMetrics.sttLatency.push(latency);
+      if (typeof data === 'object' && data !== null && 'timestamp' in data && typeof data['timestamp'] === 'number') {
+        const latency = performance.now() - data['timestamp'];
+        this.performanceMetrics.sttLatency.push(latency);
 
-      // Warn if partial latency exceeds target
-      if (latency > 150) {
-        logger.warn('ASR partial latency exceeded target', { 
-          latency, 
-          target: 150,
-          avgLatency: this.getAverageLatency('stt')
-        });
+        // Warn if partial latency exceeds target
+        if (latency > 150) {
+          logger.warn('ASR partial latency exceeded target', {
+            latency,
+            target: 150,
+            avgLatency: this.getAverageLatency('stt')
+          });
+        }
       }
 
       this.emit('event', {
         type: 'partial_asr',
-        text: data.text,
-        confidence: data.confidence,
+        text: data['text'],
+        confidence: data['confidence'],
       });
     });
 
@@ -406,8 +408,8 @@ export class TurnManager extends EventEmitter {
     this.config.transport.on('asr_final', (data) => {
       this.emit('event', {
         type: 'final_asr',
-        text: data.text,
-        lang: data.language || this.config.locale || 'en-US',
+        text: data['text'],
+        lang: data['language'] || this.config.locale || 'en-US',
       });
     });
 
@@ -428,10 +430,11 @@ export class TurnManager extends EventEmitter {
 
     // Handle OpenAI audio deltas for direct playback
     this.config.transport.on('audio_delta', async (data) => {
-      if (data.delta && this.config.tts.enable) {
+      if (typeof data === 'object' && data !== null && 'delta' in data && data['delta'] && this.config.tts.enable) {
         try {
           // Play PCM16 audio directly from OpenAI
-          await this.playPCM16Audio(data.delta);
+          const deltaBuffer = Buffer.isBuffer(data['delta']) ? data['delta'] : Buffer.from(data['delta'] as string);
+          await this.playPCM16Audio(deltaBuffer);
           this.isTTSPlaying = true;
         } catch (error) {
           logger.error('Failed to play audio delta', { error });
@@ -443,8 +446,8 @@ export class TurnManager extends EventEmitter {
     this.config.transport.on('error', (error) => {
       this.emit('event', {
         type: 'error',
-        code: error.code || 'TRANSPORT_ERROR',
-        message: error.message || 'Transport error',
+        code: error['code'] || 'TRANSPORT_ERROR',
+        message: error['message'] || 'Transport error',
       });
     });
   }

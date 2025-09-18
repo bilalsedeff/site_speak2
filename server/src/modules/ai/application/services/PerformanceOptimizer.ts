@@ -12,17 +12,15 @@
 
 import { EventEmitter } from 'events';
 import { createLogger } from '../../../../shared/utils.js';
-import type { OptimisticAction, ExecutionMetrics } from './OptimisticExecutionEngine.js';
+import type { ExecutionMetrics } from './OptimisticExecutionEngine.js';
 import type { PredictionMetrics } from './SpeculativeNavigationPredictor.js';
 import type { PerformanceMetrics as ResourceMetrics } from './ResourceHintManager.js';
 import type { RollbackMetrics } from './ActionRollbackManager.js';
-import { 
-  hasMemoryAPI, 
-  hasConnectionAPI, 
+import {
+  hasMemoryAPI,
+  hasConnectionAPI,
   hasBatteryAPI,
-  type PerformanceExtended,
-  type NavigatorExtended,
-  type NetworkInformation 
+  type NetworkInformation
 } from '../../../../types/browser-apis.js';
 
 const logger = createLogger({ service: 'performance-optimizer' });
@@ -132,7 +130,7 @@ export interface SystemMetrics {
  * Continuously optimizes system performance for <300ms response times
  */
 export class PerformanceOptimizer extends EventEmitter {
-  private isInitialized = false;
+  // Note: isInitialized reserved for future use
 
   // Performance monitoring
   private performanceProfile: PerformanceProfile;
@@ -175,7 +173,7 @@ export class PerformanceOptimizer extends EventEmitter {
       this.setupOptimizationStrategies();
       this.startPerformanceMonitoring();
 
-      this.isInitialized = true;
+      // Note: initialization completed successfully
       logger.info('PerformanceOptimizer initialized', {
         deviceClass: this.performanceProfile.deviceClass,
         connectionSpeed: this.performanceProfile.connectionSpeed,
@@ -462,7 +460,7 @@ export class PerformanceOptimizer extends EventEmitter {
    */
   private async optimizeExecution(
     optimization: StrategyOptimization,
-    metrics: SystemMetrics
+    _metrics: SystemMetrics
   ): Promise<void> {
     const { parameter, adjustment, type } = optimization;
 
@@ -504,7 +502,7 @@ export class PerformanceOptimizer extends EventEmitter {
 
   private async optimizePrediction(
     optimization: StrategyOptimization,
-    metrics: SystemMetrics
+    _metrics: SystemMetrics
   ): Promise<void> {
     const { parameter, adjustment, type } = optimization;
 
@@ -539,7 +537,7 @@ export class PerformanceOptimizer extends EventEmitter {
 
   private async optimizeResources(
     optimization: StrategyOptimization,
-    metrics: SystemMetrics
+    _metrics: SystemMetrics
   ): Promise<void> {
     const { parameter, adjustment, type } = optimization;
 
@@ -573,7 +571,7 @@ export class PerformanceOptimizer extends EventEmitter {
 
   private async optimizeRollback(
     optimization: StrategyOptimization,
-    metrics: SystemMetrics
+    _metrics: SystemMetrics
   ): Promise<void> {
     const { parameter, adjustment, type } = optimization;
 
@@ -755,7 +753,7 @@ export class PerformanceOptimizer extends EventEmitter {
 
       // Memory detection
       let memoryAvailable = 512; // Default fallback
-      if (hasMemoryAPI(performance)) {
+      if (hasMemoryAPI(performance) && performance.memory) {
         memoryAvailable = performance.memory.usedJSHeapSize / 1024 / 1024; // MB
       }
 
@@ -767,7 +765,7 @@ export class PerformanceOptimizer extends EventEmitter {
 
       // Battery level (if available)
       let batteryLevel: number | undefined;
-      if (hasBatteryAPI(navigator)) {
+      if (hasBatteryAPI(navigator) && navigator.getBattery) {
         try {
           const battery = await navigator.getBattery();
           batteryLevel = battery.level * 100;
@@ -1021,7 +1019,7 @@ export class PerformanceOptimizer extends EventEmitter {
     }
   }
 
-  private async generatePerformanceAlerts(metrics: SystemMetrics): Promise<void> {
+  private async generatePerformanceAlerts(_metrics: SystemMetrics): Promise<void> {
     // Generate alerts based on current metrics and thresholds
     // This is a simplified implementation
   }

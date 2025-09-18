@@ -13,11 +13,9 @@
 import { EventEmitter } from 'events';
 import { createLogger } from '../../../../shared/utils.js';
 import type { ResourceHint, NavigationPrediction } from './SpeculativeNavigationPredictor.js';
-import { 
-  hasFetchPrioritySupport, 
-  hasConnectionAPI,
-  type HTMLLinkElementWithFetchPriority,
-  type NavigatorExtended 
+import {
+  hasFetchPrioritySupport,
+  hasConnectionAPI
 } from '../../../../types/browser-apis.js';
 
 const logger = createLogger({ service: 'resource-hint-manager' });
@@ -376,7 +374,11 @@ export class ResourceHintManager extends EventEmitter {
     } else if (existingHints.length > 0) {
       // Insert after existing hints of the same type
       const lastHint = existingHints[existingHints.length - 1];
-      head.insertBefore(element, lastHint.nextSibling);
+      if (lastHint) {
+        head.insertBefore(element, lastHint.nextSibling);
+      } else {
+        head.appendChild(element);
+      }
     } else {
       // Append to head
       head.appendChild(element);
@@ -557,7 +559,7 @@ export class ResourceHintManager extends EventEmitter {
   private createOptimization(
     id: string,
     hint: ResourceHint,
-    prediction?: NavigationPrediction,
+    _prediction?: NavigationPrediction,
     status: ResourceOptimization['status'] = 'pending'
   ): ResourceOptimization {
     return {
@@ -584,12 +586,12 @@ export class ResourceHintManager extends EventEmitter {
   }
 
   private createLoadingStrategy(hint: ResourceHint): LoadingStrategy {
-    return {
+    const strategy: LoadingStrategy = {
       method: hint.type as LoadingStrategy['method'],
       timing: hint.priority === 'high' ? 'immediate' : 'idle',
       conditions: [],
-      fallback: undefined,
     };
+    return strategy;
   }
 
   private estimateResourceSize(url: string): number {
@@ -623,7 +625,7 @@ export class ResourceHintManager extends EventEmitter {
     return this.config.bandwidthThresholds[this.bandwidthProfile.effectiveType];
   }
 
-  private updateResourceCache(url: string, cached: boolean, loadTime: number): void {
+  private updateResourceCache(url: string, cached: boolean, _loadTime: number): void {
     const existing = this.resourceCache.get(url);
 
     if (existing) {

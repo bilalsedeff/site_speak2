@@ -699,9 +699,9 @@ class QuestionGenerator {
     return {
       text: questionText,
       voiceText,
-      visual: this.config.multiModal,
-      voice: this.config.voiceFirst,
-      progressive: this.config.progressive
+      visual: this._config.multiModal,
+      voice: this._config.voiceFirst,
+      progressive: this._config.progressive
     };
   }
 
@@ -712,8 +712,8 @@ class QuestionGenerator {
     return {
       text: "Could you provide more details about what you're trying to do?",
       voiceText: "Could you provide more details about what you're trying to do?",
-      visual: this.config.multiModal,
-      voice: this.config.voiceFirst,
+      visual: this._config.multiModal,
+      voice: this._config.voiceFirst,
       progressive: true
     };
   }
@@ -743,6 +743,13 @@ class QuestionGenerator {
 
 class OptionGenerator {
   constructor(private _config: ClarificationConfig) {}
+
+  /**
+   * Get current configuration
+   */
+  getConfig(): ClarificationConfig {
+    return this._config;
+  }
 
   // Part of interface contract, parameters used for implementation
 

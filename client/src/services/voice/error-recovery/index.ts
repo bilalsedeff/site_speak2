@@ -130,8 +130,7 @@ export type {
 import { ErrorRecoveryOrchestrator, createErrorRecoveryOrchestrator } from './ErrorRecoveryOrchestrator';
 import {
   ErrorRecoveryConfig,
-  ErrorRecoveryCallbacks,
-  DEFAULT_ERROR_RECOVERY_CONFIG
+  ErrorRecoveryCallbacks
 } from '@shared/types/error-recovery.types';
 
 /**
@@ -289,21 +288,34 @@ export async function setupErrorRecoveryPreset(
       advanced: {
         classification: {
           enabled: true,
+          confidenceThreshold: 0.8,
           multiTypeDetection: false,
           contextAnalysis: false,
           patternRecognition: false
         },
         clarification: {
-          enabled: false
+          enabled: false,
+          intelligentQuestions: false,
+          multiModal: false,
+          progressive: false,
+          learningEnabled: false,
+          maxAttempts: 0,
+          timeout: 0
         },
         recovery: {
           enabled: true,
           adaptiveStrategies: false,
           fallbackChaining: false,
-          userEducation: false
+          userEducation: false,
+          successOptimization: false,
+          maxRetries: 1
         },
         learning: {
-          enabled: false
+          enabled: false,
+          patternRecognition: false,
+          userSpecific: false,
+          proactivePreventions: false,
+          performanceOptimization: false
         }
       }
     }
@@ -329,7 +341,13 @@ export async function createLightweightErrorRecovery(
       patternRecognition: false
     },
     clarification: {
-      enabled: false
+      enabled: false,
+      intelligentQuestions: false,
+      multiModal: false,
+      progressive: false,
+      learningEnabled: false,
+      maxAttempts: 0,
+      timeout: 0
     },
     recovery: {
       enabled: true,
@@ -348,7 +366,11 @@ export async function createLightweightErrorRecovery(
       theme: 'light'
     },
     learning: {
-      enabled: false
+      enabled: false,
+      patternRecognition: false,
+      userSpecific: false,
+      proactivePreventions: false,
+      performanceOptimization: false
     },
     performance: {
       errorDetection: 100,

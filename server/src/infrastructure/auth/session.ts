@@ -531,7 +531,7 @@ async function createSessionManager(): Promise<SessionManager> {
       await redisClient.connect();
       logger.info('Redis session store connected');
 
-      const redisStore = new RedisSessionStore(redisClient);
+      const redisStore = new RedisSessionStore(redisClient as RedisClientType);
       logger.info('Using Redis session store for production');
       return new SessionManager(redisStore);
     } catch (error) {

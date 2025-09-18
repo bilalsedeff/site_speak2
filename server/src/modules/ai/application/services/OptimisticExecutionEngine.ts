@@ -14,11 +14,25 @@ import { EventEmitter } from 'events';
 import { createLogger, getErrorMessage } from '../../../../shared/utils.js';
 import OpenAI from 'openai';
 import { config } from '../../../../infrastructure/config/index.js';
-import type { VoiceCommand, ActionExecutionResult } from './VoiceActionExecutor.js';
-import type { NavigationCommand, NavigationResult } from './VoiceNavigationOrchestrator.js';
-import type { ElementMatch, SelectionContext } from './VoiceElementSelector.js';
+import type { VoiceCommand } from './VoiceActionExecutor.js';
+// import type { UnifiedVoiceSession } from '../../../../services/voice/index.js'; // Reserved for future session integration
+import type { SelectionContext } from './VoiceElementSelector.js';
 
 const logger = createLogger({ service: 'optimistic-execution-engine' });
+
+// Local type definitions (previously from VoiceNavigationOrchestrator, now consolidated in UnifiedVoiceOrchestrator)
+export interface NavigationCommand {
+  type: 'navigate' | 'click' | 'scroll' | 'search';
+  target?: string;
+  data?: any;
+}
+
+export interface NavigationResult {
+  success: boolean;
+  url?: string;
+  error?: string;
+  data?: any;
+}
 
 export interface OptimisticAction {
   id: string;
@@ -75,7 +89,8 @@ export interface ExecutionMetrics {
  */
 export class OptimisticExecutionEngine extends EventEmitter {
   private openai: OpenAI;
-  private isInitialized = false;
+  // Note: isInitialized reserved for future initialization logic
+  // private isInitialized = false;
 
   // Execution state
   private activeActions = new Map<string, OptimisticAction>();
@@ -115,7 +130,7 @@ export class OptimisticExecutionEngine extends EventEmitter {
   private async initialize(): Promise<void> {
     try {
       this.setupExecutionLoop();
-      this.isInitialized = true;
+      // Note: initialization completed successfully
       logger.info('OptimisticExecutionEngine initialized');
       this.emit('initialized');
     } catch (error) {
@@ -211,7 +226,7 @@ export class OptimisticExecutionEngine extends EventEmitter {
   private async predictAction(
     command: string,
     context: SelectionContext,
-    originalCommand?: VoiceCommand | NavigationCommand
+    _originalCommand?: VoiceCommand | NavigationCommand
   ): Promise<OptimisticAction> {
     const actionId = this.generateActionId();
 
@@ -289,7 +304,7 @@ Return JSON with: type, confidence, riskLevel, estimatedDuration, predictedOutco
    */
   private predictActionHeuristically(
     command: string,
-    context: SelectionContext,
+    _context: SelectionContext,
     actionId: string
   ): OptimisticAction {
     const text = command.toLowerCase();
@@ -438,10 +453,10 @@ Return JSON with: type, confidence, riskLevel, estimatedDuration, predictedOutco
    */
   private async prepareSpeculatively(
     action: OptimisticAction,
-    context: SelectionContext
+    _context: SelectionContext
   ): Promise<OptimisticResult> {
     // Create checkpoint but don't execute
-    const checkpoint = await this.createCheckpoint(action, 'speculative_prep');
+    await this.createCheckpoint(action, 'speculative_prep');
 
     // Add to speculative queue for potential execution
     this.executionQueue.push(action);
@@ -540,8 +555,8 @@ Return JSON with: type, confidence, riskLevel, estimatedDuration, predictedOutco
   /**
    * Perform the actual action execution
    */
-  private async performAction(action: OptimisticAction, context: SelectionContext): Promise<any> {
-    // This would integrate with existing VoiceActionExecutor or VoiceNavigationOrchestrator
+  private async performAction(action: OptimisticAction, _context: SelectionContext): Promise<any> {
+    // This would integrate with existing VoiceActionExecutor or UnifiedVoiceOrchestrator
     // For now, simulate action execution
 
     return new Promise((resolve) => {
@@ -559,7 +574,7 @@ Return JSON with: type, confidence, riskLevel, estimatedDuration, predictedOutco
   /**
    * Provide immediate visual feedback (<100ms)
    */
-  private provideImmediateFeedback(command: string): void {
+  private provideImmediateFeedback(_command: string): void {
     this.emit('immediate_feedback', {
       type: 'processing_indicator',
       target: 'body',

@@ -154,7 +154,7 @@ export class AriaEmitter {
           pageUrl,
           element: this.getElementSelector(element, index),
           wcagLevel: 'A',
-          details: { missingIds }
+          details: { missingIds: missingIds.join(', ') }
         });
       }
     });

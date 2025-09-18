@@ -8,7 +8,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export interface LogEntry {
   level: LogLevel;
   message: string;
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
   timestamp: Date;
   correlationId?: string;
   tenantId?: string;
@@ -16,11 +16,11 @@ export interface LogEntry {
 }
 
 export interface Logger {
-  debug(message: string, meta?: Record<string, any>): void;
-  info(message: string, meta?: Record<string, any>): void;
-  warn(message: string, meta?: Record<string, any>): void;
-  error(message: string, meta?: Record<string, any>): void;
-  child(context: Record<string, any>): Logger;
+  debug(message: string, meta?: Record<string, unknown>): void;
+  info(message: string, meta?: Record<string, unknown>): void;
+  warn(message: string, meta?: Record<string, unknown>): void;
+  error(message: string, meta?: Record<string, unknown>): void;
+  child(context: Record<string, unknown>): Logger;
 }
 
 /**
@@ -28,35 +28,35 @@ export interface Logger {
  * Can be replaced with more sophisticated implementations in server/client
  */
 export class ConsoleLogger implements Logger {
-  private context: Record<string, any> = {};
+  private context: Record<string, unknown> = {};
 
-  constructor(context?: Record<string, any>) {
+  constructor(context?: Record<string, unknown>) {
     if (context) {
       this.context = { ...context };
     }
   }
 
-  debug(message: string, meta?: Record<string, any>): void {
+  debug(message: string, meta?: Record<string, unknown>): void {
     this.log('debug', message, meta);
   }
 
-  info(message: string, meta?: Record<string, any>): void {
+  info(message: string, meta?: Record<string, unknown>): void {
     this.log('info', message, meta);
   }
 
-  warn(message: string, meta?: Record<string, any>): void {
+  warn(message: string, meta?: Record<string, unknown>): void {
     this.log('warn', message, meta);
   }
 
-  error(message: string, meta?: Record<string, any>): void {
+  error(message: string, meta?: Record<string, unknown>): void {
     this.log('error', message, meta);
   }
 
-  child(context: Record<string, any>): Logger {
+  child(context: Record<string, unknown>): Logger {
     return new ConsoleLogger({ ...this.context, ...context });
   }
 
-  private log(level: LogLevel, message: string, meta?: Record<string, any>): void {
+  private log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
     const entry: LogEntry = {
       level,
       message,
@@ -79,14 +79,14 @@ export class ConsoleLogger implements Logger {
  * Create a logger instance
  * This can be configured differently for server vs client
  */
-export function createLogger(context?: Record<string, any>): Logger {
+export function createLogger(context?: Record<string, unknown>): Logger {
   return new ConsoleLogger(context);
 }
 
 /**
  * Sanitize sensitive data from log entries
  */
-export function sanitizeLogData(data: any): any {
+export function sanitizeLogData(data: unknown): unknown {
   const sensitiveKeys = [
     'password', 'token', 'secret', 'key', 'authorization',
     'bearer', 'cookie', 'session', 'apikey', 'api_key'
@@ -100,7 +100,7 @@ export function sanitizeLogData(data: any): any {
     return data.map(sanitizeLogData);
   }
 
-  const sanitized: any = {};
+  const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     const keyLower = key.toLowerCase();
     if (sensitiveKeys.some(sensitive => keyLower.includes(sensitive))) {
@@ -118,7 +118,7 @@ export function sanitizeLogData(data: any): any {
 /**
  * Format error for logging
  */
-export function formatError(error: unknown): Record<string, any> {
+export function formatError(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
     return {
       name: error.name,

@@ -9,6 +9,7 @@ This document describes the implementation of proper 12-Factor architecture for 
 ### Web Process (`server/web.ts`)
 
 **Responsibilities:**
+
 - HTTP API request handling (Express.js)
 - WebSocket connections (Socket.IO + Raw WebSocket)
 - Real-time voice processing (≤300ms requirement)
@@ -17,6 +18,7 @@ This document describes the implementation of proper 12-Factor architecture for 
 - Immediate user feedback and interactions
 
 **Optimization for Voice Latency:**
+
 - Real-time AI inference stays in web process
 - Voice WebSocket connections handled directly
 - OpenAI Realtime API integration for immediate response
@@ -24,6 +26,7 @@ This document describes the implementation of proper 12-Factor architecture for 
 - Resource hints and speculative navigation
 
 **Excluded from Web Process:**
+
 - Background job processing
 - Knowledge base crawling
 - Heavy AI model processing
@@ -33,6 +36,7 @@ This document describes the implementation of proper 12-Factor architecture for 
 ### Worker Process (`server/worker.ts`)
 
 **Responsibilities:**
+
 - Background job processing (BullMQ workers)
 - Knowledge base crawling and indexing
 - AI model processing (non-real-time)
@@ -41,6 +45,7 @@ This document describes the implementation of proper 12-Factor architecture for 
 - Maintenance and cleanup tasks
 
 **Worker Types:**
+
 - **Crawler Worker**: Knowledge base indexing, site crawling
 - **AI Worker**: Embedding generation, model processing
 - **Voice Worker**: Non-real-time voice processing (TTS synthesis)
@@ -52,7 +57,7 @@ This document describes the implementation of proper 12-Factor architecture for 
 
 ### Queue-Based Architecture (Redis + BullMQ)
 
-```
+```plaintext
 Web Process              Redis/BullMQ              Worker Process
     |                         |                         |
     |---> Submit Job -------->|                         |
@@ -61,6 +66,7 @@ Web Process              Redis/BullMQ              Worker Process
 ```
 
 **Queue Types:**
+
 - `CRITICAL`: Real-time operations, site publishing
 - `AI`: AI processing, embeddings, model inference
 - `CRAWLER`: Knowledge base updates, site indexing
@@ -71,16 +77,19 @@ Web Process              Redis/BullMQ              Worker Process
 ### Shared Resources
 
 **Database (PostgreSQL):**
+
 - Shared connection pools
 - Multi-tenant isolation maintained
 - Read replicas for worker processes (future optimization)
 
 **Redis:**
+
 - Queue backend (BullMQ)
 - Session storage
 - Caching layer
 
 **File System:**
+
 - Shared volumes for uploads, published sites
 - Temporary file cleanup by worker process
 
@@ -89,6 +98,7 @@ Web Process              Redis/BullMQ              Worker Process
 ### Critical Requirements Met
 
 1. **Real-Time Processing in Web Process:**
+
    ```typescript
    // Voice WebSocket connections stay in web process
    const aiAssistant = getUniversalAIAssistantService({
@@ -116,7 +126,7 @@ Web Process              Redis/BullMQ              Worker Process
 
 ### Voice Architecture Flow
 
-```
+```plaintext
 User Voice Input --> Web Process (≤300ms) --> Immediate Response
                          |
                          |--> Queue Job --> Worker Process
@@ -164,12 +174,14 @@ services:
 ### Production Scaling
 
 **Web Process Scaling:**
+
 - Horizontal scaling with load balancers
 - Multiple web process replicas
 - Session affinity for WebSocket connections
 - Auto-scaling based on request volume
 
 **Worker Process Scaling:**
+
 - Scale based on queue depth
 - Different worker types can scale independently
 - Resource allocation based on job types
@@ -221,16 +233,19 @@ GET /health          # General health check
 ## Migration Strategy
 
 ### Phase 1: Parallel Deployment
+
 - Deploy both processes alongside existing monolith
 - Route traffic gradually to new web process
 - Background jobs processed by new worker process
 
 ### Phase 2: Full Migration
+
 - Complete traffic migration to separated processes
 - Decommission monolith process
 - Monitor performance and adjust scaling
 
 ### Phase 3: Optimization
+
 - Fine-tune worker scaling policies
 - Optimize queue configurations
 - Implement advanced monitoring
@@ -246,7 +261,7 @@ GET /health          # General health check
 
 ## File Structure
 
-```
+```plaintext
 server/
 ├── web.ts                              # Web process entry point
 ├── worker.ts                           # Worker process entry point

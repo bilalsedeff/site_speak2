@@ -11,7 +11,7 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { createLogger, getErrorMessage } from '../../../../../shared/utils';
 import type {
   IntentCategory,
@@ -20,6 +20,7 @@ import type {
   ContextualIntentAnalysis,
   IntentProcessingError,
   SessionContext,
+  ErrorDetails,
 } from './types.js';
 
 const logger = createLogger({ service: 'intent-classification-engine' });
@@ -39,7 +40,7 @@ export interface IntentClassificationConfig {
  * Primary Intent Classification Engine using OpenAI GPT-4o
  */
 export class IntentClassificationEngine {
-  private llm: ChatOpenAI;
+  private llm!: ChatOpenAI; // Initialized in initializeLLM() called from constructor
   private config: IntentClassificationConfig;
   private classificationCount = 0;
   private performanceMetrics = {
@@ -203,13 +204,19 @@ export class IntentClassificationEngine {
       );
 
       // Merge results, keeping higher confidence
-      return {
+      const baseResult = {
         ...primaryResult,
         confidence: Math.max(primaryResult.confidence, refinedResponse.confidence),
         parameters: { ...primaryResult.parameters, ...refinedResponse.parameters },
-        reasoning: refinedResponse.reasoning || primaryResult.reasoning,
         processingTime: primaryResult.processingTime + refinedResponse.processingTime,
       };
+
+      const reasoning = refinedResponse.reasoning || primaryResult.reasoning;
+      if (reasoning !== undefined) {
+        (baseResult as any).reasoning = reasoning;
+      }
+
+      return baseResult;
 
     } catch (error) {
       logger.warn('Classification refinement failed, using primary result', {
@@ -309,7 +316,7 @@ Provide your classification as a JSON object.`;
   private buildRefinementPrompt(
     primaryResult: IntentClassificationResult,
     originalText: string,
-    context: ContextualIntentAnalysis
+    _context: ContextualIntentAnalysis
   ): string {
     return `You are refining an intent classification to improve confidence and parameter extraction.
 
@@ -501,10 +508,61 @@ Return the refined classification as JSON with the same structure.`;
   ): IntentProcessingError {
     const error = new Error(message) as IntentProcessingError;
     error.code = code;
-    error.details = originalError;
+    const errorDetails = this.convertToErrorDetails(originalError);
+    if (errorDetails) {
+      error.details = errorDetails;
+    }
     error.retryable = retryable;
     error.suggestedAction = this.getSuggestedAction(code);
     return error;
+  }
+
+  /**
+   * Convert unknown error to ErrorDetails format
+   */
+  private convertToErrorDetails(error: unknown): ErrorDetails | undefined {
+    if (!error) {return undefined;}
+
+    if (error instanceof Error) {
+      return {
+        originalError: error,
+        errorCode: 'CLASSIFICATION_ERROR',
+        context: {
+          message: error.message,
+          stack: error.stack,
+        },
+        timestamp: new Date(),
+      };
+    }
+
+    if (typeof error === 'string') {
+      return {
+        errorCode: 'STRING_ERROR',
+        context: {
+          message: error,
+        },
+        timestamp: new Date(),
+      };
+    }
+
+    if (typeof error === 'object' && error !== null) {
+      return {
+        errorCode: 'OBJECT_ERROR',
+        context: {
+          serializedError: JSON.stringify(error),
+        },
+        timestamp: new Date(),
+      };
+    }
+
+    return {
+      errorCode: 'UNKNOWN_ERROR',
+      context: {
+        type: typeof error,
+        value: String(error),
+      },
+      timestamp: new Date(),
+    };
   }
 
   /**

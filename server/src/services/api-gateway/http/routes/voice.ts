@@ -324,9 +324,9 @@ router.post('/stream',
         // Process audio input through the realtime client if available
         const audioBuffer = Buffer.from(audioData, 'base64');
         
-        if (session.realtimeClient) {
+        if (session.realtimeConnection?.client) {
           try {
-            await session.realtimeClient.sendAudio(audioBuffer.buffer.slice(audioBuffer.byteOffset, audioBuffer.byteOffset + audioBuffer.byteLength));
+            await session.realtimeConnection.client.sendAudio(audioBuffer.buffer.slice(audioBuffer.byteOffset, audioBuffer.byteOffset + audioBuffer.byteLength));
             result = {
               id: `audio-${Date.now()}`,
               processingTimeMs: 50,
@@ -349,9 +349,9 @@ router.post('/stream',
         }
       } else if (inputType === 'text' && input) {
         // Process text input through the realtime client if available
-        if (session.realtimeClient) {
+        if (session.realtimeConnection?.client) {
           try {
-            await session.realtimeClient.sendText(input);
+            await session.realtimeConnection.client.sendText(input);
             result = {
               id: `text-${Date.now()}`,
               processingTimeMs: 30,

@@ -21,7 +21,7 @@ import type {
   IntentResolution,
   IntentEnsembleDecision,
   ContextualIntentAnalysis,
-} from './types.js';
+} from './types';
 
 const logger = createLogger({ service: 'intent-validation-service' });
 
@@ -343,8 +343,8 @@ export class IntentValidationService {
   private makeEnsembleDecision(
     primaryResult: IntentClassificationResult,
     secondaryResults: IntentClassificationResult[],
-    conflicts: IntentConflict[],
-    context: ContextualIntentAnalysis
+    _conflicts: IntentConflict[],
+    _context: ContextualIntentAnalysis
   ): IntentEnsembleDecision {
     const allResults = [primaryResult, ...secondaryResults];
     const startTime = performance.now();
@@ -367,7 +367,7 @@ export class IntentValidationService {
         break;
 
       case 'contextual_boost':
-        ({ intent: finalIntent, confidence } = this.contextualBoostDecision(allResults, context));
+        ({ intent: finalIntent, confidence } = this.contextualBoostDecision(allResults, _context));
         break;
 
       default:
@@ -410,8 +410,18 @@ export class IntentValidationService {
       });
     }
 
-    const winner = Array.from(intentCounts.entries())
-      .sort((a, b) => b[1].count - a[1].count)[0];
+    const sortedIntents = Array.from(intentCounts.entries())
+      .sort((a, b) => b[1].count - a[1].count);
+
+    const winner = sortedIntents[0];
+
+    if (!winner) {
+      // Fallback to first result if no winner found
+      return {
+        intent: results[0]?.intent || 'unknown_intent' as IntentCategory,
+        confidence: results[0]?.confidence || 0,
+      };
+    }
 
     return {
       intent: winner[0],
@@ -435,8 +445,18 @@ export class IntentValidationService {
       intentScores.set(result.intent, existing + score);
     }
 
-    const winner = Array.from(intentScores.entries())
-      .sort((a, b) => b[1] - a[1])[0];
+    const sortedScores = Array.from(intentScores.entries())
+      .sort((a, b) => b[1] - a[1]);
+
+    const winner = sortedScores[0];
+
+    if (!winner) {
+      // Fallback to first result if no winner found
+      return {
+        intent: results[0]?.intent || 'unknown_intent' as IntentCategory,
+        confidence: results[0]?.confidence || 0,
+      };
+    }
 
     return {
       intent: winner[0],
@@ -555,7 +575,7 @@ export class IntentValidationService {
   private async createClarificationResolution(
     conflict: IntentConflict,
     ensembleDecision: IntentEnsembleDecision,
-    originalText: string,
+    _originalText: string,
     context: ContextualIntentAnalysis
   ): Promise<IntentResolution> {
     const clarificationQuestion = conflict.suggestedResolution?.clarificationQuestion ||
@@ -575,11 +595,13 @@ export class IntentValidationService {
    */
   private generateClarificationQuestion(
     conflictingIntents: IntentCategory[],
-    context: ContextualIntentAnalysis
+    _context: ContextualIntentAnalysis
   ): string {
     if (conflictingIntents.length === 2) {
       const [intent1, intent2] = conflictingIntents;
-      return `I'm not sure if you want to ${this.intentToDescription(intent1)} or ${this.intentToDescription(intent2)}. Which one did you mean?`;
+      if (intent1 && intent2) {
+        return `I'm not sure if you want to ${this.intentToDescription(intent1)} or ${this.intentToDescription(intent2)}. Which one did you mean?`;
+      }
     }
 
     if (conflictingIntents.length > 2) {
@@ -611,7 +633,7 @@ export class IntentValidationService {
    * Find contradictory intent pairs
    */
   private findContradictoryIntents(intents: IntentCategory[]): [IntentCategory, IntentCategory][] {
-    const contradictoryPairs: Record<IntentCategory, IntentCategory[]> = {
+    const contradictoryPairs: Partial<Record<IntentCategory, IntentCategory[]>> = {
       'add_to_cart': ['remove_from_cart'],
       'remove_from_cart': ['add_to_cart'],
       'edit_text': ['delete_content'],
@@ -682,7 +704,7 @@ export class IntentValidationService {
    * Build validation prompt for secondary models
    */
   private buildValidationPrompt(
-    text: string,
+    _text: string,
     context: ContextualIntentAnalysis,
     modelName: string
   ): string {
@@ -764,9 +786,9 @@ Return JSON: {"intent": "category", "confidence": 0.85, "reasoning": "explanatio
     return {
       isValid,
       confidence: resolution?.confidence || ensembleDecision.confidence,
-      conflicts: hasConflicts ? conflicts : undefined,
-      resolution,
-      fallbackIntent: !isValid ? 'help_request' : undefined,
+      ...(hasConflicts && { conflicts }),
+      ...(resolution !== undefined && { resolution }),
+      ...(!isValid && { fallbackIntent: 'help_request' as const }),
       validationTime,
     };
   }
@@ -788,8 +810,8 @@ Return JSON: {"intent": "category", "confidence": 0.85, "reasoning": "explanatio
    * Create fallback resolution
    */
   private createFallbackResolution(
-    conflict: IntentConflict,
-    ensembleDecision: IntentEnsembleDecision
+    _conflict: IntentConflict,
+    _ensembleDecision: IntentEnsembleDecision
   ): IntentResolution {
     return {
       strategy: 'fallback',
@@ -803,7 +825,7 @@ Return JSON: {"intent": "category", "confidence": 0.85, "reasoning": "explanatio
    * Create other resolution types
    */
   private createContextBoostResolution(
-    conflict: IntentConflict,
+    _conflict: IntentConflict,
     ensembleDecision: IntentEnsembleDecision,
     context: ContextualIntentAnalysis
   ): IntentResolution {
@@ -816,9 +838,9 @@ Return JSON: {"intent": "category", "confidence": 0.85, "reasoning": "explanatio
   }
 
   private createUserConfirmationResolution(
-    conflict: IntentConflict,
+    _conflict: IntentConflict,
     ensembleDecision: IntentEnsembleDecision,
-    originalText: string
+    _originalText: string
   ): IntentResolution {
     return {
       strategy: 'user_confirmation',
@@ -830,7 +852,7 @@ Return JSON: {"intent": "category", "confidence": 0.85, "reasoning": "explanatio
 
   private createEnsembleVoteResolution(
     ensembleDecision: IntentEnsembleDecision,
-    conflict: IntentConflict
+    _conflict: IntentConflict
   ): IntentResolution {
     return {
       strategy: 'ensemble_vote',
@@ -949,7 +971,7 @@ Return JSON: {"intent": "category", "confidence": 0.85, "reasoning": "explanatio
     const errors: string[] = [];
     const activeModels: string[] = [];
 
-    for (const [modelName, model] of this.validationModels.entries()) {
+    for (const [modelName, model] of Array.from(this.validationModels.entries())) {
       try {
         await model.model.invoke([
           new SystemMessage('Health check'),
@@ -964,7 +986,7 @@ Return JSON: {"intent": "category", "confidence": 0.85, "reasoning": "explanatio
     return {
       healthy: errors.length === 0,
       models: activeModels,
-      errors: errors.length > 0 ? errors : undefined,
+      ...(errors.length > 0 && { errors }),
     };
   }
 

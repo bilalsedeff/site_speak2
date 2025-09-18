@@ -100,8 +100,6 @@ export interface SelectionContext {
  */
 export class VoiceElementSelector extends EventEmitter {
   private openai: OpenAI;
-  private isInitialized = false;
-  private cachedElements = new Map<string, DOMElement[]>();
   private selectionHistory: ElementMatch[] = [];
   private contextStack: SelectionContext[] = [];
 
@@ -118,7 +116,6 @@ export class VoiceElementSelector extends EventEmitter {
    */
   private async initialize(): Promise<void> {
     try {
-      this.isInitialized = true;
       logger.info('VoiceElementSelector initialized');
       this.emit('initialized');
     } catch (error) {
@@ -242,7 +239,7 @@ Examples:
 
     // Extract text content (simple approach)
     const textMatch = description.match(/"([^"]+)"/);
-    if (textMatch) {
+    if (textMatch && textMatch[1]) {
       descriptor.text = textMatch[1];
     }
 
@@ -390,11 +387,16 @@ Examples:
       if (candidate.includes('[')) {
         // Handle attribute selectors like input[type="button"]
         const [tag, attr] = candidate.split('[');
-        if (tagName !== tag) {return false;}
+        if (tagName !== tag) {
+          return false;
+        }
 
+        if (!attr) {
+          return false;
+        }
         const [attrName, attrValue] = attr.replace(']', '').split('=');
         const expectedValue = attrValue?.replace(/"/g, '');
-        return element.attributes[attrName!] === expectedValue;
+        return attrName && element.attributes[attrName] === expectedValue;
       } else {
         return tagName === candidate;
       }

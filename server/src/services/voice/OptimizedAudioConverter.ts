@@ -125,7 +125,7 @@ class StreamingAudioDecoder {
   private isInitialized = false;
 
   async initialize(sampleRate: number): Promise<void> {
-    if (this.isInitialized) return;
+    if (this.isInitialized) {return;}
 
     try {
       // Use OfflineAudioContext for server-side processing
@@ -176,7 +176,7 @@ class StreamingAudioDecoder {
       // Convert to PCM16 at target sample rate
       const pcmData = this.audioBufferToPCM16(audioBuffer, outputSampleRate);
 
-      return pcmData.buffer;
+      return pcmData.buffer.slice() as ArrayBuffer;
     } catch (error) {
       logger.warn('Web Audio decoding failed, falling back to manual', { error });
       return await this.decodeManually(webmData, outputSampleRate);
@@ -212,7 +212,7 @@ class StreamingAudioDecoder {
     return pcmData;
   }
 
-  private async decodeManually(webmData: ArrayBuffer, outputSampleRate: number): Promise<ArrayBuffer> {
+  private async decodeManually(_webmData: ArrayBuffer, outputSampleRate: number): Promise<ArrayBuffer> {
     // Simplified WebM parsing - in production would use a proper WebM parser
     logger.warn('Using fallback manual decoding - quality may be reduced');
 
@@ -334,7 +334,7 @@ export class OptimizedAudioConverter extends EventEmitter {
   }
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) return;
+    if (this.isInitialized) {return;}
 
     try {
       await Promise.all([

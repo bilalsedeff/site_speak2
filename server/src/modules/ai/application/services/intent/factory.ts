@@ -13,7 +13,7 @@ import {
   type IntentOrchestrationConfig,
   type IntentSystemHealth,
 } from './index.js';
-import { VoiceConversationOrchestratorEnhanced, type EnhancedConversationConfig } from '../VoiceConversationOrchestratorEnhanced.js';
+import { createUnifiedVoiceOrchestrator, type UnifiedVoiceSession as _UnifiedVoiceSession, type UnifiedOrchestratorConfig } from '../../../../../services/voice/index.js';
 import type { VoiceActionExecutor } from '../VoiceActionExecutor.js';
 
 const logger = createLogger({ service: 'intent-factory' });
@@ -228,8 +228,10 @@ export async function createIntentRecognitionSystem(
  */
 export async function createVoiceConversationSystem(
   config: VoiceSystemConfig,
-  voiceActionExecutor: VoiceActionExecutor
-): Promise<VoiceConversationOrchestratorEnhanced> {
+  _voiceActionExecutor: VoiceActionExecutor,
+  httpServer?: any,
+  aiService?: any
+): Promise<any> {
   logger.info('Creating voice conversation system with advanced intent recognition', {
     mode: config.mode,
     conversationModel: config.conversation.model,
@@ -237,17 +239,18 @@ export async function createVoiceConversationSystem(
   });
 
   try {
-    // Build the enhanced conversation configuration
-    const conversationConfig = buildVoiceConversationConfig(config);
+    // Build the unified configuration
+    const unifiedConfig = buildUnifiedVoiceConfig(config);
 
-    // Create the enhanced orchestrator
-    const orchestrator = new VoiceConversationOrchestratorEnhanced(
-      conversationConfig,
-      voiceActionExecutor
+    // Create a new unified voice orchestrator with the configuration
+    const orchestrator = createUnifiedVoiceOrchestrator(
+      httpServer,
+      aiService,
+      unifiedConfig
     );
 
     // Initialize the intent recognition system
-    await orchestrator.initializeIntentRecognition();
+    const intentOrchestrator = await createIntentRecognitionSystem(config);
 
     logger.info('Voice conversation system created successfully', {
       intentRecognitionEnabled: true,
@@ -255,7 +258,12 @@ export async function createVoiceConversationSystem(
       streamingEnabled: config.conversation.streamingEnabled,
     });
 
-    return orchestrator;
+    // Return an object that combines both orchestrators
+    return {
+      voiceOrchestrator: orchestrator,
+      intentOrchestrator,
+      config: unifiedConfig,
+    };
 
   } catch (error) {
     logger.error('Failed to create voice conversation system', {
@@ -291,17 +299,21 @@ export async function quickSetupIntent(
  */
 export async function quickSetupVoiceConversation(
   openaiApiKey: string,
-  voiceActionExecutor: VoiceActionExecutor,
+  _voiceActionExecutor: VoiceActionExecutor,
   options: {
     intentPreset?: keyof typeof IntentConfigPresets;
     voicePreset?: keyof typeof VoiceConfigPresets;
     enableIntentRecognition?: boolean;
+    httpServer?: any;
+    aiService?: any;
   } = {}
-): Promise<VoiceConversationOrchestratorEnhanced> {
+): Promise<any> {
   const {
     intentPreset = 'balanced',
     voicePreset = 'production',
     enableIntentRecognition = true,
+    httpServer,
+    aiService,
   } = options;
 
   const intentConfig = IntentConfigPresets[intentPreset];
@@ -321,7 +333,7 @@ export async function quickSetupVoiceConversation(
     config.features.enablePredictive = false;
   }
 
-  return createVoiceConversationSystem(config, voiceActionExecutor);
+  return createVoiceConversationSystem(config, _voiceActionExecutor, httpServer, aiService);
 }
 
 /**
@@ -442,7 +454,7 @@ export class IntentSystemMonitor {
   stopMonitoring(): void {
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
-      this.monitoringInterval = undefined;
+      this.monitoringInterval = undefined as any;
       logger.info('Intent system monitoring stopped');
     }
   }
@@ -561,24 +573,49 @@ function buildIntentOrchestrationConfig(config: IntentSystemConfig): IntentOrche
 }
 
 /**
- * Build voice conversation configuration from system config
+ * Build unified voice orchestrator configuration from system config
  */
-function buildVoiceConversationConfig(config: VoiceSystemConfig): EnhancedConversationConfig {
+function buildUnifiedVoiceConfig(config: VoiceSystemConfig): Partial<UnifiedOrchestratorConfig> {
   return {
-    openaiApiKey: config.openaiApiKey,
-    model: config.conversation.model,
-    temperature: config.conversation.temperature,
-    maxTokens: config.conversation.maxTokens,
-    streamingEnabled: config.conversation.streamingEnabled,
-    functionCallingEnabled: config.conversation.functionCallingEnabled,
-    confirmationThreshold: config.conversation.confirmationThreshold,
-    intentRecognition: {
-      enabled: config.features.enableValidation || config.features.enableCaching || config.features.enableLearning,
-      mode: config.mode,
-      enableValidation: config.features.enableValidation,
-      enableCaching: config.features.enableCaching,
-      enableLearning: config.features.enableLearning,
-      performanceTarget: config.performance.targetProcessingTime,
+    maxSessions: 100,
+    sessionTimeout: 600000, // 10 minutes
+    heartbeatInterval: 30000,
+    enableRawWebSocket: true,
+    enableSocketIO: true,
+    maxConnections: 200,
+
+    performance: {
+      targetFirstTokenMs: config.performance.targetProcessingTime,
+      targetPartialLatencyMs: Math.min(150, config.performance.targetProcessingTime / 2),
+      targetBargeInMs: 50,
+      enableConnectionPooling: true,
+      enableStreamingAudio: config.conversation.streamingEnabled,
+      enablePredictiveProcessing: config.features.enablePredictive,
+      enableAdaptiveOptimization: config.features.enableCaching,
+      enablePerformanceMonitoring: true,
+    },
+
+    optimization: {
+      audioBufferPoolSize: 50,
+      connectionPoolSize: 20,
+      enableMemoryPooling: true,
+      enableSpeculativeProcessing: config.features.enablePredictive,
+      autoOptimizationThreshold: config.performance.targetProcessingTime * 1.5,
+    },
+
+    defaults: {
+      locale: 'en-US',
+      voice: 'alloy',
+      maxDuration: 300000, // 5 minutes
+      audioConfig: {
+        sampleRate: 24000,
+        frameMs: 20,
+        inputFormat: 'opus',
+        outputFormat: 'opus',
+        enableVAD: true,
+        enableStreamingProcessing: config.conversation.streamingEnabled,
+        enableOptimizedBuffering: true,
+      },
     },
   };
 }
@@ -624,18 +661,22 @@ export function validateSystemRequirements(): {
  * Migration helper for existing voice systems
  */
 export async function migrateFromBasicVoiceSystem(
-  oldOrchestrator: unknown, // The existing VoiceConversationOrchestrator
-  voiceActionExecutor: VoiceActionExecutor,
+  oldOrchestrator: unknown, // The existing voice orchestrator (now consolidated in UnifiedVoiceOrchestrator)
+  _voiceActionExecutor: VoiceActionExecutor,
   migrationOptions: {
     preserveSessions?: boolean;
     intentPreset?: keyof typeof IntentConfigPresets;
     voicePreset?: keyof typeof VoiceConfigPresets;
+    httpServer?: any;
+    aiService?: any;
   } = {}
-): Promise<VoiceConversationOrchestratorEnhanced> {
+): Promise<any> {
   const {
     preserveSessions = true,
     intentPreset = 'balanced',
     voicePreset = 'production',
+    httpServer,
+    aiService,
   } = migrationOptions;
 
   logger.info('Starting migration from basic voice system', {
@@ -648,11 +689,13 @@ export async function migrateFromBasicVoiceSystem(
     // Create new enhanced system
     const newOrchestrator = await quickSetupVoiceConversation(
       process.env['OPENAI_API_KEY']!,
-      voiceActionExecutor,
+      _voiceActionExecutor,
       {
         intentPreset,
         voicePreset,
         enableIntentRecognition: true,
+        httpServer,
+        aiService,
       }
     );
 
@@ -692,13 +735,13 @@ export const ConfigUtils = {
    * Merge multiple configuration objects
    */
   mergeConfigs: (
-    base: Partial<IntentOrchestrationConfig>,
+    base: IntentOrchestrationConfig,
     ...overrides: Partial<IntentOrchestrationConfig>[]
   ): IntentOrchestrationConfig => {
     return overrides.reduce(
       (merged, override) => ({ ...merged, ...override }),
-      base as IntentOrchestrationConfig
-    );
+      base
+    ) as IntentOrchestrationConfig;
   },
 
   /**

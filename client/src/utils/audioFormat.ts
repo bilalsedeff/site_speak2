@@ -102,7 +102,7 @@ export class AudioFormatManager {
       }
     }
 
-    logger.debug('Audio capabilities detected', capabilities);
+    logger.debug('Audio capabilities detected', capabilities as unknown as Record<string, unknown>);
     return capabilities;
   }
 

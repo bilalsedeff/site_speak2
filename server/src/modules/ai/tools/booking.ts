@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import { createLogger } from '../../../shared/utils.js';
-import { 
+import {
   RegistryToolDefinition,
   ToolContext,
   ToolExecutionResult,
@@ -20,6 +20,7 @@ import {
   IdempotencyKeySchema,
   toJsonSchema
 } from './validators';
+import { ActionParameters } from '../types/action-execution.types';
 import { actionExecutorService } from '../application/ActionExecutorService';
 
 const logger = createLogger({ service: 'booking-tools' });
@@ -96,11 +97,11 @@ async function executeSearchSlots(
         actionName: bookingAction.name,
         parameters: {
           action: 'search_slots',
-          resourceId: parameters.resourceId,
-          date: parameters.date,
-          duration: parameters.duration,
-          partySize: parameters.partySize,
-        },
+          resourceId: parameters.resourceId || undefined,
+          date: parameters.date || undefined,
+          duration: parameters.duration || undefined,
+          partySize: parameters.partySize || undefined,
+        } as ActionParameters,
         sessionId: context.sessionId || 'unknown',
         userId: context.userId || 'anonymous',
       });
@@ -253,9 +254,9 @@ async function executeBookSlot(
         ...(parameters.notes && { notes: parameters.notes }),
         ...(parameters.customer.specialRequests && { specialRequests: parameters.customer.specialRequests }),
         idempotencyKey: parameters.idempotencyKey,
-      },
-      ...(context.sessionId && { sessionId: context.sessionId }),
-      ...(context.userId && { userId: context.userId }),
+      } as ActionParameters,
+      sessionId: context.sessionId || 'unknown',
+      userId: context.userId || 'anonymous',
     });
 
     const executionTime = Date.now() - startTime;
@@ -267,9 +268,10 @@ async function executeBookSlot(
         bookingId: parameters.idempotencyKey,
         slotId: parameters.slotId,
         customer: parameters.customer,
-        ...executionResult.result,
+        ...(typeof executionResult.result === 'object' && executionResult.result !== null ? executionResult.result : {}),
       },
-      error: executionResult.error,
+      error: typeof executionResult.error === 'string' ? executionResult.error :
+             executionResult.error ? JSON.stringify(executionResult.error) : undefined,
       executionTime,
       sideEffects: executionResult.sideEffects || [],
     };

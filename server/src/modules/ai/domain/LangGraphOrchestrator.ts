@@ -717,7 +717,7 @@ export class LangGraphOrchestrator {
           input: action.parameters,
           output: result.result,
           success: result.success,
-          error: result.error,
+          ...(result.error && { error: result.error }),
         });
 
       } catch (error) {

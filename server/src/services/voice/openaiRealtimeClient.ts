@@ -43,30 +43,16 @@ export interface RealtimeConfig {
 import type {
   RealtimeTool,
   RealtimeEvent,
-  RealtimeEventHandlers,
-  SessionConfig,
-  ConversationItem,
-  Response,
-  RealtimeError,
-  ConnectionStatus,
   RealtimeMetrics,
-  ClientMessage,
-  JSONSchema
+  ClientMessage
 } from './openai-realtime-types.js';
 
 // Re-export types for backwards compatibility
 export type {
   RealtimeTool,
   RealtimeEvent,
-  RealtimeEventHandlers,
-  SessionConfig,
-  ConversationItem,
-  Response,
-  RealtimeError,
-  ConnectionStatus,
   RealtimeMetrics,
-  ClientMessage,
-  JSONSchema
+  ClientMessage
 } from './openai-realtime-types.js';
 
 /**
@@ -91,6 +77,9 @@ export class OpenAIRealtimeClient extends EventEmitter {
     audioBytesReceived: 0,
     errors: 0,
     reconnections: 0,
+    averageLatency: 0,
+    peakLatency: 0,
+    successRate: 1,
   };
 
   // Pending requests for latency tracking
@@ -236,7 +225,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
    * Initialize Realtime session
    */
   private initializeSession(): void {
-    const sessionConfig = {
+    const sessionConfig: ClientMessage = {
       type: 'session.update',
       session: {
         modalities: ['text', 'audio'],
@@ -244,13 +233,22 @@ export class OpenAIRealtimeClient extends EventEmitter {
         voice: this.config.voice,
         input_audio_format: this.config.inputAudioFormat,
         output_audio_format: this.config.outputAudioFormat,
-        input_audio_transcription: this.config.inputAudioTranscription,
-        turn_detection: this.config.turnDetection || {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500,
-        },
+        ...(this.config.inputAudioTranscription && {
+          input_audio_transcription: this.config.inputAudioTranscription,
+        }),
+        turn_detection: this.config.turnDetection?.type === 'server_vad'
+          ? {
+              type: 'server_vad' as const,
+              threshold: this.config.turnDetection.threshold ?? 0.5,
+              prefix_padding_ms: this.config.turnDetection.prefix_padding_ms ?? 300,
+              silence_duration_ms: this.config.turnDetection.silence_duration_ms ?? 500,
+            }
+          : {
+              type: 'server_vad' as const,
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 500,
+            },
         tools: this.config.tools || [],
         tool_choice: 'auto',
         temperature: 0.8,
@@ -278,7 +276,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
       this.audioBufferStart = Date.now();
     }
 
-    const message = {
+    const message: ClientMessage = {
       type: 'input_audio_buffer.append',
       audio: base64Audio,
     };
@@ -308,7 +306,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
       throw new Error('Not connected to OpenAI Realtime API');
     }
 
-    const message = { type: 'input_audio_buffer.commit' };
+    const message: ClientMessage = { type: 'input_audio_buffer.commit' };
     this.sendMessage(message);
     
     logger.debug('Audio buffer committed');
@@ -322,7 +320,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
       throw new Error('Not connected to OpenAI Realtime API');
     }
 
-    const message = { type: 'input_audio_buffer.clear' };
+    const message = { type: 'input_audio_buffer.clear' } as const;
     this.sendMessage(message);
     delete this.audioBufferStart;
     
@@ -337,14 +335,14 @@ export class OpenAIRealtimeClient extends EventEmitter {
       throw new Error('Not connected to OpenAI Realtime API');
     }
 
-    const message = {
+    const message: ClientMessage = {
       type: 'conversation.item.create',
       item: {
         type: 'message',
         role: 'user',
         content: [
           {
-            type: 'input_text',
+            type: 'text',
             text,
           },
         ],
@@ -369,11 +367,10 @@ export class OpenAIRealtimeClient extends EventEmitter {
       type: 'response',
     });
 
-    const message = {
+    const message: ClientMessage = {
       type: 'response.create',
       response: {
-        modalities: ['text', 'audio'],
-        instructions: 'Please respond naturally and helpfully.',
+        // Instructions are set at the session level, not per response
       },
     };
 
@@ -387,7 +384,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
   async cancelResponse(): Promise<void> {
     if (!this.isConnected || !this.ws) {return;}
 
-    const message = { type: 'response.cancel' };
+    const message: ClientMessage = { type: 'response.cancel' };
     this.sendMessage(message);
     
     logger.debug('Response cancellation requested');

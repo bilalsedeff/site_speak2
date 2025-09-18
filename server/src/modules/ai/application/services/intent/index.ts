@@ -31,8 +31,8 @@ export type {
   IntentProcessingRequest,
   IntentProcessingResponse,
   IntentProcessingError,
-  
-  // Context types  
+
+  // Context types
   ContextualIntentAnalysis,
   PageContext,
   SessionContext,
@@ -40,25 +40,28 @@ export type {
   ElementContextInfo,
   SiteCapability,
   SchemaOrgData,
-  
+
   // Validation types
   IntentConflict,
   IntentResolution,
   IntentEnsembleDecision,
-  
+
   // Cache types
   IntentCacheEntry,
   UserLearningProfile,
   IntentHistory,
   IntentSuggestion,
-  
+
   // Configuration types
-  IntentOrchestrationConfig
+  IntentOrchestrationConfig,
+
+  // System health types
+  IntentSystemHealth
 } from './types.js';
 
 // Configuration helpers
 export const createDefaultIntentConfig = (
-  openaiApiKey: string,
+  _openaiApiKey: string,
   options: {
     enableValidation?: boolean;
     enableCaching?: boolean;
@@ -166,7 +169,9 @@ export const createQuickIntentSystem = async (
 
 // Error handling utilities
 export const isIntentProcessingError = (error: unknown): error is IntentProcessingError => {
-  return error && typeof error.code === 'string' && typeof error.retryable === 'boolean';
+  return typeof error === 'object' && error !== null &&
+    'code' in error && typeof (error as any).code === 'string' &&
+    'retryable' in error && typeof (error as any).retryable === 'boolean';
 };
 
 export const shouldRetryIntentProcessing = (error: unknown): boolean => {
@@ -334,9 +339,26 @@ export const createMockPageData = (overrides: Partial<RawPageData> = {}): RawPag
       id: 'submit-btn',
       className: 'btn btn-primary',
       textContent: 'Click me',
-      cssSelector: '#submit-btn',
+      selector: '#submit-btn',
       isVisible: true,
-      boundingRect: { x: 100, y: 200, width: 120, height: 40 },
+      isInteractable: true,
+      contextualImportance: 0.8,
+      attributes: {
+        type: 'button',
+        class: 'btn btn-primary',
+        id: 'submit-btn'
+      },
+      boundingRect: {
+        x: 100,
+        y: 200,
+        width: 120,
+        height: 40,
+        top: 200,
+        bottom: 240,
+        left: 100,
+        right: 220,
+        toJSON: () => ({ x: 100, y: 200, width: 120, height: 40, top: 200, bottom: 240, left: 100, right: 220 })
+      },
     },
   ],
   timestamp: new Date(),

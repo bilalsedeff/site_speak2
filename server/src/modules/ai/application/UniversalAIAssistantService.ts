@@ -756,6 +756,7 @@ export class UniversalAIAssistantService {
     return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
   }
 
+
   /**
    * Create knowledge base adapter to bridge interface differences
    */
@@ -771,7 +772,9 @@ export class UniversalAIAssistantService {
         content: string;
         url: string;
         score: number;
-        metadata: Record<string, unknown>;
+        metadata: Record<string, string | number | boolean | null>;
+        chunkIndex?: number;
+        relevantSnippet?: string;
       }>> {
         try {
           // Adapt the interface to match infrastructure service
@@ -792,7 +795,24 @@ export class UniversalAIAssistantService {
             content: result.content,
             url: result.url,
             score: result.score,
-            metadata: result.metadata || {}
+            metadata: (() => {
+              const rawMetadata = {
+                title: result.title,
+                ...result.metadata
+              };
+              const transformed: Record<string, string | number | boolean | null> = {};
+              for (const [key, value] of Object.entries(rawMetadata)) {
+                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) {
+                  transformed[key] = value;
+                } else if (value !== undefined) {
+                  transformed[key] = String(value);
+                }
+              }
+              return transformed;
+            })(),
+            // Add optional properties to match expected interface
+            ...(typeof (result as any).chunkIndex === 'number' && { chunkIndex: (result as any).chunkIndex }),
+            ...(typeof (result as any).relevantSnippet === 'string' && { relevantSnippet: (result as any).relevantSnippet }),
           }));
         } catch (error) {
           logger.error('Knowledge base search failed', { error });

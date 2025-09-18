@@ -3,6 +3,21 @@ import { useParams } from 'wouter'
 import { DndProvider } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
 
+// Type definitions
+interface EditorCanvasProps {
+  className?: string;
+  showGrid: boolean;
+  onInstanceSelect?: (instanceId: string | null) => void;
+  onInstanceUpdate?: (instanceId: string, updates: ComponentUpdates) => void;
+}
+
+interface ComponentUpdates {
+  style?: Record<string, unknown>;
+  content?: string;
+  props?: Record<string, unknown>;
+  position?: { x: number; y: number };
+}
+
 // Placeholder editor store hook
 const useEditorStore = () => ({
   isPreviewMode: false,
@@ -36,7 +51,7 @@ const ComponentPalette = () => (
   </div>
 )
 
-const EditorCanvas = ({ className, showGrid }: any) => (
+const EditorCanvas = ({ className, showGrid }: EditorCanvasProps) => (
   <div className={className} style={{ 
     backgroundColor: '#f8f9fa',
     backgroundImage: showGrid ? 'linear-gradient(to right, #e9ecef 1px, transparent 1px), linear-gradient(to bottom, #e9ecef 1px, transparent 1px)' : undefined,
@@ -128,7 +143,7 @@ export function Editor() {
     console.log('Selected instance:', instanceId)
   }, [])
 
-  const handleInstanceUpdate = useCallback((instanceId: string, updates: any) => {
+  const handleInstanceUpdate = useCallback((instanceId: string, updates: ComponentUpdates) => {
     console.log('Updated instance:', instanceId, updates)
   }, [])
 

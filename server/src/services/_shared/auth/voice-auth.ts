@@ -79,7 +79,7 @@ export class VoiceAuthService {
       if (request.url) {
         const url = new URL(request.url, 'wss://base.url');
         const queryToken = url.searchParams.get('token');
-        if (queryToken) return queryToken;
+        if (queryToken) {return queryToken;}
       }
 
       // Authorization header
@@ -127,8 +127,9 @@ export class VoiceAuthService {
     // Development mode: Allow connections without token
     if (process.env['NODE_ENV'] === 'development' && allowDevelopmentMode && !token) {
       const devAuth = this.generateDevelopmentAuth({
-        socketId: undefined, // Socket ID not available from handshake
-        sessionId: context.socketHandshake?.auth?.['sessionId'] ?? undefined,
+        ...(context.socketHandshake?.auth?.['sessionId'] && {
+          sessionId: context.socketHandshake.auth['sessionId']
+        }),
       });
 
       if (logAuthAttempts) {
@@ -210,9 +211,9 @@ export class VoiceAuthService {
    * Get context source for logging
    */
   private getContextSource(context: TokenExtractionContext): string {
-    if (context.directToken) return 'direct-token';
-    if (context.socketHandshake) return 'socket-io';
-    if (context.httpRequest) return 'raw-websocket';
+    if (context.directToken) {return 'direct-token';}
+    if (context.socketHandshake) {return 'socket-io';}
+    if (context.httpRequest) {return 'raw-websocket';}
     return 'unknown';
   }
 

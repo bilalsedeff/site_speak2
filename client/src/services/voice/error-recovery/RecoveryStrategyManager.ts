@@ -513,25 +513,30 @@ export class RecoveryStrategyManager {
     template: StrategyTemplate,
     _context: RecoveryContext // TODO: Implement context-aware strategy building
   ): Promise<RecoveryStrategy> {
-    const steps = template.steps.map(stepTemplate => ({
-      id: stepTemplate.id,
-      description: stepTemplate.description,
-      action: {
+    const steps = template.steps.map(stepTemplate => {
+      const action: any = {
         type: stepTemplate.actionType as any,
-        parameters: { ...stepTemplate.parameters },
-        fallback: undefined
-      },
-      automated: stepTemplate.automated,
-      userMessage: stepTemplate.userMessage,
-      confirmation: stepTemplate.confirmationRequired ? {
-        required: true,
-        message: `Do you want to ${stepTemplate.description.toLowerCase()}?`,
-        options: ['Yes', 'No'],
-        defaultOption: 'Yes',
-        timeout: 10000
-      } : undefined,
-      timeout: stepTemplate.timeout
-    }));
+        parameters: { ...stepTemplate.parameters }
+      };
+
+      return {
+        id: stepTemplate.id,
+        description: stepTemplate.description,
+        action,
+        automated: stepTemplate.automated,
+        ...(stepTemplate.userMessage && { userMessage: stepTemplate.userMessage }),
+        ...(stepTemplate.confirmationRequired && {
+          confirmation: {
+            required: true,
+            message: `Do you want to ${stepTemplate.description.toLowerCase()}?`,
+            options: ['Yes', 'No'],
+            defaultOption: 'Yes',
+            timeout: 10000
+          }
+        }),
+        ...(stepTemplate.timeout && { timeout: stepTemplate.timeout })
+      };
+    });
 
     return {
       id: template.id,
@@ -544,8 +549,7 @@ export class RecoveryStrategyManager {
       steps,
       successProbability: template.successRate,
       estimatedTime: steps.length * 2000, // Rough estimate
-      prerequisites: template.prerequisites,
-      fallbackStrategy: undefined
+      prerequisites: template.prerequisites
     };
   }
 
@@ -785,6 +789,10 @@ export class RecoveryStrategyManager {
 class StrategySelector {
   constructor(private config: RecoveryConfig) {}
 
+  getConfig(): RecoveryConfig {
+    return this.config;
+  }
+
   async selectBestStrategy(
     _error: VoiceError, // TODO: Implement error-specific strategy selection
     _context: RecoveryContext, // TODO: Implement context-aware strategy selection
@@ -806,6 +814,10 @@ class StrategySelector {
 class StepExecutor {
   constructor(private config: RecoveryConfig) {}
 
+  getConfig(): RecoveryConfig {
+    return this.config;
+  }
+
   async executeSteps(
     session: RecoverySession,
     onProgress?: (step: number, total: number, message: string) => void,
@@ -814,6 +826,10 @@ class StepExecutor {
     try {
       for (let i = 0; i < session.steps.length; i++) {
         const step = session.steps[i];
+        if (!step) {
+          continue; // Safety check
+        }
+        
         session.currentStep = i + 1;
 
         onProgress?.(i + 1, session.steps.length, step.description);
@@ -870,48 +886,48 @@ class StepExecutor {
   }
 
   private async executeRetryAction(
-    _step: RecoveryStep, // @ts-expect-error - Part of interface contract, implementation pending
-    _session: RecoverySession // @ts-expect-error - Part of interface contract, implementation pending
+    _step: RecoveryStep, // Part of interface contract, implementation pending
+    _session: RecoverySession // Part of interface contract, implementation pending
   ): Promise<{ success: boolean; error?: string }> {
     // Implementation would retry the original action
     return { success: true };
   }
 
   private async executeModifyAction(
-    _step: RecoveryStep, // @ts-expect-error - Part of interface contract, implementation pending
-    _session: RecoverySession // @ts-expect-error - Part of interface contract, implementation pending
+    _step: RecoveryStep, // Part of interface contract, implementation pending
+    _session: RecoverySession // Part of interface contract, implementation pending
   ): Promise<{ success: boolean; error?: string }> {
     // Implementation would modify parameters and retry
     return { success: true };
   }
 
   private async executeAlternativeAction(
-    _step: RecoveryStep, // @ts-expect-error - Part of interface contract, implementation pending
-    _session: RecoverySession // @ts-expect-error - Part of interface contract, implementation pending
+    _step: RecoveryStep, // Part of interface contract, implementation pending
+    _session: RecoverySession // Part of interface contract, implementation pending
   ): Promise<{ success: boolean; error?: string }> {
     // Implementation would find and suggest alternatives
     return { success: true };
   }
 
   private async executeClarifyAction(
-    _step: RecoveryStep, // @ts-expect-error - Part of interface contract, implementation pending
-    _session: RecoverySession // @ts-expect-error - Part of interface contract, implementation pending
+    _step: RecoveryStep, // Part of interface contract, implementation pending
+    _session: RecoverySession // Part of interface contract, implementation pending
   ): Promise<{ success: boolean; error?: string }> {
     // Implementation would trigger clarification process
     return { success: true };
   }
 
   private async executeEscalateAction(
-    _step: RecoveryStep, // @ts-expect-error - Part of interface contract, implementation pending
-    _session: RecoverySession // @ts-expect-error - Part of interface contract, implementation pending
+    _step: RecoveryStep, // Part of interface contract, implementation pending
+    _session: RecoverySession // Part of interface contract, implementation pending
   ): Promise<{ success: boolean; error?: string }> {
     // Implementation would escalate to human help
     return { success: true };
   }
 
   private async executeResetAction(
-    step: RecoveryStep,
-    session: RecoverySession
+    _step: RecoveryStep,
+    _session: RecoverySession
   ): Promise<{ success: boolean; error?: string }> {
     // Implementation would reset the system state
     return { success: true };
@@ -921,10 +937,14 @@ class StepExecutor {
 class FallbackManager {
   constructor(private config: RecoveryConfig) {}
 
+  getConfig(): RecoveryConfig {
+    return this.config;
+  }
+
   getFallbackStrategy(
-    _originalStrategy?: RecoveryStrategy, // @ts-expect-error - Part of interface contract, implementation pending
-    _error?: VoiceError, // @ts-expect-error - Part of interface contract, implementation pending
-    _context?: RecoveryContext // @ts-expect-error - Part of interface contract, implementation pending
+    _originalStrategy?: RecoveryStrategy, // Part of interface contract, implementation pending
+    _error?: VoiceError, // Part of interface contract, implementation pending
+    _context?: RecoveryContext // Part of interface contract, implementation pending
   ): RecoveryStrategy {
     // Implementation would select appropriate fallback strategy
     return {
@@ -951,18 +971,18 @@ class FallbackManager {
 }
 
 class RecoveryLearningEngine {
-  recordExecution(_session: RecoverySession, _result: any): void { // @ts-expect-error - Part of interface contract, implementation pending
+  recordExecution(_session: RecoverySession, _result: any): void { // Part of interface contract, implementation pending
     // Record execution for learning
   }
 
-  recordCancellation(_session: RecoverySession, _reason?: string): void { // @ts-expect-error - Part of interface contract, implementation pending
+  recordCancellation(_session: RecoverySession, _reason?: string): void { // Part of interface contract, implementation pending
     // Record cancellation for learning
   }
 
   async learnFromOutcome(
-    _session: RecoverySession, // @ts-expect-error - Part of interface contract, implementation pending
-    _success: boolean, // @ts-expect-error - Part of interface contract, implementation pending
-    _userFeedback?: any // @ts-expect-error - Part of interface contract, implementation pending
+    _session: RecoverySession, // Part of interface contract, implementation pending
+    _success: boolean, // Part of interface contract, implementation pending
+    _userFeedback?: any // Part of interface contract, implementation pending
   ): Promise<void> {
     // Learn from outcome
   }

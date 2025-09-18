@@ -1,445 +1,168 @@
-# `/modules/ai/application/services` — AI Orchestrator Implementation
-
-## Mission
-
-Run a **stateful, fast, safe** universal agent that:
-
-1. plans and executes multi-step actions with OpenAI tool/function calling + structured outputs;
-2. streams partial results and status to the voice UI in **<300 ms**;
-3. pauses for **human-in-the-loop** when actions are risky;
-4. persists state and memory across steps and page reloads;
-5. enforces strict security & privacy guardrails;
-6. provides comprehensive error recovery and learning;
-7. manages resource budgets and optimization.
-
-We use **LangGraph (JS/TS)** for stateful graphs with **MemorySaver** checkpointer pattern. All implementations are production-ready with zero `any` types.
-
----
-
-## Directory (ACTUAL IMPLEMENTATION)
-
-```plaintext
-/modules/ai/application/services/
-  LangGraphOrchestrator.ts         # ✅ PRODUCTION - Complete stateful agent
-  ErrorRecoverySystem.ts                   # ✅ PRODUCTION - Learning error recovery
-  ResourceBudgets.ts                       # ✅ PRODUCTION - Cost/quota management
-  SecurityGuards.ts                        # ✅ PRODUCTION - OWASP security validation
-  PrivacyGuards.ts                         # ✅ PRODUCTION - GDPR/CCPA privacy compliance
-  
-/modules/ai/application/
-  UniversalAIAssistantService.ts           # ✅ ENHANCED - Universal service boundary
-  AIOrchestrationService.ts                # ✅ ENHANCED - Service coordination
-  ActionExecutorService.ts                 # ✅ COMPLETE - Multi-type action execution
-  LanguageDetectorService.ts               # ✅ COMPLETE - Multi-language detection
-
-/modules/ai/domain/
-  LangGraphOrchestrator.ts                 # ✅ BASIC - Original implementation
-```
-
----
-
-## 1) `LangGraphOrchestrator.ts` ✅ PRODUCTION READY
-
-### *Complete stateful agent with comprehensive features*
-
-**IMPLEMENTED FEATURES:**
-
-* ✅ **LangGraph StateGraph**: Complete workflow using Annotation.Root with proper typing
-* ✅ **MemorySaver Checkpointer**: Proper thread_id pattern for session persistence
-* ✅ **Enhanced Workflow**: security → privacy → resource → ingest → language → intent → kb → plan → execute → observe → recover → finalize
-* ✅ **Type Safety**: Zero `any` types, comprehensive TypeScript interfaces
-* ✅ **Security Integration**: Full SecurityGuards integration with origin validation
-* ✅ **Privacy Protection**: PII detection and redaction with GDPR compliance
-* ✅ **Resource Management**: Budget checking and usage tracking
-* ✅ **Error Recovery**: Intelligent error analysis and recovery strategies
-* ✅ **Streaming Support**: Real-time progress updates with sanitized state
-* ✅ **Performance Metrics**: Comprehensive tracking and optimization
-
-**ARCHITECTURE:**
-
-```typescript
-export class LangGraphOrchestrator {
-  private graph: CompiledStateGraph<typeof SessionState.State>;
-  private performanceMetrics: {
-    totalProcessingTime: number;
-    averageProcessingTime: number;
-    totalRequests: number;
-    successfulRequests: number;
-    failedRequests: number;
-    securityBlocks: number;
-    privacyRedactions: number;
-    errorRecoveries: number;
-  };
-  
-  // Enhanced processing with security/privacy/resources
-  async processConversation(input: {
-    userInput: string;
-    sessionId: string;
-    userId?: string;
-    clientInfo?: {
-      origin: string;
-      userAgent: string;
-      ipAddress: string;
-    };
-  }): Promise<EnhancedSessionStateType>;
-}
-```
-
-**PERFORMANCE BENCHMARKS:**
-
-✅ **Security validation**: < 50ms per request  
-✅ **Privacy PII detection**: < 100ms with comprehensive patterns  
-✅ **Resource budget check**: < 20ms with caching  
-✅ **End-to-end processing**: P95 < 2000ms for complex workflows  
-✅ **Streaming latency**: First chunk in < 300ms  
-✅ **Memory efficiency**: < 200MB per orchestrator instance  
-
----
-
-## 2) `ErrorRecoverySystem.ts` ✅ PRODUCTION READY
-
-### *Intelligent error analysis and recovery with learning*
-
-**IMPLEMENTED FEATURES:**
-
-* ✅ **Pattern Recognition**: Automatic error classification and pattern identification
-* ✅ **Recovery Strategies**: Context-aware recovery with confidence scoring
-* ✅ **Learning System**: Tracks successful recoveries and improves over time
-* ✅ **Performance Insights**: Detailed analytics and optimization recommendations
-* ✅ **History Management**: Automatic cleanup and retention policies
-
-**CAPABILITIES:**
-
-```typescript
-export interface RecoveryStrategy {
-  name: string;
-  description: string;
-  confidence: number;
-  actions: Array<{
-    type: 'retry' | 'alternative_action' | 'fallback' | 'human_intervention';
-    details: Record<string, unknown>;
-  }>;
-  estimatedSuccessRate: number;
-}
-
-export class ErrorRecoverySystem {
-  async analyzeAndRecover(context: ErrorContext): Promise<{
-    errorPattern: ErrorPattern | null;
-    recoveryStrategies: RecoveryStrategy[];
-    shouldRetry: boolean;
-    estimatedRecoveryTime: number;
-  }>;
-}
-```
-
-**RECOVERY TYPES:**
-
-* **Timeout Errors**: Retry with increased timeout, exponential backoff
-* **Network Errors**: Connection retry with delay and circuit breaking  
-* **Validation Errors**: Parameter correction suggestions and user guidance
-* **Rate Limits**: Intelligent backoff and queue management
-* **Resource Exhaustion**: Budget reallocation and optimization recommendations
-
----
-
-## 3) `ResourceBudgets.ts` ✅ PRODUCTION READY
-
-### *Comprehensive resource management and optimization*
-
-**IMPLEMENTED FEATURES:**
-
-* ✅ **Multi-Resource Tracking**: Tokens, actions, API calls, voice minutes, storage
-* ✅ **Tenant Isolation**: Complete budget separation with overage policies
-* ✅ **Smart Caching**: TTL-based caching with configurable strategies
-* ✅ **Usage Optimization**: Automatic recommendations and cost analysis
-* ✅ **Real-time Monitoring**: Live usage tracking with warning thresholds
-
-**RESOURCE TYPES:**
-
-```typescript
-export interface ResourceBudget {
-  tenantId: string;
-  siteId: string;
-  budgets: {
-    tokensPerMonth: number;
-    actionsPerDay: number;
-    apiCallsPerHour: number;
-    voiceMinutesPerMonth: number;
-    storageBytes: number;
-  };
-  usage: {
-    tokensUsed: number;
-    actionsExecuted: number;
-    apiCallsMade: number;
-    voiceMinutesUsed: number;
-    storageUsed: number;
-  };
-  overagePolicy: {
-    allowOverage: boolean;
-    overageCostPerToken: number;
-    // ... other overage costs
-  };
-}
-```
-
-**OPTIMIZATION FEATURES:**
-
-* **Cache Management**: Knowledge base results, action manifests, language detection
-* **Budget Alerts**: 75% and 90% usage warnings with recommendations
-* **Cost Analysis**: Detailed breakdown and optimization suggestions
-* **Data Minimization**: Automatic removal of unnecessary data fields
-
----
-
-## 4) `SecurityGuards.ts` ✅ PRODUCTION READY
-
-### *OWASP compliant security validation*
-
-**IMPLEMENTED FEATURES:**
-
-* ✅ **Origin Validation**: Strict domain checking and CORS compliance
-* ✅ **Rate Limiting**: Multi-layer limits (tenant, user, IP, session)
-* ✅ **Input Sanitization**: SQL injection, XSS, path traversal prevention
-* ✅ **Parameter Validation**: Type-safe parameter checking and sanitization
-* ✅ **Suspicious Activity Detection**: Pattern-based threat detection
-* ✅ **Audit Logging**: Complete security event traceability
-
-**SECURITY VALIDATIONS:**
-
-```typescript
-export interface SecurityValidationResult {
-  allowed: boolean;
-  riskLevel: 'low' | 'medium' | 'high';
-  issues: Array<{
-    type: string;
-    severity: 'warning' | 'error';
-    description: string;
-    recommendation?: string;
-  }>;
-  requiresConfirmation: boolean;
-  sanitizedParameters?: Record<string, unknown>;
-}
-```
-
-**THREAT PROTECTION:**
-
-* **SQL Injection**: Pattern detection with confidence scoring
-* **XSS Prevention**: Script tag and JavaScript URL filtering
-* **Command Injection**: System command pattern blocking
-* **Path Traversal**: Directory traversal attempt prevention
-* **Rate Limiting**: Configurable limits with automatic cleanup
-
----
-
-## 5) `PrivacyGuards.ts` ✅ PRODUCTION READY
-
-### *GDPR/CCPA compliant privacy protection*
-
-**IMPLEMENTED FEATURES:**
-
-* ✅ **PII Detection**: Comprehensive pattern matching for 15+ PII types
-* ✅ **Smart Redaction**: Context-preserving redaction with suggestions
-* ✅ **Privacy Compliance**: GDPR, CCPA, PIPEDA validation
-* ✅ **Data Minimization**: Automatic unnecessary data removal
-* ✅ **Right to Erasure**: Complete data deletion workflows
-* ✅ **Retention Policies**: Automatic data lifecycle management
-
-**PII PATTERNS DETECTED:**
-
-```typescript
-private piiPatterns: Map<string, { pattern: RegExp; confidence: number; redactWith: string }> = new Map([
-  ['email', { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, confidence: 0.95, redactWith: '[EMAIL_REDACTED]' }],
-  ['phone', { pattern: /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, confidence: 0.9, redactWith: '[PHONE_REDACTED]' }],
-  ['ssn', { pattern: /\b\d{3}-?\d{2}-?\d{4}\b/g, confidence: 0.85, redactWith: '[SSN_REDACTED]' }],
-  ['credit_card', { pattern: /\b(?:\d{4}[-\s]?){3}\d{4}\b/g, confidence: 0.8, redactWith: '[CARD_REDACTED]' }],
-  ['openai_key', { pattern: /sk-[A-Za-z0-9]{48}/g, confidence: 0.95, redactWith: '[OPENAI_KEY_REDACTED]' }],
-  // ... 10+ more patterns
-]);
-```
-
-**COMPLIANCE FEATURES:**
-
-* **GDPR Article 17**: Right to erasure implementation
-* **Data Minimization**: Automatic field removal based on purpose
-* **Consent Management**: Processing purpose validation
-* **Retention Enforcement**: Automatic data deletion based on policies
-
----
-
-## 6) Service Integration Architecture ✅ COMPLETE
-
-### **UniversalAIAssistantService.ts** - Enhanced Service Boundary
-
-**ROLE**: Main entry point coordinating all AI functionality
-
-```typescript
-export class UniversalAIAssistantService {
-  private orchestrationService: AIOrchestrationService;
-  private actionExecutor: ActionExecutorService;
-  
-  async processConversation(request: AssistantRequest): Promise<AssistantResponse>;
-  async *streamConversation(request: AssistantRequest): AsyncGenerator<StreamChunk>;
-  async registerSiteActions(siteId: string, tenantId: string, actions: SiteAction[]): Promise<void>;
-  getMetrics(): ComprehensiveMetrics;
-}
-```
-
-**ENHANCEMENTS MADE:**
-
-* ✅ Fixed import errors and dependency injection
-* ✅ Integrated with enhanced orchestrator services  
-* ✅ Added comprehensive error handling and metrics
-* ✅ Implemented proper language detection integration
-
-### **AIOrchestrationService.ts** - Service Coordination
-
-**ROLE**: Coordinates LangGraph orchestrators across multiple sites
-
-```typescript
-export class AIOrchestrationService {
-  private orchestrators: Map<string, LangGraphOrchestrator> = new Map();
-  
-  async processConversation(request: ConversationRequest): Promise<ConversationResponse>;
-  async *streamConversation(request: ConversationRequest): AsyncGenerator<StreamUpdate>;
-  private async getOrchestrator(siteId: string): Promise<LangGraphOrchestrator>;
-}
-```
-
-**IMPROVEMENTS MADE:**
-
-* ✅ Fixed all import and typing issues
-* ✅ Proper dependency management with type safety
-* ✅ Session management with automatic cleanup
-* ✅ Integration with enhanced orchestrator system
-
----
-
-## MAJOR ARCHITECTURAL ACHIEVEMENTS
-
-### 1. **Complete Type Safety**
-
-* ❌ **Original Problem**: Multiple `any` types and loose interfaces
-* ✅ **Solution**: Zero `any` types, comprehensive TypeScript coverage
-* ✅ **Benefit**: Production-ready type safety eliminates runtime errors
-
-### 2. **Comprehensive Security**
-
-* ❌ **Original Gap**: Basic error handling only
-* ✅ **Solution**: Full OWASP compliance with SecurityGuards
-* ✅ **Benefit**: Enterprise-grade security validation
-
-### 3. **Privacy by Design**
-
-* ❌ **Original Gap**: No privacy protection
-* ✅ **Solution**: GDPR/CCPA compliant PrivacyGuards
-* ✅ **Benefit**: Regulatory compliance and user trust
-
-### 4. **Intelligent Error Recovery**
-
-* ❌ **Original Problem**: Errors caused complete failures
-* ✅ **Solution**: Learning-based error recovery system
-* ✅ **Benefit**: Self-improving reliability and user experience
-
-### 5. **Resource Optimization**
-
-* ❌ **Original Gap**: No cost/usage management
-* ✅ **Solution**: Comprehensive resource budgets and optimization
-* ✅ **Benefit**: Predictable costs and performance optimization
-
-### 6. **Production Observability**
-
-* ❌ **Original Problem**: Limited monitoring capabilities
-* ✅ **Solution**: Comprehensive metrics, logging, and health checks
-* ✅ **Benefit**: Full production observability and debugging
-
----
-
-## IMPLEMENTATION STATUS: PRODUCTION EXCELLENCE ✅
-
-| Component | Original Status | Actual Implementation | Enhancement Level |
-|-----------|----------------|----------------------|-------------------|
-| **Enhanced LangGraph Orchestrator** | ❌ Missing | ✅ **PRODUCTION** | Complete rewrite |
-| **Error Recovery System** | ❌ Missing | ✅ **PRODUCTION** | New advanced system |
-| **Resource Budget Management** | ❌ Missing | ✅ **PRODUCTION** | Comprehensive system |
-| **Security Guards** | ❌ Missing | ✅ **PRODUCTION** | OWASP compliant |
-| **Privacy Guards** | ❌ Missing | ✅ **PRODUCTION** | GDPR/CCPA compliant |
-| **Universal AI Assistant** | ⚠️ Import errors | ✅ **ENHANCED** | Fixed and improved |
-| **AI Orchestration Service** | ⚠️ Import errors | ✅ **ENHANCED** | Fixed and improved |
-| **Action Executor Service** | ✅ Working | ✅ **ENHANCED** | Performance improved |
-| **Language Detector Service** | ✅ Working | ✅ **ENHANCED** | Multi-language support |
-
-### **OVERALL IMPLEMENTATION SCORE: 100/100**
-
----
-
-## ACCEPTANCE TESTS - ACTUAL STATUS
-
-1. ✅ **Persistence**: LangGraph MemorySaver with thread_id - **IMPLEMENTED**
-2. ✅ **HITL**: Interrupt/resume with confirmation - **IMPLEMENTED**  
-3. ✅ **Structured outputs**: Type-safe schemas throughout - **ENHANCED**
-4. ✅ **Streaming**: Real-time progress with <300ms latency - **IMPLEMENTED**
-5. ✅ **Security**: OWASP compliant validation - **ENHANCED**
-6. ✅ **Privacy**: GDPR/CCPA compliance - **ENHANCED**
-7. ✅ **Error Recovery**: Learning-based recovery - **ENHANCED**
-8. ✅ **Resource Management**: Comprehensive budgets - **ENHANCED**
-9. ✅ **Observability**: Production-grade metrics - **ENHANCED**
-10. ✅ **Performance**: Sub-2s P95 processing time - **ENHANCED**
-
-**ALL ACCEPTANCE TESTS: PASS WITH ENHANCEMENTS** ✅
-
----
-
-## PRODUCTION DEPLOYMENT READINESS
-
-### **Immediate Deployment Capabilities**
-
-* ✅ **Multi-tenant isolation**: Complete tenant separation with security
-* ✅ **Horizontal scaling**: Stateless design with checkpointer persistence
-* ✅ **Health monitoring**: Comprehensive metrics and alerting
-* ✅ **Error resilience**: Automatic recovery and graceful degradation
-* ✅ **Security hardening**: OWASP compliance and threat protection
-* ✅ **Privacy compliance**: GDPR/CCPA ready with audit trails
-
-### **Performance Characteristics**
-
-* **Latency**: P95 < 2000ms for complex workflows
-* **Throughput**: 100+ requests/minute per orchestrator instance  
-* **Memory**: < 200MB per orchestrator, < 500MB per service instance
-* **Reliability**: > 99.9% uptime with error recovery
-* **Security**: 0 critical vulnerabilities, comprehensive threat protection
-
-### **Operational Excellence**
-
-* **Logging**: Structured JSON logs with correlation IDs
-* **Metrics**: OpenTelemetry-compatible metrics and traces
-* **Health Checks**: Dependency validation and circuit breakers
-* **Debugging**: Full request lifecycle traceability
-* **Documentation**: Complete API documentation and runbooks
-
----
-
-## Why This Implementation Exceeds Requirements
-
-### **Beyond Basic Orchestration**
-
-This implementation doesn't just meet the original requirements—it establishes a new standard for AI orchestration in production environments:
-
-1. **Security-First Design**: Every request is validated through comprehensive security checks
-2. **Privacy by Default**: Automatic PII detection and GDPR compliance
-3. **Self-Improving System**: Error recovery that learns from failures
-4. **Cost Optimization**: Intelligent resource management and budget controls
-5. **Production Observability**: Enterprise-grade monitoring and debugging
-
-### **Enterprise-Ready Features**
-
-* **Multi-tenant Architecture**: Complete isolation with shared optimization
-* **Regulatory Compliance**: GDPR, CCPA, and industry standard compliance
-* **Operational Excellence**: Comprehensive logging, metrics, and health checks
-* **Developer Experience**: Type-safe APIs with excellent error messages
-* **Performance Optimization**: Intelligent caching and resource management
-
-The AI Orchestrator infrastructure provides a **production-ready foundation** that not only handles conversation orchestration but establishes best practices for security, privacy, reliability, and performance in AI-powered applications.
-
----
-
-**This implementation represents a complete evolution from basic conversation orchestration to comprehensive AI infrastructure suitable for enterprise deployment.**
+# AI Orchestration & Tooling
+
+Summary
+
+SiteSpeak’s AI Orchestration & Tooling governs how the voice assistant understands user requests, decides on actions, and executes those actions on websites. It provides a stateful agent framework (built on LangGraph) that can handle multi-step tasks reliably, using a library of deterministic tools to navigate pages, submit forms, and perform other operations. The goal is a controllable, safe, and efficient workflow: the AI agent parses intent, retrieves needed information, then calls structured functions (“tools”) to act on the site (e.g. add to cart, navigate to a page) rather than taking unpredictable free-form actions. All tools and actions are defined up front with strict schemas, so both the AI and the system know exactly what can be done and how. This ensures that complex tasks (like “find a product and purchase it”) are completed correctly, with any risky operations gated for user confirmation. Overall, AI Orchestration & Tooling bridges the gap between natural language understanding and real website operations, enabling the voice assistant to “do things” on a site in a reliable way.
+
+Application Architecture
+
+LangGraph Orchestrator: A stateful conversation manager (node/edge graph) that plans and coordinates the AI’s behavior (understanding user intent, retrieving info, deciding next steps, calling tools, etc.). It supports OpenAI function calling to integrate with the tool system, and enforces rules like confirmation for side-effects.
+
+Tool Registry & Executors: A central registry of tools (functions the AI can invoke) covering navigation, search, form submission, e-commerce actions, etc. Each tool has a strict schema (parameters and results) and a lightweight executor that actually performs the action (e.g. calling an API or clicking a button). Tools are composed into the agent’s planner graph via LangChain/LangGraph
+GitHub
+GitHub
+.
+
+Action Manifest & Site Tools: When a site is published, the builder generates an Action Manifest (actions.json) listing all interactive elements and actions on that site (with IDs, DOM selectors, parameter schemas, etc.). This manifest is ingested into the tool system so that the AI gains site-specific tools for that site’s features
+GitHub
+GitHub
+. For example, if a site has a “Add to Cart” button with data-action="product.addToCart", the manifest defines a tool for that action with its parameters.
+
+Secure Action Dispatch: A runtime service that receives the AI’s chosen tool actions and dispatches them to the appropriate target (either executing directly on the backend, or instructing the front-end via a secure postMessage bridge). It handles authentication, rate limiting, and ensures the action is allowed. The dispatch system ties together the manifest, the web widget, and server-side executors
+GitHub
+GitHub
+.
+
+PostMessage Bridge: If an action needs to be executed in the browser (like clicking a button on the page), a Widget Action Bridge uses window.postMessage to send a message from the AI backend to the user’s browser, where a small script maps it to a DOM event. This bridge is locked down with strict origin checks and sandboxing for security
+GitHub
+GitHub
+.
+
+Technical Details
+
+Deterministic Tool Definitions – Every tool is defined with a name, description, input schema, and execution function. We use Zod to define the tool’s input types and then export those as JSON Schema (2020-12), which is the format OpenAI’s function-calling expects
+GitHub
+GitHub
+. By doing this, the AI can reliably interpret the tool’s parameters and we get runtime validation of inputs. For example, a navigation tool might be defined as: “goto(path: string) – navigates to a given URL path”, with a schema requiring a path starting with “/”. All tools declare if they have side effects (like modifying cart or data) and whether they require confirmation before execution (for potentially irreversible actions)
+GitHub
+GitHub
+. Tools also include metadata like an idempotencyKey for safe replays (so if a tool is called twice, it won’t double-charge or duplicate an action)
+GitHub
+GitHub
+.
+
+Universal Tool Registry – The system maintains one central registry.ts that pulls in all tool definitions (navigation, search, commerce, booking, forms, etc.)
+GitHub
+GitHub
+. At startup, it aggregates these and also loads any dynamic site-specific tools (from site manifests or external API specs). For instance, if a site exposes a GraphQL API, an API loader could add tools for querying that API. The registry enforces any tenant-specific policies (disabling certain tools on certain sites, applying rate limits, etc.)
+GitHub
+. Once compiled, the registry hands the tools (with their JSON Schemas) to the LangChain/LangGraph agent, meaning the LLM knows exactly what functions it can call in the context of a given site
+GitHub
+GitHub
+.
+
+LangGraph Orchestration – SiteSpeak uses a LangGraph (an extension of LangChain for structured agents) to manage conversation state and tool usage. This orchestrator is implemented as a directed graph (universalAgent.graph.ts) with nodes like: Understand (parse user intent), Retrieve (get info from Knowledge Base), Decide (decide next action), ToolCall (execute a tool), Observe (check result and update state), and potentially loops back if the task is not complete
+GitHub
+GitHub
+. The orchestrator’s planner (conversationFlowManager.ts) is responsible for handling multi-turn conversations – for example, if the user’s request is ambiguous or missing information, it will formulate a follow-up question to clarify (“What date do you want tickets for?”)
+GitHub
+. The planner also implements speculative actions: if it’s highly confident about a safe action (like navigating to a page), it can trigger that optimistically in parallel to the LLM thinking, to save time
+GitHub
+GitHub
+. All side-effecting actions (like a purchase) are funneled through a special “confirm” step – the AI must explicitly confirm with the user (or via a predefined policy) before those tools execute
+GitHub
+. This guards against unintended consequences.
+
+Action Manifest & Function-Calling – A key innovation is that every SiteSpeak site is self-describing in terms of actions. At publish time, the system scans the site’s pages and components to produce an actions.json file listing all interactive elements and their expected behavior (this is done by the ActionManifestGenerator running on the server)
+GitHub
+GitHub
+. The manifest includes each action’s ID, a human description, the CSS selector or endpoint it corresponds to, and the schema of parameters it accepts
+GitHub
+GitHub
+. For example, a form submission might be an action with parameters corresponding to the form fields. This manifest is then converted to OpenAI function specs so that at runtime the LLM “sees” a function named e.g. product.addToCart(productId, qty) and knows it can call it to perform that action. The orchestrator integrates this by providing those function definitions to the model’s API call. On the backend, the Action Dispatch Service maps those calls to actual execution: if the action is a front-end UI action, it will go through the widget bridge; if it’s a backend operation (like calling a server API), it can call it directly
+GitHub
+GitHub
+. All incoming action requests are validated (origin checks, tenant isolation so one site can’t trigger actions on another, rate limits to prevent abuse)
+GitHub
+GitHub
+.
+
+Executing and Observing – When the agent calls a tool, the system executes it and then observes the result. For example, the agent might call the navigate.goto tool with a path; the bridge will trigger the page navigation in the user’s browser (or in the admin preview iframe)
+GitHub
+GitHub
+. The orchestrator then waits for an observation – e.g., did the page change? If the task was to “find a red dress in size M”, the agent might call a search tool and then expect to see some results in the knowledge base or an element on the page. The orchestrator loop continues: maybe it will next call a highlight tool to draw the user’s attention to something, or a forms.submit tool to check out. All the while, partial responses are being streamed to the user (the agent can say “Found 3 items...” before it has finished all actions). This interplay is managed by the orchestrator’s graph logic. Crucially, if anything unexpected happens (a tool fails, or the result is not what was assumed), the agent can adjust – because LangGraph allows branching logic and error handling nodes.
+
+Security & Isolation – The tooling system is built with multi-tenant safety. Tools that interact with the page use the postMessage bridge which is locked to a specific origin (each site’s widget is configured with allowedOrigins)
+GitHub
+GitHub
+. The Action Dispatch API on the backend ensures the siteId and tenantId for any incoming action call match the session and JWT – so one website’s agent cannot trigger actions on another’s. There are also “SecurityGuards” in the orchestrator pipeline that check each requested action against policies (for example, disallowing certain combinations or detecting if the AI is attempting something not permitted). Each tool declares an auth level (none, user session, or service) to indicate if it requires a logged-in user or special credentials
+GitHub
+. The orchestrator will only allow those tools if the proper auth context is present. Additionally, rate limiting is applied to tool execution to prevent rapid-fire misuse, and every action is audit-logged.
+
+Complex Task Flow Example – As an illustrative use-case: “Find me EDM concerts by the sea near me this summer and add 2 tickets to cart.” – The orchestrator would parse this and identify sub-tasks: search for events (with filters for genre=EDM, date≈summer, location≈near user’s location if available), possibly ask the user to clarify if needed (e.g., what type of ticket). It then calls the KB.searchEvents tool (or a general search tool) with those filters, gets results, and then calls a navigate.goto tool to the specific event page that looks promising
+GitHub
+GitHub
+. Next, it might need to add tickets, so it calls the ticket.add tool defined in the site’s actions (with parameters eventId, quantity, ticketType)
+GitHub
+. Since adding to cart is a side-effect action (it changes state), the orchestrator would have inserted a confirmation step: “Should I add 2 tickets for Sunset Beats on Jul 12 to your cart?” If the user says yes (or has pre-confirmed), the tool executes and the item is added
+GitHub
+GitHub
+. The orchestrator then perhaps says the outcome: “I added them. Do you want to checkout now or keep browsing?” – which shows how it can plan several steps and maintain context. Throughout, each step corresponds to a well-defined tool call, not an open-ended script.
+
+Best Practices
+
+Schema-First Tools: Define every tool’s inputs/outputs with strict schemas and use those for validation and for LLM function definitions
+GitHub
+GitHub
+. This ensures the AI’s actions are constrained and understood – a core best practice for reliable agents.
+
+Confirm Before Side-Effects: Mark any tool that performs a destructive or irreversible action (checkout, delete, send payment, etc.) with a flag requiring explicit confirmation
+GitHub
+. The agent must then ask the user or have a policy to proceed, preventing unwanted actions
+GitHub
+.
+
+Idempotency & Replay Safety: Design tools to be idempotent whenever possible. For example, include an idempotencyKey for purchase or booking actions
+GitHub
+GitHub
+ – if the same operation is invoked twice, the second can be recognized and ignored. This avoids double-transactions in the event of retries or errors.
+
+Optimize for Safe Actions: Let the agent execute safe actions optimistically to improve UX. For example, page navigations or searches (read-only actions) can be done immediately without waiting for full reasoning
+GitHub
+GitHub
+. This is a best practice to hide latency, as long as these actions can be undone or are side-effect free.
+
+Leverage Site Contract: Utilize the site’s contract (sitemap, JSON-LD, actions manifest) so the agent never guesses about the site’s structure
+GitHub
+GitHub
+. For instance, target buttons by their data-action selectors rather than by fragile heuristics. This makes tool execution deterministic and reliable.
+
+Security at Every Layer: Follow security best practices: never allow wildcard postMessage (always specify exact targetOrigin)
+GitHub
+, isolate each tenant’s data and tools, run input validation on all tool parameters (using Zod/JSON Schema), and implement thorough origin and auth checks on any user-initiated action. Assume malicious inputs could come via the AI or user and handle accordingly (e.g., the AI shouldn’t be able to call admin-only tools).
+
+Observability & Logging: Instrument the orchestration. Emit structured events for every tool invocation and outcome (success/failure, latency, etc.)
+GitHub
+. This allows monitoring the agent’s behavior and performance. Align event names with a standard (like OpenTelemetry) for consistency. Logging every AI decision and tool result also aids in debugging complex sequences.
+
+Modular Tool Design: Keep tools small and composable (each doing one thing like “go to page”, “fill form”, “submit form”, “highlight element”). This adheres to the single-responsibility principle and makes it easier for the AI to mix and match tools for a task
+GitHub
+. Complex actions can be achieved by sequentially calling multiple simple tools, giving the orchestrator flexibility.
+
+Fallback and Error Handling: Design the orchestrator graph to handle failures gracefully. If a tool execution fails (e.g., navigation times out or an element isn’t found), have a strategy: the agent might try a different approach or apologize to the user. Incorporate guard rails so that one failure doesn’t cascade into confusion – often by having the planner explicitly check results and have alternative paths (e.g., if no search results, say “Sorry, I couldn’t find any” rather than doing something wrong).
+
+Align with LLM Limits: Make sure the set of tools and their descriptions provided to the LLM are concise and relevant. Too many tools or overly verbose descriptions can confuse the model. Group tools logically and, if the list is large, consider dynamic enable/disable based on context (for example, if on an e-commerce site enable commerce tools, on a content site maybe some are not needed). This improves the quality of the model’s choices.
+
+Acceptance Criteria / Success Metrics
+
+Full Coverage of Site Actions: For each published site, 100% of interactive functionalities (navigational links, buttons, forms) are reflected in the Action Manifest and corresponding tool definitions. No important action is “hidden” from the AI. Metric: compare the site contract’s actions.json with the registry – they should match one-to-one.
+
+Successful Multi-Step Task Execution: The orchestrator can complete representative complex user tasks (booking a ticket, placing an order, finding and displaying content) without developer intervention. Test: end-to-end scenarios (like the EDM concert example) reliably go through plan → tools → outcome, confirmed by integration tests.
+
+Tool Invocation Accuracy: The majority of AI-invoked tools should be the correct ones for achieving the user’s intent (as judged by test scenarios), with minimal misfires. Metric: tool success rate (percentage of tool calls that successfully advanced the task) should be high. For instance, if the AI calls a tool, it should be the appropriate one 95%+ of the time in known scenarios.
+
+Latency within Bounds: Using tools should not significantly degrade response time. The voice agent is expected to send the first partial response within ~150 ms and first full answer token within 300 ms
+GitHub
+ – even when using tools, due to parallel execution. Metric: voice turn P95 latency meets these targets with tool calls in the loop (confirmed via analytics events on tool timing).
+
+No Unauthorized Actions: The security mechanisms prevent any action execution that is outside the user’s scope or intent. Criteria: Attempts to invoke disallowed tools (wrong tenant, admin-only, etc.) are blocked and logged, with zero successful security breaches in testing. All postMessage communications specify the correct target origin, and automated security tests confirm that actions cannot be triggered from unauthorized contexts.
+
+Graceful Failure Handling: If a tool fails or the plan goes awry, the system responds with a safe fallback (an apology or alternative). Acceptance: In chaos testing (e.g., intentionally break one step), the agent does not get stuck or produce a harmful action – it should either recover or fail safely (“I couldn’t complete that”). No uncaught exceptions or crashes occur in the orchestration layer during such tests.
+
+Auditability: Every action taken by the agent is recorded (with what tool, parameters, result, and user confirmation if applicable). Success: When reviewing logs for a conversation, an engineer or auditor can trace the sequence of decisions and tool calls exactly. This is crucial both for debugging and for compliance (e.g., proving what the AI did or did not do on a transaction).
+
+Integration with Knowledge Base: The orchestrator effectively uses the knowledge retrieval system when needed. Check: For questions that require information, the agent is seen calling the retrieval tool (search) and then proceeding, rather than hallucinating. This is indicated by the presence of KB query events before answer formulation. A success metric might be a high “RAG usage rate” for factual questions (the AI uses the Retrieval-Augmented Generation approach whenever appropriate, rather than guessing facts).
+
+User Confirmation Flow: In testing of actions that need confirmation (like a purchase), the agent always asks for confirmation and only proceeds when given. Test: Simulate a request to perform a sensitive action; verify that without a confirmation from the user, the action executor does not run. This should be true 100% of the time for marked tools.
+
+Developer & QA Signoff: All orchestrator and tools code passes rigorous unit and integration tests (covering validators, execution logic, and security checks). Additionally, a manual QA of key user journeys (one per major tool category) is completed. The feature is considered done when those tests are green and product owners have signed off that the AI reliably handles the specified scenarios end-to-end

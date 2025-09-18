@@ -5,8 +5,7 @@
 import {
   ComponentPropsDefinition,
   ComponentPropValue,
-  JsonLdSchema,
-  VoiceResultObject
+  JsonLdSchema
 } from '../../../../shared/types/core-engine.types';
 
 export interface SiteContract {

@@ -307,7 +307,9 @@ export class ActionRollbackManager extends EventEmitter {
       // Mark transaction as being rolled back
       transaction.state.status = 'rolled_back';
       transaction.rolledBack = Date.now();
-      transaction.reason = reason;
+      if (reason !== undefined) {
+        transaction.reason = reason;
+      }
 
       // Perform the rollback
       const rollbackResult = await this.performRollback(transaction);

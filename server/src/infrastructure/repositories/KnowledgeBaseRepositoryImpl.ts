@@ -564,8 +564,8 @@ export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
           embedding: this.normalizeEmbedding(result.embedding),
           metadata: {
             url: result.url,
-            title: result.title ?? undefined,
-            section: result.selector ?? undefined,
+            ...(result.title && { title: result.title }),
+            ...(result.selector && { section: result.selector }),
             contentType: result.content_type as 'text' | 'html' | 'markdown' | 'json',
             hash: result.content_hash,
           },

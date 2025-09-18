@@ -18,10 +18,59 @@ export interface ActionParameters {
   [key: string]: ActionParameterValue;
 }
 
+// Specific action result types
+export interface NavigationActionResult {
+  type: 'navigation';
+  target: string;
+  method?: 'pushState' | 'replaceState' | 'redirect';
+  scrollToTop?: boolean;
+  highlightElement?: string;
+}
+
+export interface FormSubmissionActionResult {
+  type: 'form_submission';
+  selector: string;
+  formData: Record<string, ActionParameterValue>;
+  method?: 'POST' | 'GET' | 'PUT' | 'PATCH';
+  validation?: {
+    isValid: boolean;
+    errors: string[];
+  };
+}
+
+export interface DomInteractionActionResult {
+  type: 'dom_interaction';
+  action: 'click' | 'scroll' | 'hover' | 'focus' | 'input';
+  selector: string;
+  parameters?: Record<string, ActionParameterValue>;
+}
+
+export interface ApiResponseActionResult {
+  type: 'api_response';
+  status: number;
+  data: Record<string, unknown>;
+  headers?: Record<string, string>;
+}
+
+export interface CustomActionResult {
+  type: 'custom_action';
+  actionName: string;
+  parameters: Record<string, ActionParameterValue>;
+  message?: string;
+}
+
+// Union type for all action results
+export type TypedActionResultData =
+  | NavigationActionResult
+  | FormSubmissionActionResult
+  | DomInteractionActionResult
+  | ApiResponseActionResult
+  | CustomActionResult;
+
 // Action execution result types
 export interface ActionResult {
   success: boolean;
-  data: Record<string, unknown>;
+  result: TypedActionResultData | unknown;
   error?: {
     code: string;
     message: string;
@@ -126,7 +175,7 @@ export interface ActionExecutorDependencies {
 }
 
 // Navigation action specific types
-export interface NavigationActionResult extends ActionResult {
+export interface NavigationActionResultDetailed extends ActionResult {
   data: {
     targetUrl: string;
     currentUrl: string;
@@ -200,7 +249,7 @@ export interface APICallResult extends ActionResult {
 
 // Union type for all action results
 export type TypedActionResult =
-  | NavigationActionResult
+  | NavigationActionResultDetailed
   | SearchActionResult
   | FormActionResult
   | UIInteractionResult

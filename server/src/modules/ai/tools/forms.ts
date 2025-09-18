@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import { createLogger } from '../../../shared/utils.js';
-import { 
+import {
   RegistryToolDefinition,
   ToolContext,
   ToolExecutionResult,
@@ -17,6 +17,7 @@ import {
   IdempotencyKeySchema,
   toJsonSchema
 } from './validators';
+import { ActionParameters } from '../types/action-execution.types';
 import { actionExecutorService } from '../application/ActionExecutorService';
 
 const logger = createLogger({ service: 'forms-tools' });
@@ -153,10 +154,10 @@ async function executeSubmitForm(
       siteId: context.siteId,
       actionName: formAction.name,
       parameters: {
-        idempotencyKey: parameters.idempotencyKey,
+        idempotencyKey: parameters.idempotencyKey || undefined,
         validate: parameters.validate,
         confirmRequired: parameters.confirmRequired,
-      },
+      } as ActionParameters,
       sessionId: context.sessionId || 'default',
       userId: context.userId || 'anonymous',
     });
@@ -166,7 +167,8 @@ async function executeSubmitForm(
     return {
       success: executionResult.success,
       result: executionResult.result,
-      error: executionResult.error,
+      error: typeof executionResult.error === 'string' ? executionResult.error :
+             executionResult.error ? JSON.stringify(executionResult.error) : undefined,
       executionTime,
       sideEffects: executionResult.sideEffects || [],
     };
@@ -240,8 +242,8 @@ async function executeContactForm(
         actionName: contactAction.name,
         parameters: {
           ...formData,
-          idempotencyKey: parameters.idempotencyKey,
-        },
+          idempotencyKey: parameters.idempotencyKey || undefined,
+        } as ActionParameters,
         sessionId: context.sessionId || 'default',
         userId: context.userId || 'anonymous',
       });
@@ -278,9 +280,10 @@ async function executeContactForm(
           messageLength: parameters.message.length,
         },
         formSelector,
-        ...executionResult.result,
+        ...(typeof executionResult.result === 'object' && executionResult.result !== null ? executionResult.result : {}),
       },
-      error: executionResult.error,
+      error: typeof executionResult.error === 'string' ? executionResult.error :
+             executionResult.error ? JSON.stringify(executionResult.error) : undefined,
       executionTime,
       sideEffects: executionResult.sideEffects || [],
     };
@@ -344,8 +347,8 @@ async function executeNewsletterSignup(
         actionName: newsletterAction.name,
         parameters: {
           ...formData,
-          idempotencyKey: parameters.idempotencyKey,
-        },
+          idempotencyKey: parameters.idempotencyKey || undefined,
+        } as ActionParameters,
         sessionId: context.sessionId || 'default',
         userId: context.userId || 'anonymous',
       });
@@ -376,9 +379,10 @@ async function executeNewsletterSignup(
         type: 'newsletter_signup',
         email: parameters.email,
         formSelector,
-        ...executionResult.result,
+        ...(typeof executionResult.result === 'object' && executionResult.result !== null ? executionResult.result : {}),
       },
-      error: executionResult.error,
+      error: typeof executionResult.error === 'string' ? executionResult.error :
+             executionResult.error ? JSON.stringify(executionResult.error) : undefined,
       executionTime,
       sideEffects: executionResult.sideEffects || [],
     };

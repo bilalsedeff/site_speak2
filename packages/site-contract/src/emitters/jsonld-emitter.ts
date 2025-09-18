@@ -9,6 +9,7 @@ import {
   JsonLdIssue,
   ComponentContract 
 } from '../types/contract-types'
+import { JsonLdSchema } from '../../../../shared/types/core-engine.types'
 
 /**
  * JSON-LD emitter for generating structured data from components
@@ -128,14 +129,14 @@ export class JsonLdEmitter {
       for (const instance of instances) {
         // Generate JSON-LD for this instance
         const jsonld = generateJsonLd(componentName, instance.props)
-        if (jsonld) {
+        if (jsonld && '@type' in jsonld) {
           entities.push({
             '@type': jsonld['@type'],
             '@id': jsonld['@id'],
             page: pageUrl,
             selector: instance.selector,
             component: componentName,
-            data: jsonld,
+            data: jsonld as JsonLdSchema,
             validation: { valid: true, issues: [] }, // Will be validated later
           })
         }
@@ -309,6 +310,7 @@ export class JsonLdEmitter {
             type: `${type}List`,
             content: {
               '@context': 'https://schema.org',
+              '@type': 'WebPage',
               '@graph': typeEntities.map(e => e.data),
             },
             position: 'head',

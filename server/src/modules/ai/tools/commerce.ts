@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import { createLogger } from '../../../shared/utils.js';
-import { 
+import {
   RegistryToolDefinition,
   ToolContext,
   ToolExecutionResult,
@@ -19,6 +19,7 @@ import {
   UrlSchema,
   toJsonSchema
 } from './validators';
+import { ActionParameters } from '../types/action-execution.types';
 import { actionExecutorService } from '../application/ActionExecutorService';
 
 const logger = createLogger({ service: 'commerce-tools' });
@@ -164,9 +165,9 @@ async function executeAddToCart(
         quantity: parameters.quantity,
         ...(parameters.notes && { notes: parameters.notes }),
         idempotencyKey: parameters.idempotencyKey,
-      },
-      ...(context.sessionId && { sessionId: context.sessionId }),
-      ...(context.userId && { userId: context.userId }),
+      } as ActionParameters,
+      sessionId: context.sessionId || 'unknown',
+      userId: context.userId || 'anonymous',
     });
 
     const executionTime = Date.now() - startTime;
@@ -179,9 +180,10 @@ async function executeAddToCart(
         productId: parameters.productId,
         variantId: parameters.variantId,
         quantity: parameters.quantity,
-        ...executionResult.result,
+        ...(typeof executionResult.result === 'object' && executionResult.result !== null ? executionResult.result : {}),
       },
-      error: executionResult.error,
+      error: typeof executionResult.error === 'string' ? executionResult.error :
+             executionResult.error ? JSON.stringify(executionResult.error) : undefined,
       executionTime,
       sideEffects: executionResult.sideEffects || [],
       // Bridge instructions handled by ActionDispatchService
@@ -226,7 +228,7 @@ async function executeStartCheckout(
     }
 
     // Execute checkout initiation
-    const executeParams: any = {
+    const executionResult = await actionExecutorService.execute({
       siteId: context.siteId,
       actionName: checkoutAction.name,
       parameters: {
@@ -234,17 +236,10 @@ async function executeStartCheckout(
         ...(parameters.returnUrl && { returnUrl: parameters.returnUrl }),
         ...(parameters.paymentMethod && { paymentMethod: parameters.paymentMethod }),
         idempotencyKey: parameters.idempotencyKey,
-      },
-    };
-
-    if (context.sessionId) {
-      executeParams.sessionId = context.sessionId;
-    }
-    if (context.userId) {
-      executeParams.userId = context.userId;
-    }
-
-    const executionResult = await actionExecutorService.execute(executeParams);
+      } as ActionParameters,
+      sessionId: context.sessionId || 'unknown',
+      userId: context.userId || 'anonymous',
+    });
 
     const executionTime = Date.now() - startTime;
 
@@ -252,11 +247,12 @@ async function executeStartCheckout(
       success: executionResult.success,
       result: {
         type: 'checkout_started',
-        checkoutUrl: executionResult.result?.checkoutUrl,
+        checkoutUrl: (typeof executionResult.result === 'object' && executionResult.result !== null && 'checkoutUrl' in executionResult.result) ? (executionResult.result as any).checkoutUrl : undefined,
         checkoutToken: parameters.idempotencyKey, // Use idempotency key as token
-        ...executionResult.result,
+        ...(typeof executionResult.result === 'object' && executionResult.result !== null ? executionResult.result : {}),
       },
-      error: executionResult.error,
+      error: typeof executionResult.error === 'string' ? executionResult.error :
+             executionResult.error ? JSON.stringify(executionResult.error) : undefined,
       executionTime,
       sideEffects: executionResult.sideEffects || [],
       // Bridge instructions handled by ActionDispatchService

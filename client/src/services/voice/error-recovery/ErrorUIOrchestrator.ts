@@ -23,8 +23,6 @@ import {
   RecoveryStrategy,
   ErrorUIState,
   ErrorUIMode,
-  ErrorUIConfig,
-  AnimationState,
   UserFeedback
 } from '@shared/types/error-recovery.types';
 
@@ -672,7 +670,7 @@ export class ErrorUIOrchestrator {
 
   private async showClarificationVisual(
     request: ClarificationRequest,
-    options: any
+    _options: any
   ): Promise<void> {
     const clarificationElement = this.createClarificationElement(request);
 
@@ -727,7 +725,7 @@ export class ErrorUIOrchestrator {
   }
 
   private async updateProgressVisual(
-    strategy: RecoveryStrategy,
+    _strategy: RecoveryStrategy,
     currentStep: number,
     totalSteps: number,
     message: string,
@@ -915,7 +913,7 @@ export class ErrorUIOrchestrator {
     display.element?.remove();
   }
 
-  private handleRetryAction(error: VoiceError): void {
+  private handleRetryAction(_error: VoiceError): void {
     // Handle retry action
     this.voiceUICallbacks.onRecoverySelected?.('retry');
   }
@@ -995,23 +993,27 @@ class AnimationQueue {
 class VoiceUIManager {
   constructor(private config: UIConfig) {}
 
-  async announceError(error: VoiceError, announcement?: VoiceAnnouncement): Promise<void> {
+  getConfig(): UIConfig {
+    return this.config;
+  }
+
+  async announceError(_error: VoiceError, _announcement?: VoiceAnnouncement): Promise<void> {
     // Implement voice announcement
   }
 
-  async announceClarification(request: ClarificationRequest): Promise<void> {
+  async announceClarification(_request: ClarificationRequest): Promise<void> {
     // Implement clarification announcement
   }
 
-  async announceProgress(current: number, total: number, message: string): Promise<void> {
+  async announceProgress(_current: number, _total: number, _message: string): Promise<void> {
     // Implement progress announcement
   }
 
-  async confirmSelection(optionId: string): Promise<void> {
+  async confirmSelection(_optionId: string): Promise<void> {
     // Implement selection confirmation
   }
 
-  async announceSuccess(message: string): Promise<void> {
+  async announceSuccess(_message: string): Promise<void> {
     // Implement success announcement
   }
 
@@ -1027,12 +1029,16 @@ class VoiceUIManager {
 class ThemeManager {
   constructor(private theme: 'light' | 'dark' | 'auto') {}
 
+  getTheme(): 'light' | 'dark' | 'auto' {
+    return this.theme;
+  }
+
   initialize(): void {
     // Initialize theme
   }
 
-  applyTheme(element: HTMLElement): void {
-    // Apply theme to element
+  applyTheme(_element: HTMLElement): void {
+    // Apply theme to element using this.theme
   }
 
   updateTheme(theme: 'light' | 'dark' | 'auto'): void {
@@ -1043,12 +1049,16 @@ class ThemeManager {
 class AccessibilityManager {
   constructor(private state: AccessibilityState) {}
 
+  getState(): AccessibilityState {
+    return this.state;
+  }
+
   initialize(): void {
     // Initialize accessibility features
   }
 
-  enhanceElement(element: HTMLElement): void {
-    // Enhance element for accessibility
+  enhanceElement(_element: HTMLElement): void {
+    // Enhance element for accessibility using this.state
   }
 
   restoreFocus(): void {

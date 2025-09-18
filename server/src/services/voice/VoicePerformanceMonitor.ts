@@ -110,12 +110,12 @@ class MovingAverage {
   }
 
   average(): number {
-    if (this.values.length === 0) return 0;
+    if (this.values.length === 0) {return 0;}
     return this.values.reduce((sum, val) => sum + val, 0) / this.values.length;
   }
 
   percentile(p: number): number {
-    if (this.values.length === 0) return 0;
+    if (this.values.length === 0) {return 0;}
     const sorted = [...this.values].sort((a, b) => a - b);
     const index = Math.floor(p * sorted.length);
     return sorted[Math.min(index, sorted.length - 1)] || 0;
@@ -198,7 +198,7 @@ export class VoicePerformanceMonitor extends EventEmitter {
 
     if (this.monitoringTimer) {
       clearInterval(this.monitoringTimer);
-      this.monitoringTimer = undefined;
+      this.monitoringTimer = undefined as any;
     }
 
     logger.info('Performance monitoring stopped');

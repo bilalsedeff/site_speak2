@@ -15,6 +15,7 @@ import {
 } from './validators.js';
 import { actionExecutorService } from '../application/ActionExecutorService.js';
 import type { SiteAction, ActionParameter } from '../../../shared/types.js';
+import { ActionParameters } from '../types/action-execution.types.js';
 
 const logger = createLogger({ service: 'tools-registry' });
 
@@ -327,7 +328,7 @@ export class AIToolsRegistry {
       const result = await actionExecutorService.execute({
         siteId: context.siteId,
         actionName: action.name,
-        parameters,
+        parameters: parameters as ActionParameters,
         sessionId: context.sessionId || 'unknown',
         userId: context.userId || 'anonymous',
       });
@@ -335,7 +336,8 @@ export class AIToolsRegistry {
       return {
         success: result.success,
         result: result.result,
-        error: result.error,
+        error: typeof result.error === 'string' ? result.error :
+               result.error ? JSON.stringify(result.error) : undefined,
         executionTime: result.executionTime,
         sideEffects: result.sideEffects || [],
         // bridgeInstructions handling delegated to ActionDispatchService

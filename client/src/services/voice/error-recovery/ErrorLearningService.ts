@@ -203,11 +203,12 @@ export class ErrorLearningService {
       learningRate: 0.1,
       minPatternOccurrences: 3,
       confidenceThreshold: 0.7,
-      retentionPeriod: 90,
-      maxPatternsPerUser: 100,
+      retentionPeriod: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxPatternsPerUser: 1000,
       ...config
     };
 
+    // Initialize components
     this.systemLearning = {
       globalPatterns: new Map(),
       improvementRecommendations: [],
@@ -216,11 +217,33 @@ export class ErrorLearningService {
       lastAnalysis: new Date()
     };
 
+    // Initialize placeholder instances - will be properly implemented
     this._patternMatcher = new PatternMatcher(this.config);
     this._adaptationEngine = new AdaptationEngine(this.config);
     this._recommendationGenerator = new RecommendationGenerator();
     this.privacyManager = new PrivacyManager(this.config);
     this.performanceTracker = new LearningPerformanceTracker();
+  }
+
+  /**
+   * Get pattern matcher (placeholder implementation)
+   */
+  getPatternMatcher(): PatternMatcher {
+    return this._patternMatcher;
+  }
+
+  /**
+   * Get adaptation engine (placeholder implementation)
+   */
+  getAdaptationEngine(): AdaptationEngine {
+    return this._adaptationEngine;
+  }
+
+  /**
+   * Get recommendation generator (placeholder implementation)
+   */
+  getRecommendationGenerator(): RecommendationGenerator {
+    return this._recommendationGenerator;
   }
 
   /**
@@ -441,6 +464,32 @@ export class ErrorLearningService {
       systemPerformanceGain: this.calculateAverageImprovement('resolutionTimeReduction'),
       learningAccuracy: this.calculateLearningAccuracy()
     };
+  }
+
+  /**
+   * Get error patterns from learning service
+   */
+  getErrorPatterns(): ErrorPattern[] {
+    const patterns: ErrorPattern[] = [];
+
+    // Get patterns from global learning
+    for (const globalPattern of this.systemLearning.globalPatterns.values()) {
+      patterns.push(globalPattern.pattern);
+    }
+
+    // Get patterns from user profiles
+    for (const profile of this.userProfiles.values()) {
+      for (const userPattern of profile.errorPatterns.values()) {
+        patterns.push(userPattern.pattern);
+      }
+    }
+
+    // Remove duplicates and sort by frequency
+    const uniquePatterns = patterns.filter((pattern, index, array) =>
+      array.findIndex(p => p.id === pattern.id) === index
+    );
+
+    return uniquePatterns.sort((a, b) => b.frequency - a.frequency);
   }
 
   /**
@@ -781,66 +830,66 @@ export class ErrorLearningService {
 
   // Stub implementations for other methods
   private async updateUserRecoveryLearning(
-    _userId: string, // @ts-expect-error - Part of interface contract, implementation pending
-    _error: VoiceError, // @ts-expect-error - Part of interface contract, implementation pending
-    _solution: LearnedSolution, // @ts-expect-error - Part of interface contract, implementation pending
-    _outcome: RecoveryOutcome // @ts-expect-error - Part of interface contract, implementation pending
+    _userId: string, // Part of interface contract, implementation pending
+    _error: VoiceError, // Part of interface contract, implementation pending
+    _solution: LearnedSolution, // Part of interface contract, implementation pending
+    _outcome: RecoveryOutcome // Part of interface contract, implementation pending
   ): Promise<void> {
     // Implementation would update user's recovery learning
   }
 
   private async analyzePerformanceOptimizations(
-    _error: VoiceError, // @ts-expect-error - Part of interface contract, implementation pending
-    _strategy: RecoveryStrategy, // @ts-expect-error - Part of interface contract, implementation pending
-    _outcome: RecoveryOutcome // @ts-expect-error - Part of interface contract, implementation pending
+    _error: VoiceError, // Part of interface contract, implementation pending
+    _strategy: RecoveryStrategy, // Part of interface contract, implementation pending
+    _outcome: RecoveryOutcome // Part of interface contract, implementation pending
   ): Promise<void> {
     // Implementation would analyze performance optimization opportunities
   }
 
   private async updateClarificationPatterns(
-    _request: ClarificationRequest, // @ts-expect-error - Part of interface contract, implementation pending
-    _response: ClarificationResponse, // @ts-expect-error - Part of interface contract, implementation pending
-    _effectiveness: number // @ts-expect-error - Part of interface contract, implementation pending
+    _request: ClarificationRequest, // Part of interface contract, implementation pending
+    _response: ClarificationResponse, // Part of interface contract, implementation pending
+    _effectiveness: number // Part of interface contract, implementation pending
   ): Promise<void> {
     // Implementation would update clarification patterns
   }
 
   private async updateUserClarificationLearning(
-    _userId: string, // @ts-expect-error - Part of interface contract, implementation pending
-    _request: ClarificationRequest, // @ts-expect-error - Part of interface contract, implementation pending
-    _response: ClarificationResponse, // @ts-expect-error - Part of interface contract, implementation pending
-    _effectiveness: number // @ts-expect-error - Part of interface contract, implementation pending
+    _userId: string, // Part of interface contract, implementation pending
+    _request: ClarificationRequest, // Part of interface contract, implementation pending
+    _response: ClarificationResponse, // Part of interface contract, implementation pending
+    _effectiveness: number // Part of interface contract, implementation pending
   ): Promise<void> {
     // Implementation would update user clarification learning
   }
 
   private async generateClarificationImprovements(
-    _request: ClarificationRequest, // @ts-expect-error - Part of interface contract, implementation pending
-    _response: ClarificationResponse, // @ts-expect-error - Part of interface contract, implementation pending
-    _effectiveness: number // @ts-expect-error - Part of interface contract, implementation pending
+    _request: ClarificationRequest, // Part of interface contract, implementation pending
+    _response: ClarificationResponse, // Part of interface contract, implementation pending
+    _effectiveness: number // Part of interface contract, implementation pending
   ): Promise<void> {
     // Implementation would generate clarification improvements
   }
 
   private async processFeedbackForPatterns(
-    _feedback: UserFeedback, // @ts-expect-error - Part of interface contract, implementation pending
-    _errorId: string // @ts-expect-error - Part of interface contract, implementation pending
+    _feedback: UserFeedback, // Part of interface contract, implementation pending
+    _errorId: string // Part of interface contract, implementation pending
   ): Promise<void> {
     // Implementation would process feedback for pattern improvement
   }
 
   private async updateUserSatisfactionModel(
-    _userId: string, // @ts-expect-error - Part of interface contract, implementation pending
-    _feedback: UserFeedback, // @ts-expect-error - Part of interface contract, implementation pending
-    _recoveryStrategy?: string // @ts-expect-error - Part of interface contract, implementation pending
+    _userId: string, // Part of interface contract, implementation pending
+    _feedback: UserFeedback, // Part of interface contract, implementation pending
+    _recoveryStrategy?: string // Part of interface contract, implementation pending
   ): Promise<void> {
     // Implementation would update user satisfaction model
   }
 
   private async generateFeedbackImprovements(
-    _feedback: UserFeedback, // @ts-expect-error - Part of interface contract, implementation pending
-    _errorId: string, // @ts-expect-error - Part of interface contract, implementation pending
-    _recoveryStrategy?: string // @ts-expect-error - Part of interface contract, implementation pending
+    _feedback: UserFeedback, // Part of interface contract, implementation pending
+    _errorId: string, // Part of interface contract, implementation pending
+    _recoveryStrategy?: string // Part of interface contract, implementation pending
   ): Promise<void> {
     // Implementation would generate feedback-based improvements
   }
@@ -850,7 +899,11 @@ export class ErrorLearningService {
 class PatternMatcher {
   constructor(private config: LearningConfig) {}
 
-  matchPattern(_error: VoiceError, _patterns: ErrorPattern[]): ErrorPattern | null { // @ts-expect-error - Part of interface contract, implementation pending
+  getConfig(): LearningConfig {
+    return this.config;
+  }
+
+  matchPattern(_error: VoiceError, _patterns: ErrorPattern[]): ErrorPattern | null { // Part of interface contract, implementation pending
     // Implementation would match error to existing patterns
     return null;
   }
@@ -859,7 +912,11 @@ class PatternMatcher {
 class AdaptationEngine {
   constructor(private config: LearningConfig) {}
 
-  generateAdaptation(_pattern: ErrorPattern, _context: PatternContext): PatternAdaptation | null { // @ts-expect-error - Part of interface contract, implementation pending
+  getConfig(): LearningConfig {
+    return this.config;
+  }
+
+  generateAdaptation(_pattern: ErrorPattern, _context: PatternContext): PatternAdaptation | null { // Part of interface contract, implementation pending
     // Implementation would generate adaptations
     return null;
   }
@@ -885,12 +942,16 @@ class RecommendationGenerator {
 class PrivacyManager {
   constructor(private config: LearningConfig) {}
 
-  sanitizeUserData(_profile: UserLearningProfile): any { // @ts-expect-error - Part of interface contract, implementation pending
+  getConfig(): LearningConfig {
+    return this.config;
+  }
+
+  sanitizeUserData(_profile: UserLearningProfile): any { // Part of interface contract, implementation pending
     // Implementation would sanitize user data for privacy
     return {};
   }
 
-  sanitizeSystemData(_systemLearning: SystemLearning): any { // @ts-expect-error - Part of interface contract, implementation pending
+  sanitizeSystemData(_systemLearning: SystemLearning): any { // Part of interface contract, implementation pending
     // Implementation would sanitize system data for privacy
     return {};
   }

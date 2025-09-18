@@ -1,5 +1,15 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
+// Search result type definition
+interface SearchResult {
+  id: string;
+  title: string;
+  description?: string;
+  type: 'site' | 'template' | 'component' | 'page' | 'action';
+  url?: string;
+  metadata?: Record<string, unknown>;
+}
+
 interface UIState {
   // Modals
   modals: {
@@ -69,7 +79,7 @@ interface UIState {
   search: {
     isOpen: boolean
     query: string
-    results: any[]
+    results: SearchResult[]
     isSearching: boolean
   }
   
@@ -282,7 +292,7 @@ const uiSlice = createSlice({
       state.search.query = action.payload
     },
     
-    setSearchResults: (state, action: PayloadAction<any[]>) => {
+    setSearchResults: (state, action: PayloadAction<SearchResult[]>) => {
       state.search.results = action.payload
       state.search.isSearching = false
     },

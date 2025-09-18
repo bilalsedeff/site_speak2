@@ -15,7 +15,6 @@ import type {
   DOMElement,
   ElementMatch,
   PropertyEditCommand,
-  ElementProperties,
 } from './VoiceElementSelector.js';
 
 // Re-export types that other modules need

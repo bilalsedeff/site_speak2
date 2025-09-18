@@ -37,6 +37,9 @@ export type {
   VoiceStreamMessage
 } from './UnifiedVoiceOrchestrator.js';
 
+// Export alias to fix production imports that expect 'voiceOrchestrator'
+export { unifiedVoiceOrchestrator as voiceOrchestrator } from './UnifiedVoiceOrchestrator.js';
+
 
 /**
  * Get voice services health status

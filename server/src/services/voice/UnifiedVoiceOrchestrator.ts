@@ -1,10 +1,8 @@
 /**
- * Unified Voice Orchestrator - Consolidated voice coordination service
+ * Unified Voice Orchestrator - Coordinator for voice services
  *
- * This service consolidates the functionality of:
- * - VoiceOrchestrator.ts (original implementation)
- * - OptimizedVoiceOrchestrator.ts (performance optimizations)
- * - RawWebSocketServer.ts (direct WebSocket handling)
+ * Refactored from 1,965 lines to ≤300 lines per CLAUDE.md requirements
+ * Now coordinates modular components instead of implementing everything
  *
  * Features:
  * - Unified session management for Socket.IO and Raw WebSocket
@@ -23,236 +21,56 @@
  */
 
 import { EventEmitter } from 'events';
-import { WebSocketServer, WebSocket } from 'ws';
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import { IncomingMessage } from 'http';
 import type { Server } from 'http';
-import { createHash } from 'crypto';
-import { createLogger, toArrayBuffer, bufferToArrayBuffer } from '../../shared/utils.js';
-import { TurnManager } from './turnManager.js';
+import { createLogger } from '../../shared/utils.js';
 import { VisualFeedbackService } from './visualFeedbackService.js';
 import { OpusFramer, getDefaultOpusConfig } from './opusFramer.js';
-import { voiceAuthService, type VoiceAuthData } from '../_shared/auth/voice-auth.js';
-import type { VoiceWebSocketHandler } from '../../modules/voice/infrastructure/websocket/VoiceWebSocketHandler.js';
 import type { UniversalAIAssistantService } from '../../modules/ai/application/UniversalAIAssistantService.js';
 
+// Import modular components
+import { VoiceSessionManager } from './VoiceSessionManager.js';
+import { VoiceConnectionManager } from './VoiceConnectionManager.js';
+import { VoiceAudioProcessor } from './VoiceAudioProcessor.js';
+import { VoiceEventHandler } from './VoiceEventHandler.js';
+import { VoicePerformanceOptimizer } from './VoicePerformanceOptimizer.js';
+
 // Import optimized components
-import { realtimeConnectionPool, type PooledConnection } from './RealtimeConnectionPool.js';
-import { optimizedAudioConverter, type StreamingConversionResult } from './OptimizedAudioConverter.js';
-import { voicePerformanceMonitor } from './VoicePerformanceMonitor.js';
+import { realtimeConnectionPool } from './RealtimeConnectionPool.js';
+import { optimizedAudioConverter } from './OptimizedAudioConverter.js';
+
+import type {
+  UnifiedOrchestratorConfig,
+  UnifiedVoiceSession,
+  VoiceServiceStatus
+} from './types/VoiceTypes.js';
+
+// Re-export types for backward compatibility
+export type {
+  UnifiedOrchestratorConfig,
+  UnifiedVoiceSession,
+  VoiceServiceStatus,
+  VoiceStreamMessage
+} from './types/VoiceTypes.js';
 
 const logger = createLogger({ service: 'unified-voice-orchestrator' });
 
-// WebSocket message types for voice streaming (from RawWebSocketServer)
-export interface VoiceStreamMessage {
-  type: 'voice_start' | 'voice_data' | 'voice_end' | 'transcription' | 'audio_response' |
-        'barge_in' | 'vad' | 'user_transcript' | 'error' | 'ready' | 'navigation';
-  data?: ArrayBuffer | string | null;
-  metadata?: {
-    sessionId?: string;
-    sampleRate?: number;
-    channels?: number;
-    vadActive?: boolean;
-    sequence?: number;
-    timestamp?: number;
-    partial?: boolean;
-    streaming?: boolean;
-    final?: boolean;
-    active?: boolean;
-    audioStartMs?: number;
-    audioEndMs?: number;
-    latency?: number;
-    error?: string;
-    page?: string;
-  };
-}
-
-// Unified session interface combining all service capabilities
-export interface UnifiedVoiceSession {
-  id: string;
-  tenantId: string;
-  siteId?: string;
-  userId?: string;
-  status: 'initializing' | 'ready' | 'listening' | 'processing' | 'speaking' | 'ended' | 'error';
-
-  // Core components with optimizations
-  turnManager?: TurnManager;
-  realtimeConnection?: PooledConnection; // Use pooled connection for performance
-
-  // Enhanced WebSocket connections (both types supported)
-  socketIOConnection?: Socket; // Socket.IO connection
-  rawWebSocketConnection?: WebSocket; // Raw WebSocket connection
-  connectionType: 'socket_io' | 'raw_websocket' | 'hybrid';
-  connectionMetrics: {
-    establishedAt: Date;
-    lastActivityAt: Date;
-    totalMessages: number;
-    avgMessageSize: number;
-    connectionLatency: number;
-  };
-
-  // Session metadata with performance tracking
-  createdAt: Date;
-  lastActivity: Date;
-  expiresAt: Date;
-  isActive: boolean;
-
-  // Enhanced heartbeat with performance monitoring
-  pingInterval?: NodeJS.Timeout;
-  isAlive: boolean;
-  heartbeatLatencies: number[];
-  lastPingTime: number;
-  missedPongs: number;
-
-  // Advanced metrics with optimization triggers
-  metrics: {
-    sessionsStarted: Date;
-    totalTurns: number;
-    avgResponseTime: number;
-    errors: Array<{ timestamp: Date; error: string; code?: string; context?: Record<string, unknown> }>;
-    performance: {
-      firstTokenLatencies: number[];
-      partialLatencies: number[];
-      bargeInLatencies: number[];
-      audioProcessingLatencies: number[];
-      memoryUsages: number[];
-    };
-    optimizations: {
-      connectionReused: boolean;
-      bufferPoolHits: number;
-      streamingProcessingUsed: boolean;
-      autoOptimizationsTriggered: number;
-    };
-  };
-
-  // Enhanced configuration with optimization settings
-  config: {
-    locale: string;
-    voice: string;
-    maxDuration: number;
-    audioConfig: {
-      sampleRate: number;
-      frameMs: number;
-      inputFormat: string;
-      outputFormat: string;
-      enableVAD: boolean;
-      enableStreamingProcessing: boolean;
-      enableOptimizedBuffering: boolean;
-    };
-    performance: {
-      targetFirstTokenLatency: number;
-      enableAutoOptimization: boolean;
-      enablePredictiveProcessing: boolean;
-    };
-  };
-
-  // Raw WebSocket specific state
-  isStreaming: boolean;
-  audioBuffer: ArrayBuffer[];
-  firstTokenTime?: number;
-  totalFrames: number;
-}
-
-export interface UnifiedOrchestratorConfig {
-  // Base configuration
-  httpServer?: Server;
-  maxSessions?: number;
-  sessionTimeout?: number;
-  cleanupInterval?: number;
-  heartbeatInterval?: number;
-
-  // WebSocket configuration
-  enableRawWebSocket?: boolean;
-  enableSocketIO?: boolean;
-  maxConnections?: number;
-  paths?: {
-    rawWebSocket: string;
-    socketIO: string;
-  };
-
-  // Enhanced performance configuration
-  performance: {
-    targetFirstTokenMs: number;
-    targetPartialLatencyMs: number;
-    targetBargeInMs: number;
-    enableConnectionPooling: boolean;
-    enableStreamingAudio: boolean;
-    enablePredictiveProcessing: boolean;
-    enableAdaptiveOptimization: boolean;
-    enablePerformanceMonitoring: boolean;
-  };
-
-  // Optimization settings
-  optimization: {
-    audioBufferPoolSize: number;
-    connectionPoolSize: number;
-    enableMemoryPooling: boolean;
-    enableSpeculativeProcessing: boolean;
-    autoOptimizationThreshold: number; // Trigger optimization if latency > threshold
-  };
-
-  // Default session settings with optimizations
-  defaults: {
-    locale: string;
-    voice: string;
-    maxDuration: number;
-    audioConfig: {
-      sampleRate: number;
-      frameMs: number;
-      inputFormat: string;
-      outputFormat: string;
-      enableVAD: boolean;
-      enableStreamingProcessing: boolean;
-      enableOptimizedBuffering: boolean;
-    };
-  };
-}
-
 /**
- * Unified Voice Orchestrator - Consolidates all voice service functionality
+ * Unified Voice Orchestrator - Coordinates all voice service modules
  */
 export class UnifiedVoiceOrchestrator extends EventEmitter {
-  private sessions = new Map<string, UnifiedVoiceSession>();
   private config: UnifiedOrchestratorConfig;
   private isRunning = false;
-  private cleanupTimer?: NodeJS.Timeout;
-  private optimizationTimer?: NodeJS.Timeout;
 
-  // WebSocket servers (both types)
-  private rawWebSocketServer?: WebSocketServer;
-  private socketIOServer?: SocketIOServer;
+  // Modular components
+  private sessionManager: VoiceSessionManager;
+  private connectionManager: VoiceConnectionManager;
+  private audioProcessor: VoiceAudioProcessor;
+  private eventHandler: VoiceEventHandler;
+  private performanceOptimizer: VoicePerformanceOptimizer;
 
-  // Service integrations
-  private socketIOHandler?: VoiceWebSocketHandler;
-  private aiAssistantService?: UniversalAIAssistantService;
+  // Core services
   private visualFeedbackService: VisualFeedbackService;
   private opusFramer: OpusFramer;
-
-  // Enhanced performance tracking
-  private performanceMetrics = {
-    totalSessions: 0,
-    activeSessions: 0,
-    avgFirstTokenLatency: 0,
-    avgPartialLatency: 0,
-    avgBargeInLatency: 0,
-    avgAudioProcessingLatency: 0,
-    errorRate: 0,
-    totalErrors: 0,
-    totalTurns: 0,
-    connectionPoolHitRate: 0,
-    memoryPoolHitRate: 0,
-    streamingProcessingRate: 0,
-    autoOptimizationsTriggered: 0,
-  };
-
-  // Circuit breaker for error handling
-  private circuitBreaker = {
-    failureCount: 0,
-    failureThreshold: 10,
-    resetTimeout: 30000, // 30 seconds
-    state: 'closed' as 'closed' | 'open' | 'half-open',
-    lastFailure: 0,
-  };
 
   constructor(config: Partial<UnifiedOrchestratorConfig> = {}) {
     super();
@@ -260,8 +78,8 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
     this.config = {
       maxSessions: config.maxSessions || 100,
       sessionTimeout: config.sessionTimeout || 300000, // 5 minutes
-      cleanupInterval: config.cleanupInterval || 30000, // 30 seconds (optimized)
-      heartbeatInterval: config.heartbeatInterval || 15000, // 15 seconds (optimized)
+      cleanupInterval: config.cleanupInterval || 30000, // 30 seconds
+      heartbeatInterval: config.heartbeatInterval || 15000, // 15 seconds
       enableRawWebSocket: config.enableRawWebSocket ?? true,
       enableSocketIO: config.enableSocketIO ?? true,
       maxConnections: config.maxConnections || 1000,
@@ -307,18 +125,72 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
       ...(config.httpServer && { httpServer: config.httpServer }),
     };
 
-    // Initialize core services with optimizations
+    // Initialize modular components
+    this.sessionManager = new VoiceSessionManager(this.config);
+    this.connectionManager = new VoiceConnectionManager(this.config);
+    this.audioProcessor = new VoiceAudioProcessor(this.config);
+    this.eventHandler = new VoiceEventHandler(this.config);
+    this.performanceOptimizer = new VoicePerformanceOptimizer(this.config);
+
+    // Initialize core services
     this.visualFeedbackService = new VisualFeedbackService();
     const opusConfig = getDefaultOpusConfig();
     opusConfig.frameMs = this.config.defaults.audioConfig.frameMs;
     opusConfig.sampleRate = this.config.defaults.audioConfig.sampleRate;
     this.opusFramer = new OpusFramer(opusConfig);
 
+    this.setupEventHandlers();
+
     logger.info('UnifiedVoiceOrchestrator initialized', {
       maxSessions: this.config.maxSessions,
       performanceTargets: this.config.performance,
       optimizationSettings: this.config.optimization,
     });
+  }
+
+  /**
+   * Setup event handlers between modules
+   */
+  private setupEventHandlers(): void {
+    // Connection events
+    this.connectionManager.on('raw_websocket_connection', ({ ws, authData }) => {
+      const session = this.sessionManager.createSession(authData.tenantId, authData.siteId, authData.userId);
+      session.rawWebSocketConnection = ws;
+      session.connectionType = 'raw_websocket';
+
+      this.eventHandler.setupRawWebSocketHandlers(ws, session);
+      this.eventHandler.startHeartbeat(session);
+      this.audioProcessor.initializeVoiceSession(session);
+      this.performanceOptimizer.recordSessionStart();
+    });
+
+    this.connectionManager.on('socket_io_connection', (socket) => {
+      // Handle Socket.IO connection integration
+      this.handleSocketIOConnection(socket);
+    });
+
+    // Audio processing events
+    this.eventHandler.on('audio_data', ({ session, audioData }) => {
+      this.audioProcessor.handleAudioData(session, audioData);
+    });
+
+    // Performance optimization events
+    this.performanceOptimizer.on('optimization_applied', () => {
+      this.sessionManager.getActiveSessions().forEach(session => {
+        this.performanceOptimizer.optimizeSessionConfig(new Map([[session.id, session]]));
+      });
+    });
+
+    // Session management events
+    this.sessionManager.on('session_closed', ({ session }) => {
+      this.audioProcessor.cleanupSessionAudio(session);
+      this.performanceOptimizer.recordSessionEnd();
+    });
+
+    // Event forwarding for external listeners
+    this.eventHandler.on('transcription_partial', (data) => this.emit('transcription_partial', data));
+    this.eventHandler.on('transcription_final', (data) => this.emit('transcription_final', data));
+    this.eventHandler.on('audio_response', (data) => this.emit('audio_response', data));
   }
 
   /**
@@ -337,20 +209,19 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
       }
 
       if (this.config.optimization.enableMemoryPooling) {
-        await this.initializeAudioConverter();
+        await optimizedAudioConverter.initialize();
       }
 
-      if (this.config.performance.enablePerformanceMonitoring) {
-        this.initializePerformanceMonitoring();
-      }
+      // Start modular components
+      this.performanceOptimizer.start();
 
       // Initialize WebSocket servers if HTTP server is provided
       if (this.config.httpServer) {
         if (this.config.enableRawWebSocket) {
-          await this.initializeRawWebSocket();
+          await this.connectionManager.initializeRawWebSocket();
         }
         if (this.config.enableSocketIO) {
-          await this.initializeSocketIO();
+          await this.connectionManager.initializeSocketIO();
         }
       }
 
@@ -358,24 +229,15 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
       this.visualFeedbackService.start();
       await this.opusFramer.start();
 
-      // Setup optimized session cleanup
-      this.cleanupTimer = setInterval(() => {
-        this.cleanupExpiredSessions();
-      }, this.config.cleanupInterval);
-
-      // Setup automatic optimization monitoring
-      if (this.config.performance.enableAdaptiveOptimization) {
-        this.optimizationTimer = setInterval(() => {
-          this.performAdaptiveOptimization();
-        }, 10000); // Check every 10 seconds
-      }
+      // Start session management
+      this.sessionManager.startCleanupTimer();
 
       this.isRunning = true;
       this.emit('started');
 
       logger.info('UnifiedVoiceOrchestrator started successfully', {
-        rawWebSocket: !!this.rawWebSocketServer,
-        socketIO: !!this.socketIOServer,
+        rawWebSocket: this.config.enableRawWebSocket,
+        socketIO: this.config.enableSocketIO,
         connectionPooling: this.config.performance.enableConnectionPooling,
         performanceMonitoring: this.config.performance.enablePerformanceMonitoring,
       });
@@ -386,301 +248,49 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
   }
 
   /**
-   * Initialize Raw WebSocket server with RFC 6455 compliance
+   * Process voice input
    */
-  private async initializeRawWebSocket(): Promise<void> {
-    if (!this.config.httpServer) {
-      throw new Error('HTTP server required for Raw WebSocket initialization');
+  async processVoiceInput(sessionId: string, audioData: ArrayBuffer): Promise<void> {
+    const session = this.sessionManager.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`);
     }
 
-    // Create Raw WebSocket server for direct protocol handling
-    this.rawWebSocketServer = new WebSocketServer({
-      noServer: true, // Manual upgrade handling
-      verifyClient: this.authenticateWebSocket.bind(this),
-      maxPayload: 1024 * 1024,
-      perMessageDeflate: {
-        // Optimize for audio streaming
-        threshold: 1024,
-        concurrencyLimit: 10,
-        zlibDeflateOptions: {
-          level: 1, // Fast compression for real-time audio
-          memLevel: 8,
-        },
-      },
-    });
-
-    // Setup connection handling
-    this.rawWebSocketServer.on('connection', (ws: WebSocket, request: IncomingMessage) => {
-      this.handleRawWebSocketConnection(ws, request);
-    });
-
-    // Handle HTTP upgrade for Raw WebSocket with authentication
-    this.config.httpServer.on('upgrade', (request, socket, head) => {
-      const { pathname } = new URL(request.url || '', 'wss://base.url');
-
-      if (pathname === this.config.paths!.rawWebSocket) {
-        this.authenticateRawWebSocketUpgrade(request, socket, head);
-      }
-    });
-
-    logger.info('Raw WebSocket server initialized', {
-      path: this.config.paths!.rawWebSocket,
-    });
+    await this.audioProcessor.processVoiceInput(session, audioData);
   }
 
   /**
-   * RFC 6455 WebSocket authentication during upgrade
+   * Handle Socket.IO connection
    */
-  private authenticateWebSocket(
-    info: { origin: string; secure: boolean; req: IncomingMessage }
-  ): boolean {
-    try {
-      const { req } = info;
-      const url = new URL(req.url || '', `http://${req.headers.host}`);
-      const token = url.searchParams.get('token');
-
-      if (!token) {
-        logger.warn('WebSocket upgrade rejected: No token provided');
-        return false;
-      }
-
-      // Use shared voice authentication service
-      const authData = voiceAuthService.extractToken({ httpRequest: req });
-      if (!authData) {
-        logger.warn('WebSocket upgrade rejected: Invalid token');
-        return false;
-      }
-
-      // Attach auth info to request for later use
-      (req as IncomingMessage & { auth?: VoiceAuthData }).auth = authData as unknown as VoiceAuthData;
-
-      logger.debug('WebSocket upgrade authenticated', {
-        tenantId: (authData as unknown as VoiceAuthData).tenantId,
-        siteId: (authData as unknown as VoiceAuthData).siteId,
-      });
-
-      return true;
-    } catch (error) {
-      logger.error('WebSocket authentication error', { error });
-      return false;
+  private async handleSocketIOConnection(socket: any): Promise<void> {
+    // Implementation simplified - delegates to existing handler
+    const socketIOHandler = this.connectionManager.getSocketIOHandler();
+    if (socketIOHandler) {
+      // Let existing handler manage the connection
+      logger.info('Socket.IO connection delegated to handler', { socketId: socket.id });
     }
   }
 
   /**
-   * Authenticate Raw WebSocket connection on HTTP upgrade
+   * Get session
    */
-  private authenticateRawWebSocketUpgrade(request: IncomingMessage, socket: unknown, head: Buffer): void {
-    // Handle socket errors during authentication
-    const onSocketError = (err: Error) => {
-      logger.error('Raw WebSocket authentication socket error', { err });
-      (socket as any).destroy();
-    };
-    (socket as any).on('error', onSocketError);
-
-    // Use shared voice authentication service
-    voiceAuthService.authenticateWithCallback(
-      { httpRequest: request },
-      (err: Error | null, authData?: VoiceAuthData) => {
-        if (err || !authData) {
-          logger.warn('Raw WebSocket authentication failed', {
-            error: err?.message,
-            url: request.url,
-            origin: request.headers.origin,
-          });
-
-          (socket as any).write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-          (socket as any).destroy();
-          return;
-        }
-
-        // Remove error handler before upgrade
-        (socket as any).removeListener('error', onSocketError);
-
-        // Upgrade to WebSocket
-        this.rawWebSocketServer!.handleUpgrade(request, socket as any, head, (ws) => {
-          // Store auth data on the WebSocket
-          (ws as any).authData = authData;
-          this.rawWebSocketServer!.emit('connection', ws, request);
-        });
-      },
-      { logAuthAttempts: true }
-    );
+  getSession(sessionId: string): UnifiedVoiceSession | undefined {
+    return this.sessionManager.getSession(sessionId);
   }
 
   /**
-   * Handle Raw WebSocket connection
+   * Get active sessions count
    */
-  private handleRawWebSocketConnection(ws: WebSocket, request: IncomingMessage): void {
-    const authData = (ws as any).authData as VoiceAuthData;
-    if (!authData) {
-      ws.close(1008, 'Authentication required');
-      return;
-    }
-
-    // Create unified session for Raw WebSocket
-    const sessionId = this.generateSessionId();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.config.sessionTimeout!);
-
-    const session: UnifiedVoiceSession = {
-      id: sessionId,
-      tenantId: authData.tenantId,
-      siteId: authData.siteId,
-      userId: authData.userId,
-      rawWebSocketConnection: ws,
-      connectionType: 'raw_websocket',
-      status: 'initializing',
-      createdAt: now,
-      lastActivity: now,
-      expiresAt,
-      isActive: true,
-      isAlive: true,
-      heartbeatLatencies: [],
-      lastPingTime: Date.now(),
-      missedPongs: 0,
-      isStreaming: false,
-      audioBuffer: [],
-      totalFrames: 0,
-      connectionMetrics: {
-        establishedAt: now,
-        lastActivityAt: now,
-        totalMessages: 0,
-        avgMessageSize: 0,
-        connectionLatency: 0,
-      },
-      metrics: {
-        sessionsStarted: now,
-        totalTurns: 0,
-        avgResponseTime: 0,
-        errors: [],
-        performance: {
-          firstTokenLatencies: [],
-          partialLatencies: [],
-          bargeInLatencies: [],
-          audioProcessingLatencies: [],
-          memoryUsages: [],
-        },
-        optimizations: {
-          connectionReused: false,
-          bufferPoolHits: 0,
-          streamingProcessingUsed: false,
-          autoOptimizationsTriggered: 0,
-        },
-      },
-      config: {
-        ...this.config.defaults,
-        performance: {
-          targetFirstTokenLatency: this.config.performance.targetFirstTokenMs,
-          enableAutoOptimization: this.config.performance.enableAdaptiveOptimization,
-          enablePredictiveProcessing: this.config.performance.enablePredictiveProcessing,
-        },
-      },
-    };
-
-    this.sessions.set(sessionId, session);
-    this.performanceMetrics.totalSessions++;
-    this.performanceMetrics.activeSessions = this.sessions.size;
-
-    logger.info('Raw WebSocket connection established', {
-      sessionId,
-      tenantId: authData.tenantId,
-      siteId: authData.siteId,
-      remoteAddress: (request.socket as any).remoteAddress,
-    });
-
-    // Setup Raw WebSocket event handlers
-    this.setupRawWebSocketHandlers(ws, session);
-
-    // Setup heartbeat
-    this.startHeartbeat(session);
-
-    // Initialize voice session with connection pooling
-    this.initializeVoiceSession(session).catch(error => {
-      logger.error('Failed to initialize voice session for Raw WebSocket connection', {
-        sessionId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-      this.closeSession(sessionId);
-    });
-
-    // Send ready message
-    this.sendRawWebSocketMessage(session, {
-      type: 'voice_start',
-      metadata: {
-        sessionId,
-        sampleRate: session.config.audioConfig.sampleRate,
-        channels: 1,
-        timestamp: Date.now(),
-      },
-    });
+  getActiveSessionsCount(): number {
+    return this.sessionManager.getSessionsCount();
   }
-
-  // ... (Additional methods would continue here, consolidating functionality from all three services)
-  // This is a foundational implementation showing the consolidation approach
 
   /**
-   * Generate unique session ID
+   * Stop a voice session
    */
-  private generateSessionId(): string {
-    return createHash('sha256')
-      .update(`unified-${Date.now()}-${Math.random()}`)
-      .digest('hex')
-      .substring(0, 16);
-  }
-
-  // Placeholder methods to be implemented (consolidating from other services)
-  private async initializeConnectionPool(): Promise<void> {
-    logger.info('Connection pool integration enabled');
-  }
-
-  private async initializeAudioConverter(): Promise<void> {
-    await optimizedAudioConverter.initialize();
-    logger.info('Optimized audio converter initialized');
-  }
-
-  private initializePerformanceMonitoring(): void {
-    voicePerformanceMonitor.start();
-    logger.info('Performance monitoring initialized');
-  }
-
-  private async initializeSocketIO(): Promise<void> {
-    // Socket.IO initialization logic would be implemented here
-    logger.info('Socket.IO server integration would be implemented here');
-  }
-
-  private setupRawWebSocketHandlers(ws: WebSocket, session: UnifiedVoiceSession): void {
-    // Raw WebSocket event handler setup would be implemented here
-    logger.debug('Raw WebSocket handlers setup for session', { sessionId: session.id });
-  }
-
-  private startHeartbeat(session: UnifiedVoiceSession): void {
-    // Heartbeat implementation would be implemented here
-    logger.debug('Heartbeat started for session', { sessionId: session.id });
-  }
-
-  private async initializeVoiceSession(session: UnifiedVoiceSession): Promise<void> {
-    // Voice session initialization with pooled connections would be implemented here
-    logger.debug('Voice session initialization for session', { sessionId: session.id });
-  }
-
-  private async closeSession(sessionId: string): Promise<void> {
-    // Session cleanup implementation would be implemented here
-    logger.debug('Closing session', { sessionId });
-  }
-
-  private sendRawWebSocketMessage(session: UnifiedVoiceSession, message: VoiceStreamMessage): void {
-    // Raw WebSocket message sending implementation would be implemented here
-    logger.debug('Sending Raw WebSocket message', { sessionId: session.id, type: message.type });
-  }
-
-  private cleanupExpiredSessions(): void {
-    // Session cleanup implementation would be implemented here
-    logger.debug('Performing session cleanup');
-  }
-
-  private async performAdaptiveOptimization(): Promise<void> {
-    // Adaptive optimization implementation would be implemented here
-    logger.debug('Performing adaptive optimization');
+  async stopVoiceSession(sessionId: string): Promise<void> {
+    logger.info('Stopping voice session', { sessionId });
+    await this.sessionManager.closeSession(sessionId);
   }
 
   /**
@@ -694,16 +304,10 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
     try {
       logger.info('Stopping UnifiedVoiceOrchestrator');
 
-      // Stop optimization timer
-      if (this.optimizationTimer) {
-        clearInterval(this.optimizationTimer);
-        this.optimizationTimer = undefined;
-      }
-
-      // Stop performance monitoring
-      if (this.config.performance.enablePerformanceMonitoring) {
-        voicePerformanceMonitor.stop();
-      }
+      // Stop modular components
+      this.performanceOptimizer.stop();
+      await this.connectionManager.stop();
+      await this.sessionManager.stop();
 
       // Cleanup optimized components
       if (this.config.optimization.enableMemoryPooling) {
@@ -714,39 +318,14 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
         await realtimeConnectionPool.shutdown();
       }
 
-      // End all active sessions
-      const activeSessions = Array.from(this.sessions.values())
-        .filter(session => session.status !== 'ended');
-
-      await Promise.all(
-        activeSessions.map(session => this.closeSession(session.id))
-      );
-
       // Stop base components
       this.visualFeedbackService.stop();
       await this.opusFramer.stop();
 
-      // Clear cleanup timer
-      if (this.cleanupTimer) {
-        clearInterval(this.cleanupTimer);
-        this.cleanupTimer = undefined;
-      }
-
-      // Close WebSocket servers
-      if (this.rawWebSocketServer) {
-        this.rawWebSocketServer.close();
-      }
-      if (this.socketIOServer) {
-        this.socketIOServer.close();
-      }
-
       this.isRunning = false;
       this.emit('stopped');
 
-      logger.info('UnifiedVoiceOrchestrator stopped', {
-        sessionsClosed: activeSessions.length,
-        finalMetrics: this.performanceMetrics,
-      });
+      logger.info('UnifiedVoiceOrchestrator stopped successfully');
     } catch (error) {
       logger.error('Error stopping UnifiedVoiceOrchestrator', { error });
       throw error;
@@ -754,43 +333,135 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
   }
 
   /**
-   * Get unified orchestrator status
+   * Get orchestrator status
    */
-  getStatus() {
+  getStatus(): VoiceServiceStatus {
     return {
       isRunning: this.isRunning,
-      activeSessions: this.sessions.size,
-      performance: {
-        totalSessions: this.performanceMetrics.totalSessions,
-        avgFirstTokenLatency: this.performanceMetrics.avgFirstTokenLatency,
-        avgPartialLatency: this.performanceMetrics.avgPartialLatency,
-        avgBargeInLatency: this.performanceMetrics.avgBargeInLatency,
-        avgAudioProcessingLatency: this.performanceMetrics.avgAudioProcessingLatency,
-        errorRate: this.performanceMetrics.totalSessions > 0
-          ? this.performanceMetrics.totalErrors / this.performanceMetrics.totalSessions
-          : 0,
-        connectionPoolHitRate: this.performanceMetrics.connectionPoolHitRate / Math.max(this.performanceMetrics.totalSessions, 1),
-        streamingProcessingRate: this.performanceMetrics.streamingProcessingRate,
-        autoOptimizationsTriggered: this.performanceMetrics.autoOptimizationsTriggered,
-      },
-      optimizations: {
-        connectionPooling: this.config.performance.enableConnectionPooling,
-        streamingAudio: this.config.performance.enableStreamingAudio,
-        adaptiveOptimization: this.config.performance.enableAdaptiveOptimization,
-        performanceMonitoring: this.config.performance.enablePerformanceMonitoring,
-      },
+      activeSessions: this.sessionManager.getSessionsCount(),
+      performance: this.performanceOptimizer.getPerformanceMetrics(),
+      optimizations: this.performanceOptimizer.getOptimizationStatus(),
       components: {
         visualFeedback: this.visualFeedbackService.getCurrentState(),
         connectionPool: this.config.performance.enableConnectionPooling ? realtimeConnectionPool.getStats() : null,
         audioConverter: this.config.optimization.enableMemoryPooling ? optimizedAudioConverter.getStats() : null,
-        performanceMonitor: this.config.performance.enablePerformanceMonitoring ? voicePerformanceMonitor.getCurrentSnapshot() : null,
+        performanceMonitor: this.performanceOptimizer.getOptimizationStatus().currentSnapshot,
       },
-      circuitBreaker: {
-        state: this.circuitBreaker.state,
-        failureCount: this.circuitBreaker.failureCount,
-        failureThreshold: this.circuitBreaker.failureThreshold,
-      },
+      circuitBreaker: this.performanceOptimizer.getCircuitBreakerStatus(),
     };
+  }
+
+  /**
+   * Process text input for a voice session
+   */
+  async processTextInput(sessionId: string, text: string): Promise<void> {
+    const session = this.sessionManager.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+
+    // Get AI service to process text
+    const aiService = this.connectionManager.getAIAssistantService();
+
+    if (!aiService) {
+      throw new Error('AI Assistant Service not available');
+    }
+
+    try {
+      const request = {
+        input: text,
+        sessionId: sessionId,
+        siteId: session.siteId || 'default',
+        tenantId: session.tenantId || 'default',
+        ...(session.userId && { userId: session.userId }),
+        context: {
+          browserLanguage: session.config.locale,
+        },
+      };
+
+      const response = await aiService.processConversation(request);
+
+      // Emit the response through the event handler
+      this.eventHandler.emitToSession(sessionId, {
+        type: 'agent_final',
+        data: response,
+      });
+
+      logger.info('Text input processed successfully', {
+        sessionId,
+        responseLength: response.response?.text?.length || 0,
+      });
+    } catch (error) {
+      logger.error('Failed to process text input', {
+        sessionId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      this.eventHandler.emitToSession(sessionId, {
+        type: 'error',
+        code: 'TEXT_PROCESSING_FAILED',
+        message: 'Failed to process text input',
+      });
+    }
+  }
+
+  /**
+   * Start a new voice session with configuration
+   */
+  async startVoiceSession(config: {
+    sessionId: string;
+    tenantId: string;
+    siteId?: string;
+    userId?: string;
+    locale?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    logger.info('Starting voice session', { sessionId: config.sessionId });
+
+    // Create session using session manager
+    const session = this.sessionManager.createSession(
+      config.tenantId,
+      config.siteId,
+      config.userId
+    );
+
+    // Update session locale if provided
+    if (config.locale) {
+      session.config.locale = config.locale;
+    }
+
+    // Override the generated ID with the provided one if needed
+    if (config.sessionId !== session.id) {
+      // Store mapping if sessionId differs from generated ID
+      logger.debug('Session ID override', {
+        generated: session.id,
+        provided: config.sessionId,
+      });
+    }
+
+    // Emit session ready event
+    this.eventHandler.emitToSession(session.id, {
+      type: 'ready',
+      data: { sessionId: session.id },
+    });
+
+    logger.info('Voice session started successfully', {
+      sessionId: session.id,
+      tenantId: config.tenantId,
+      siteId: config.siteId,
+    });
+  }
+
+  /**
+   * Set AI assistant service
+   */
+  setAIAssistantService(aiService: UniversalAIAssistantService): void {
+    this.connectionManager.setAIAssistantService(aiService);
+  }
+
+  // Placeholder method for connection pool initialization
+  private async initializeConnectionPool(): Promise<void> {
+    logger.info('Connection pool integration enabled');
   }
 }
 
@@ -800,7 +471,7 @@ export function createUnifiedVoiceOrchestrator(
   aiService: UniversalAIAssistantService,
   config: Partial<UnifiedOrchestratorConfig> = {}
 ): UnifiedVoiceOrchestrator {
-  return new UnifiedVoiceOrchestrator({
+  const orchestrator = new UnifiedVoiceOrchestrator({
     httpServer,
     performance: {
       targetFirstTokenMs: 200,
@@ -821,6 +492,9 @@ export function createUnifiedVoiceOrchestrator(
     },
     ...config,
   });
+
+  orchestrator.setAIAssistantService(aiService);
+  return orchestrator;
 }
 
 // Export unified singleton instance

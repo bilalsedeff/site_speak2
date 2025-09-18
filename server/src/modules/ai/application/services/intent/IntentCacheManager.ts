@@ -225,7 +225,7 @@ export class IntentCacheManager {
         key: cacheKey,
         intent: result.intent,
         confidence: result.confidence,
-        parameters: result.parameters,
+        ...(result.parameters !== undefined && { parameters: result.parameters }),
         context: this.extractCacheableContext(request.context),
         hitCount: existing ? existing.hitCount + 1 : 1,
         lastUsed: now,
@@ -277,15 +277,15 @@ export class IntentCacheManager {
     request: IntentProcessingRequest,
     actualIntent: IntentCategory,
     wasCorrect: boolean,
-    userFeedback?: 'positive' | 'negative' | 'neutral'
+    _userFeedback?: 'positive' | 'negative' | 'neutral'
   ): Promise<void> {
     if (!this.config.enableLearning) {
       return;
     }
 
     try {
-      const cacheKey = this.generateCacheKey(request);
-      const cached = this.cache.get(cacheKey);
+      const _cacheKey = this.generateCacheKey(request);
+      const cached = this.cache.get(_cacheKey);
 
       if (cached) {
         // Update cache entry based on feedback
@@ -303,7 +303,7 @@ export class IntentCacheManager {
           }
         }
 
-        this.cache.set(cacheKey, cached);
+        this.cache.set(_cacheKey, cached);
       }
 
       // Update patterns based on feedback
@@ -318,17 +318,17 @@ export class IntentCacheManager {
           request,
           actualIntent,
           wasCorrect,
-          userFeedback
+          _userFeedback
         );
       }
 
       this.performanceMetrics.adaptations++;
 
       logger.debug('Learned from feedback', {
-        cacheKey: cacheKey.slice(0, 50),
+        cacheKey: _cacheKey.slice(0, 50),
         actualIntent,
         wasCorrect,
-        userFeedback,
+        userFeedback: _userFeedback,
       });
 
     } catch (error) {
@@ -350,7 +350,7 @@ export class IntentCacheManager {
     }
 
     return {
-      preferredIntents: this.mapToRecord(userPattern.commonPhrases),
+      preferredIntents: this.calculateIntentFrequencies(userPattern.commonPhrases),
       commonPatterns: Array.from(userPattern.commonPhrases.keys()),
       frequentlyUsedCommands: this.getFrequentCommands(userPattern),
       errorPatterns: [], // Would track common error patterns
@@ -365,7 +365,7 @@ export class IntentCacheManager {
   predictNextIntent(
     userId: string,
     recentIntents: IntentCategory[],
-    context: ContextualIntentAnalysis
+    _context: ContextualIntentAnalysis
   ): { intent: IntentCategory; confidence: number } | null {
     if (!this.config.enableLearning || !userId) {
       return null;
@@ -579,7 +579,7 @@ export class IntentCacheManager {
 
     // Fuzzy pattern matching for similar phrases
     const threshold = 0.8;
-    for (const [key, pattern] of this.patterns.entries()) {
+    for (const [_key, pattern] of this.patterns.entries()) {
       if (pattern.occurrences >= this.config.patternMinOccurrences) {
         const similarity = this.calculateTextSimilarity(normalizedText, pattern.pattern);
         if (similarity >= threshold) {
@@ -806,6 +806,36 @@ export class IntentCacheManager {
     return Array.from(userPattern.commonPhrases.keys()).slice(0, 10);
   }
 
+  private calculateIntentFrequencies(commonPhrases: Map<string, IntentCategory>): Record<IntentCategory, number> {
+    const frequencies = {} as Record<IntentCategory, number>;
+
+    // Initialize all intent categories with 0
+    const intentCategories: IntentCategory[] = [
+      'navigate_to_page', 'navigate_to_section', 'navigate_back', 'navigate_forward',
+      'scroll_to_element', 'open_menu', 'close_menu', 'click_element', 'submit_form',
+      'clear_form', 'select_option', 'toggle_element', 'drag_drop', 'copy_content',
+      'paste_content', 'edit_text', 'add_content', 'delete_content', 'replace_content',
+      'format_content', 'undo_action', 'redo_action', 'search_content', 'filter_results',
+      'sort_results', 'get_information', 'explain_feature', 'show_details', 'add_to_cart',
+      'remove_from_cart', 'view_product', 'compare_products', 'checkout_process',
+      'track_order', 'stop_action', 'cancel_operation', 'pause_process', 'resume_process',
+      'reset_state', 'save_progress', 'confirm_action', 'deny_action', 'maybe_later',
+      'need_clarification', 'help_request', 'tutorial_request', 'feedback_provide',
+      'error_report', 'unknown_intent'
+    ];
+
+    for (const intent of intentCategories) {
+      frequencies[intent] = 0;
+    }
+
+    // Count frequencies from common phrases
+    for (const intent of commonPhrases.values()) {
+      frequencies[intent] = (frequencies[intent] || 0) + 1;
+    }
+
+    return frequencies;
+  }
+
   private updatePatternFromFeedback(
     request: IntentProcessingRequest,
     actualIntent: IntentCategory,
@@ -839,7 +869,7 @@ export class IntentCacheManager {
     request: IntentProcessingRequest,
     actualIntent: IntentCategory,
     wasCorrect: boolean,
-    userFeedback?: 'positive' | 'negative' | 'neutral'
+    _userFeedback?: 'positive' | 'negative' | 'neutral'
   ): void {
     const userPattern = this.userPatterns.get(userId);
     if (!userPattern) {

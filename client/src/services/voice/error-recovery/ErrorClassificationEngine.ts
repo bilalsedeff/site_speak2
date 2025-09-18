@@ -313,6 +313,11 @@ export class ErrorClassificationEngine {
       });
     }
 
+    // Include context information in metadata
+    if (context && Object.keys(context).length > 0) {
+      metadata['context'] = context;
+    }
+
     return {
       message,
       ...(stack !== undefined && { stack }),
@@ -364,7 +369,7 @@ export class ErrorClassificationEngine {
     const name = normalizedError.name?.toLowerCase();
 
     // Voice Recognition Errors
-    if (this.isVoiceRecognitionError(message, code, additionalData)) {
+    if (this.isVoiceRecognitionError(message, code, _additionalData)) {
       if (message.includes('confidence') || message.includes('unclear')) {
         return 'VOICE_LOW_CONFIDENCE';
       }
@@ -387,7 +392,7 @@ export class ErrorClassificationEngine {
     }
 
     // Intent Understanding Errors
-    if (this.isIntentError(message, code, additionalData)) {
+    if (this.isIntentError(message, code, _additionalData)) {
       if (message.includes('ambiguous') || message.includes('unclear')) {
         return 'INTENT_AMBIGUOUS';
       }
@@ -407,7 +412,7 @@ export class ErrorClassificationEngine {
     }
 
     // Action Execution Errors
-    if (this.isActionExecutionError(message, code, additionalData)) {
+    if (this.isActionExecutionError(message, code, _additionalData)) {
       if (message.includes('not found') || message.includes('element')) {
         return 'ACTION_ELEMENT_NOT_FOUND';
       }
@@ -471,21 +476,21 @@ export class ErrorClassificationEngine {
     const voiceIndicators = ['voice', 'speech', 'audio', 'recognition', 'transcript', 'stt'];
     return voiceIndicators.some(indicator =>
       message.includes(indicator) || code?.includes(indicator)
-    ) || data?.transcriptConfidence < 0.7;
+    ) || _data?.transcriptConfidence < 0.7;
   }
 
   private isIntentError(message: string, code?: string, _data?: any): boolean { // TODO: Implement data analysis
     const intentIndicators = ['intent', 'command', 'understand', 'parse', 'classify'];
     return intentIndicators.some(indicator =>
       message.includes(indicator) || code?.includes(indicator)
-    ) || data?.intentConfidence < 0.8;
+    ) || _data?.intentConfidence < 0.8;
   }
 
   private isActionExecutionError(message: string, code?: string, _data?: any): boolean { // TODO: Implement data analysis
     const actionIndicators = ['action', 'execute', 'element', 'click', 'select', 'navigate'];
     return actionIndicators.some(indicator =>
       message.includes(indicator) || code?.includes(indicator)
-    ) || data?.actionFailed;
+    ) || _data?.actionFailed;
   }
 
   private isSystemError(message: string, code?: string, name?: string): boolean {
@@ -660,6 +665,14 @@ export class ErrorClassificationEngine {
   }
 
   private assessUserImpact(code: VoiceErrorCode, severity: ErrorSeverity, _context?: Partial<ErrorContext>): UserImpact { // TODO: Implement context-aware impact assessment
+    // High-impact error codes get escalated regardless of severity
+    const highImpactCodes: VoiceErrorCode[] = ['SYSTEM_API_FAILURE', 'ACTION_PERMISSION_DENIED', 'SYSTEM_SECURITY_RESTRICTION', 'ACTION_SERVICE_UNAVAILABLE'];
+    
+    if (highImpactCodes.includes(code)) {
+      return severity === 'critical' ? 'blocking' : 'severe';
+    }
+    
+    // Standard severity-based assessment
     if (severity === 'critical') {return 'blocking';}
     if (severity === 'high') {return 'severe';}
     if (severity === 'medium') {return 'moderate';}
@@ -741,33 +754,33 @@ export class ErrorClassificationEngine {
   }
 
   private async findAlternativeClassifications(
-    _normalizedError: any, // @ts-expect-error - Part of interface contract, implementation pending
-    _context: Partial<ErrorContext> // @ts-expect-error - Part of interface contract, implementation pending
+    _normalizedError: any, // Part of interface contract, implementation pending
+    _context: Partial<ErrorContext> // Part of interface contract, implementation pending
   ): Promise<Array<{ code: VoiceErrorCode; confidence: number; reasoning: string }>> {
     // Implementation would analyze alternative possible classifications
     return [];
   }
 
   private async analyzeContextualFactors(
-    _normalizedError: any, // @ts-expect-error - Part of interface contract, implementation pending
-    _context: Partial<ErrorContext> // @ts-expect-error - Part of interface contract, implementation pending
+    _normalizedError: any, // Part of interface contract, implementation pending
+    _context: Partial<ErrorContext> // Part of interface contract, implementation pending
   ): Promise<ContextualFactor[]> {
     // Implementation would analyze contextual factors affecting the error
     return [];
   }
 
   private async analyzeHistoricalPatterns(
-    _normalizedError: any, // @ts-expect-error - Part of interface contract, implementation pending
-    _context: Partial<ErrorContext> // @ts-expect-error - Part of interface contract, implementation pending
+    _normalizedError: any, // Part of interface contract, implementation pending
+    _context: Partial<ErrorContext> // Part of interface contract, implementation pending
   ): Promise<any> {
     // Implementation would check historical patterns
     return null;
   }
 
   private async generateRecommendations(
-    _error: VoiceError, // @ts-expect-error - Part of interface contract, implementation pending
-    _contextualFactors: ContextualFactor[], // @ts-expect-error - Part of interface contract, implementation pending
-    _historicalInsights: any // @ts-expect-error - Part of interface contract, implementation pending
+    _error: VoiceError, // Part of interface contract, implementation pending
+    _contextualFactors: ContextualFactor[], // Part of interface contract, implementation pending
+    _historicalInsights: any // Part of interface contract, implementation pending
   ): Promise<string[]> {
     // Implementation would generate recommendations
     return [];
@@ -775,7 +788,7 @@ export class ErrorClassificationEngine {
 
   private determineUrgency(
     error: VoiceError,
-    _contextualFactors: ContextualFactor[] // @ts-expect-error - Part of interface contract, implementation pending
+    _contextualFactors: ContextualFactor[] // Part of interface contract, implementation pending
   ): 'immediate' | 'prompt' | 'deferred' {
     if (error.severity === 'critical') {return 'immediate';}
     if (error.severity === 'high') {return 'prompt';}
@@ -783,8 +796,8 @@ export class ErrorClassificationEngine {
   }
 
   private calculateOverallConfidence(
-    _primaryClassification: VoiceError, // @ts-expect-error - Part of interface contract, implementation pending
-    _alternatives: any[] // @ts-expect-error - Part of interface contract, implementation pending
+    _primaryClassification: VoiceError, // Part of interface contract, implementation pending
+    _alternatives: any[] // Part of interface contract, implementation pending
   ): number {
     // Simple confidence calculation - would be more sophisticated in practice
     return 0.8;
@@ -858,22 +871,22 @@ class PerformanceTracker {
 }
 
 class ContextAnalyzer {
-  quickAnalyze(_context: Partial<ErrorContext>): string { // @ts-expect-error - Part of interface contract, implementation pending
+  quickAnalyze(_context: Partial<ErrorContext>): string { // Part of interface contract, implementation pending
     // Fast context analysis for quick classification
     return 'basic';
   }
 }
 
 class PatternLearner {
-  recordClassification(_result: ClassificationResult, _context: Partial<ErrorContext>): void { // @ts-expect-error - Part of interface contract, implementation pending
+  recordClassification(_result: ClassificationResult, _context: Partial<ErrorContext>): void { // Part of interface contract, implementation pending
     // Record classification for learning
   }
 
   async learnFromFeedback(
-    _originalClassification: ClassificationResult, // @ts-expect-error - Part of interface contract, implementation pending
-    _actualError: VoiceErrorCode, // @ts-expect-error - Part of interface contract, implementation pending
-    _userSatisfaction: number, // @ts-expect-error - Part of interface contract, implementation pending
-    _context: Partial<ErrorContext> // @ts-expect-error - Part of interface contract, implementation pending
+    _originalClassification: ClassificationResult, // Part of interface contract, implementation pending
+    _actualError: VoiceErrorCode, // Part of interface contract, implementation pending
+    _userSatisfaction: number, // Part of interface contract, implementation pending
+    _context: Partial<ErrorContext> // Part of interface contract, implementation pending
   ): Promise<void> {
     // Learn from user feedback
   }

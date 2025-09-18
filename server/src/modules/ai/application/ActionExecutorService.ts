@@ -3,13 +3,10 @@ import type { SiteAction } from '../../../shared/types.js';
 import type {
   ActionParameters,
   ActionResult,
-  ActionExecutionContext,
+  ActionExecutionContext as _ActionExecutionContext,
   ActionExecutorDependencies,
-  BrowserAutomationService,
-  APIGateway,
-  WebSocketService,
-  TypedActionResult,
-  ActionPerformanceMetrics
+  TypedActionResult as _TypedActionResult,
+  ActionPerformanceMetrics as _ActionPerformanceMetrics
 } from '../types/action-execution.types.js';
 
 const logger = createLogger({ service: 'action-executor' });
@@ -123,9 +120,8 @@ export class ActionExecutorService {
 
       // Send real-time updates to connected clients
       if (this.dependencies.websocketService) {
-        await this.dependencies.websocketService.notifyActionExecuted({
+        await this.dependencies.websocketService.broadcast(`action-executed:${request.siteId}`, {
           siteId: request.siteId,
-          tenantId: request.tenantId,
           sessionId: request.sessionId,
           action: request.actionName,
           result,
@@ -156,7 +152,10 @@ export class ActionExecutorService {
         result: null,
         executionTime,
         sideEffects: [],
-        error: errorMessage,
+        error: {
+          code: 'ACTION_EXECUTION_FAILED',
+          message: errorMessage,
+        },
       };
     }
   }
@@ -309,22 +308,24 @@ export class ActionExecutorService {
 
     // Extract API configuration from action
     // This would typically be stored in action metadata
-    const apiConfig = {
-      endpoint: parameters['endpoint'] || action.selector, // Misuse selector for endpoint
-      method: parameters['method'] || 'GET',
-      headers: parameters['headers'] || {},
-      body: parameters['body'],
-    };
+    const endpoint = String(parameters['endpoint'] || action.selector); // Ensure string
+    const methodParam = parameters['method'];
+    const method = (typeof methodParam === 'string' ? methodParam : 'GET').toLowerCase() as 'get' | 'post' | 'put' | 'delete' | 'patch';
+    // Headers parameter preserved for future implementation
+    // const _headers = (typeof parameters['headers'] === 'object' && parameters['headers'] !== null) ? parameters['headers'] as Record<string, string> : {};
+    const body = parameters['body'] as ActionParameters | undefined;
 
     try {
-      const response = await this.dependencies.apiGateway.call(apiConfig);
+      const response = method === 'get' || method === 'delete'
+        ? await this.dependencies.apiGateway[method](endpoint, body)
+        : await this.dependencies.apiGateway[method](endpoint, body);
 
       sideEffects.push({
         type: 'api_call',
-        description: `API call to ${apiConfig.endpoint}`,
+        description: `API call to ${endpoint}`,
         data: {
-          endpoint: apiConfig.endpoint,
-          method: apiConfig.method,
+          endpoint: endpoint,
+          method: method,
           status: response.status,
         },
       });

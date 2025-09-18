@@ -1,13 +1,28 @@
 import express, { Request, Response } from 'express';
+import { z } from 'zod';
 // Express Request extensions declared in server/src/types/express.d.ts — no runtime import
 import { createLogger } from '../../../shared/utils.js';
 import { getUniversalAIAssistantService } from '../application/UniversalAIAssistantService.js';
 import { authenticateRequest, requireTenantAccess, requireAdminAccess } from '../../../shared/middleware/auth.js';
 import { createRateLimiter } from '../../../shared/middleware/rateLimit.js';
+import { validateRequest } from '../../../infrastructure/middleware/validation.js';
 import { actionDispatchController } from './ActionDispatchController.js';
 
 const logger = createLogger({ service: 'ai-routes' });
 const router = express.Router();
+
+// Validation schemas
+const ExecuteActionSchema = z.object({
+  siteId: z.string(),
+  actionName: z.string(),
+  parameters: z.record(z.unknown()).optional(),
+  sessionId: z.string().optional(),
+  userId: z.string().optional(),
+});
+
+const SessionHistoryParamsSchema = z.object({
+  sessionId: z.string(),
+});
 
 /**
  * Wrapper for rate limiting middleware that accepts policy name and simplified config
@@ -19,314 +34,313 @@ function rateLimitMiddleware(_policyName: string, config: { requests: number; wi
   });
 }
 
+const ConversationRequestSchema = z.object({
+  input: z.string().min(1),
+  siteId: z.string().uuid(),
+  sessionId: z.string().uuid().optional(),
+  userId: z.string().uuid().optional(),
+  browserLanguage: z.string().optional(),
+  context: z.record(z.unknown()).optional(),
+});
+
+const ConversationStreamRequestSchema = ConversationRequestSchema;
+
+const RegisterActionsSchema = z.object({
+  siteId: z.string().uuid(),
+  actions: z.array(z.record(z.unknown())).min(1),
+});
+
+const SiteIdParamSchema = z.object({
+  siteId: z.string().uuid(),
+});
+
 /**
  * POST /api/ai/conversation
  * Process a conversation input and return AI response
  */
-router.post('/conversation', async (req: Request, res: Response) => {
-  try {
-    const { input, siteId, sessionId, userId, browserLanguage, context } = req.body;
+router.post(
+  '/conversation',
+  authenticateRequest,
+  validateRequest({ body: ConversationRequestSchema }),
+  async (req: Request, res: Response) => {
+    try {
+      const { input, siteId, sessionId, userId, browserLanguage, context } = req.body;
 
-    if (!input || !siteId) {
-      return res.status(400).json({
+      logger.info('Processing conversation request', {
+        siteId,
+        sessionId: sessionId || 'new',
+        inputLength: input.length,
+        correlationId: req.correlationId,
+      });
+
+      const tenantId = req.user!.tenantId;
+
+      const response = await getUniversalAIAssistantService().processConversation({
+        input,
+        siteId,
+        tenantId,
+        sessionId,
+        userId,
+        context: {
+          ...context,
+          browserLanguage,
+        },
+      });
+
+      res.json({
+        success: true,
+        data: response,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          requestId: req.correlationId,
+          duration: response.response.metadata.responseTime,
+        },
+      });
+    } catch (error) {
+      logger.error('Conversation processing failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        correlationId: req.correlationId,
+      });
+
+      res.status(500).json({
         success: false,
-        error: { code: 'INVALID_REQUEST', message: 'input and siteId are required' },
+        error: { code: 'PROCESSING_FAILED', message: 'Failed to process conversation' },
       });
     }
-
-    logger.info('Processing conversation request', {
-      siteId,
-      sessionId: sessionId || 'new',
-      inputLength: input.length,
-      correlationId: req.correlationId
-    });
-
-    
-
-    // Extract tenantId from request context (will be properly implemented with auth middleware)
-    const tenantId = req.headers['x-tenant-id'] as string || 'default-tenant';
-
-    const response = await getUniversalAIAssistantService().processConversation({
-      input, 
-      siteId, 
-      tenantId,
-      sessionId, 
-      userId, 
-      context: {
-        ...context,
-        browserLanguage
-      }
-    });
-
-    res.json({
-      success: true,
-      data: response,
-      metadata: {
-        timestamp: new Date().toISOString(),
-        requestId: req.correlationId,
-        duration: response.response.metadata.responseTime,
-      },
-    });
-    return;
-  } catch (error) {
-    logger.error('Conversation processing failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      correlationId: req.correlationId
-    });
-
-    res.status(500).json({
-      success: false,
-      error: { code: 'PROCESSING_FAILED', message: 'Failed to process conversation' },
-    });
-    return;
   }
-});
-
+);
 /**
  * POST /api/ai/actions/register
  * Register actions for a site
  */
-router.post('/actions/register', async (req: Request, res: Response) => {
-  try {
-    const { siteId, actions } = req.body;
+router.post(
+  '/actions/register',
+  authenticateRequest,
+  validateRequest({ body: RegisterActionsSchema }),
+  async (req: Request, res: Response) => {
+    try {
+      const { siteId, actions } = req.body;
 
-    if (!siteId || !actions || !Array.isArray(actions)) {
-      return res.status(400).json({
+      const tenantId = req.user!.tenantId;
+
+      await getUniversalAIAssistantService().registerSiteActions(siteId, tenantId, actions);
+
+      res.json({
+        success: true,
+        data: { siteId, registeredActions: actions.length, timestamp: new Date().toISOString() },
+      });
+    } catch (error) {
+      logger.error('Action registration failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        correlationId: req.correlationId,
+      });
+      res.status(500).json({
         success: false,
-        error: { code: 'INVALID_REQUEST', message: 'siteId and actions array are required' },
+        error: { code: 'REGISTRATION_FAILED', message: 'Failed to register actions' },
       });
     }
-
-    // Extract tenantId from request context (will be properly implemented with auth middleware)
-    const tenantId = req.headers['x-tenant-id'] as string || 'default-tenant';
-
-    await getUniversalAIAssistantService().registerSiteActions(siteId, tenantId, actions);
-
-    res.json({
-      success: true,
-      data: { siteId, registeredActions: actions.length, timestamp: new Date().toISOString() },
-    });
-    return;
-  } catch (error) {
-    logger.error('Action registration failed', { error, correlationId: req.correlationId });
-    res.status(500).json({
-      success: false,
-      error: { code: 'REGISTRATION_FAILED', message: 'Failed to register actions' },
-    });
-    return;
   }
-});
-
+);
 /**
  * GET /api/ai/actions/:siteId
  * Get available actions for a site
  */
-router.get('/actions/:siteId', async (req, res) => {
-  try {
-    const { siteId } = req.params;
-    const actions = getUniversalAIAssistantService().getSiteActions(siteId);
+router.get(
+  '/actions/:siteId',
+  authenticateRequest,
+  validateRequest({ params: SiteIdParamSchema }),
+  async (req: Request, res: Response) => {
+    try {
+      const { siteId } = req.params;
+      const actions = getUniversalAIAssistantService().getSiteActions(siteId!);
 
-    res.json({
-      success: true,
-      data: { siteId, actions, count: actions.length },
-    });
-  } catch (error) {
-    logger.error('Failed to get site actions', { siteId: req.params.siteId, error });
-    res.status(500).json({
-      success: false,
-      error: { code: 'FETCH_FAILED', message: 'Failed to get site actions' },
-    });
-    return;
+      res.json({
+        success: true,
+        data: { siteId, actions, count: actions.length },
+      });
+    } catch (error) {
+      logger.error('Failed to get site actions', {
+        siteId: req.params['siteId'],
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      res.status(500).json({
+        success: false,
+        error: { code: 'FETCH_FAILED', message: 'Failed to get site actions' },
+      });
+    }
   }
-});
-
+);
 /**
  * POST /api/ai/conversation/stream
  * Stream a conversation response in real-time
  */
-router.post('/conversation/stream', async (req: Request, res: Response) => {
-  try {
-    const { input, siteId, sessionId, userId, context } = req.body;
+router.post(
+  '/conversation/stream',
+  authenticateRequest,
+  validateRequest({ body: ConversationStreamRequestSchema }),
+  async (req: Request, res: Response) => {
+    try {
+      const { input, siteId, sessionId, userId, context } = req.body;
+      const tenantId = req.user!.tenantId;
 
-    if (!input || !siteId) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_REQUEST', message: 'input and siteId are required' },
+      logger.info('Starting conversation stream', {
+        siteId,
+        sessionId: sessionId || 'new',
+        correlationId: req.correlationId,
       });
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+
+      const streamGenerator = getUniversalAIAssistantService().streamConversation({
+        input,
+        siteId,
+        tenantId,
+        sessionId,
+        userId,
+        context,
+      });
+
+      for await (const chunk of streamGenerator) {
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } catch (error) {
+      logger.error('Conversation streaming failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        correlationId: req.correlationId,
+      });
+
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: { code: 'STREAM_FAILED', message: 'Failed to stream conversation' },
+        });
+      } else {
+        res.write(`data: ${JSON.stringify({ type: 'error', data: { message: 'Streaming failed' } })}\n\n`);
+        res.end();
+      }
     }
-
-    // Extract tenantId from request context (will be properly implemented with auth middleware)
-    const tenantId = req.headers['x-tenant-id'] as string || 'default-tenant';
-
-    logger.info('Starting conversation stream', {
-      siteId,
-      sessionId: sessionId || 'new',
-      correlationId: req.correlationId
-    });
-
-    // Set up Server-Sent Events
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Cache-Control',
-    });
-
-    const streamGenerator = getUniversalAIAssistantService().streamConversation({
-      input,
-      siteId,
-      tenantId,
-      sessionId,
-      userId,
-      context,
-    });
-
-    for await (const chunk of streamGenerator) {
-      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-    }
-
-    res.write('data: [DONE]\n\n');
-    res.end();
-    return;
-  } catch (error) {
-    logger.error('Conversation streaming failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      correlationId: req.correlationId
-    });
-
-    res.write(`data: ${JSON.stringify({
-      type: 'error',
-      data: { message: 'Streaming failed' },
-      sessionId: req.body.sessionId || 'unknown',
-    })}\n\n`);
-    res.end();
-    return;
   }
-});
-
+);
 /**
  * POST /api/ai/actions/execute
  * Execute a specific action directly
  */
-router.post('/actions/execute', async (req: Request, res: Response) => {
-  try {
-    const { siteId, actionName, parameters, sessionId, userId } = req.body;
+router.post(
+  '/actions/execute',
+  authenticateRequest,
+  validateRequest({ body: ExecuteActionSchema }),
+  async (req: Request, res: Response) => {
+    try {
+      const { siteId, actionName, parameters, sessionId, userId } = req.body;
 
-    if (!siteId || !actionName) {
-      return res.status(400).json({
+      const tenantId = req.user!.tenantId;
+
+      logger.info('Executing direct action', {
+        siteId,
+        actionName,
+        correlationId: req.correlationId,
+      });
+
+      const result = await getUniversalAIAssistantService().executeAction({
+        siteId,
+        tenantId,
+        actionName,
+        parameters: parameters || {},
+        sessionId,
+        userId,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          requestId: req.correlationId,
+        },
+      });
+    } catch (error) {
+      logger.error('Action execution failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        correlationId: req.correlationId,
+      });
+
+      res.status(500).json({
         success: false,
-        error: { code: 'INVALID_REQUEST', message: 'siteId and actionName are required' },
+        error: { code: 'EXECUTION_FAILED', message: 'Failed to execute action' },
       });
     }
-
-    // Extract tenantId from request context (will be properly implemented with auth middleware)
-    const tenantId = req.headers['x-tenant-id'] as string || 'default-tenant';
-
-    logger.info('Executing direct action', {
-      siteId,
-      actionName,
-      correlationId: req.correlationId
-    });
-
-    const result = await getUniversalAIAssistantService().executeAction({
-      siteId,
-      tenantId,
-      actionName,
-      parameters: parameters || {},
-      sessionId,
-      userId,
-    });
-
-    res.json({
-      success: true,
-      data: result,
-      metadata: {
-        timestamp: new Date().toISOString(),
-        requestId: req.correlationId,
-      },
-    });
-    return;
-  } catch (error) {
-    logger.error('Action execution failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      correlationId: req.correlationId
-    });
-
-    res.status(500).json({
-      success: false,
-      error: { code: 'EXECUTION_FAILED', message: 'Failed to execute action' },
-    });
-    return;
   }
-});
-
+);
 /**
  * GET /api/ai/sessions/:sessionId/history
  * Get session history
  */
-router.get('/sessions/:sessionId/history', async (req: Request, res: Response) => {
-  try {
-    const { sessionId } = req.params;
-    
-    if (!sessionId) {
-      return res.status(400).json({
+router.get(
+  '/sessions/:sessionId/history',
+  authenticateRequest,
+  validateRequest({ params: SessionHistoryParamsSchema }),
+  async (req: Request, res: Response) => {
+    try {
+      const { sessionId } = req.params;
+
+      const history = await getUniversalAIAssistantService().getSessionHistory(sessionId!);
+
+      res.json({
+        success: true,
+        data: { sessionId, history },
+      });
+    } catch (error) {
+      logger.error('Failed to get session history', {
+        sessionId: req.params['sessionId'],
+        error: error instanceof Error ? error.message : 'Unknown error',
+        correlationId: req.correlationId,
+      });
+
+      res.status(500).json({
         success: false,
-        error: { code: 'INVALID_REQUEST', message: 'sessionId is required' },
+        error: { code: 'HISTORY_FETCH_FAILED', message: 'Failed to get session history' },
       });
     }
-    
-    const history = await getUniversalAIAssistantService().getSessionHistory(sessionId);
-
-    res.json({
-      success: true,
-      data: { sessionId, history },
-    });
-    return;
-  } catch (error) {
-    logger.error('Failed to get session history', { 
-      sessionId: req.params['sessionId'], 
-      error,
-      correlationId: req.correlationId 
-    });
-    
-    res.status(500).json({
-      success: false,
-      error: { code: 'HISTORY_FETCH_FAILED', message: 'Failed to get session history' },
-    });
-    return;
   }
-});
-
+);
 /**
  * GET /api/ai/metrics
  * Get service metrics and statistics
  */
-router.get('/metrics', async (req: Request, res: Response) => {
-  try {
-    const metrics = getUniversalAIAssistantService().getMetrics();
-    
-    res.json({
-      success: true,
-      data: {
-        metrics,
-        timestamp: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    logger.error('Failed to get AI metrics', { 
-      error,
-      correlationId: req.correlationId 
-    });
-    
-    res.status(500).json({
-      success: false,
-      error: { code: 'METRICS_FETCH_FAILED', message: 'Failed to get metrics' },
-    });
-    return;
-  }
-});
+router.get(
+  '/metrics',
+  authenticateRequest,
+  async (req: Request, res: Response) => {
+    try {
+      const metrics = getUniversalAIAssistantService().getMetrics();
 
+      res.json({
+        success: true,
+        data: {
+          metrics,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to get AI metrics', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        correlationId: req.correlationId,
+      });
+
+      res.status(500).json({
+        success: false,
+        error: { code: 'METRICS_FETCH_FAILED', message: 'Failed to get metrics' },
+      });
+    }
+  }
+);
 /**
  * GET /api/ai/health
  */

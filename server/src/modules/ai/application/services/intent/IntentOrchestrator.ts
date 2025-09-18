@@ -64,7 +64,6 @@ export class IntentOrchestrator {
   private cacheManager!: IntentCacheManager;
 
   private processingQueue = new Map<string, Promise<IntentProcessingResponse>>();
-  private performanceMonitor = new Map<string, number[]>(); // Track processing times
   private errorTracker = new Map<string, { count: number; lastError: Date }>();
 
   private metrics: OrchestrationMetrics = {
