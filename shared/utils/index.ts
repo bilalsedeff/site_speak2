@@ -5,3 +5,4 @@ export * from './crypto';
 export * from './date';
 export * from './string';
 export * from './logger';
+export * from './buffer';

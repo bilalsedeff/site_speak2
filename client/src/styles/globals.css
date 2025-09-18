@@ -484,3 +484,304 @@ html {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* ============================================================================
+   CONFIRMATION SYSTEM STYLES
+   ============================================================================ */
+
+@layer components {
+  /* Confirmation Dialog Styles */
+  .confirmation-dialog {
+    @apply fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
+    @apply w-full max-w-md max-h-[85vh] overflow-hidden;
+    @apply bg-background border border-border rounded-xl shadow-2xl;
+    @apply focus:outline-none;
+  }
+
+  .confirmation-dialog-overlay {
+    @apply fixed inset-0 z-50 bg-black/50 backdrop-blur-sm;
+  }
+
+  /* Risk Level Indicators */
+  .risk-low {
+    @apply text-green-600 bg-green-50 border-green-200;
+  }
+
+  .risk-medium {
+    @apply text-blue-600 bg-blue-50 border-blue-200;
+  }
+
+  .risk-high {
+    @apply text-amber-600 bg-amber-50 border-amber-200;
+  }
+
+  .risk-critical {
+    @apply text-red-600 bg-red-50 border-red-200;
+  }
+
+  .dark .risk-low {
+    @apply text-green-400 bg-green-950/30 border-green-800;
+  }
+
+  .dark .risk-medium {
+    @apply text-blue-400 bg-blue-950/30 border-blue-800;
+  }
+
+  .dark .risk-high {
+    @apply text-amber-400 bg-amber-950/30 border-amber-800;
+  }
+
+  .dark .risk-critical {
+    @apply text-red-400 bg-red-950/30 border-red-800;
+  }
+
+  /* Voice Confirmation Styles */
+  .voice-confirmation-prompt {
+    @apply bg-card border border-border rounded-xl shadow-lg p-6;
+    @apply max-w-md mx-auto;
+  }
+
+  .voice-status-indicator {
+    @apply relative w-20 h-20 rounded-full flex items-center justify-center;
+    @apply transition-all duration-300 ease-in-out;
+  }
+
+  .voice-status-listening {
+    @apply bg-green-100 border-2 border-green-300;
+    animation: voice-pulse-listening 1.5s ease-in-out infinite;
+  }
+
+  .voice-status-speaking {
+    @apply bg-blue-100 border-2 border-blue-300;
+  }
+
+  .voice-status-processing {
+    @apply bg-amber-100 border-2 border-amber-300;
+  }
+
+  .voice-status-error {
+    @apply bg-red-100 border-2 border-red-300;
+  }
+
+  .dark .voice-status-listening {
+    @apply bg-green-950/30 border-green-700;
+  }
+
+  .dark .voice-status-speaking {
+    @apply bg-blue-950/30 border-blue-700;
+  }
+
+  .dark .voice-status-processing {
+    @apply bg-amber-950/30 border-amber-700;
+  }
+
+  .dark .voice-status-error {
+    @apply bg-red-950/30 border-red-700;
+  }
+
+  /* Multi-Step Confirmation */
+  .multi-step-progress {
+    @apply w-full bg-muted rounded-full h-2;
+  }
+
+  .multi-step-progress-bar {
+    @apply h-2 bg-primary rounded-full transition-all duration-300 ease-out;
+  }
+
+  .step-indicator {
+    @apply flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium;
+    @apply transition-colors whitespace-nowrap;
+  }
+
+  .step-indicator-current {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .step-indicator-completed {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .step-indicator-skipped {
+    @apply bg-amber-100 text-amber-700;
+  }
+
+  .step-indicator-pending {
+    @apply bg-muted text-muted-foreground;
+  }
+
+  .dark .step-indicator-completed {
+    @apply bg-green-950/30 text-green-400;
+  }
+
+  .dark .step-indicator-skipped {
+    @apply bg-amber-950/30 text-amber-400;
+  }
+
+  /* Action Preview Styles */
+  .action-preview {
+    @apply border border-border rounded-lg overflow-hidden;
+  }
+
+  .state-preview-header {
+    @apply flex items-center justify-between p-3 bg-muted/50 hover:bg-muted/80;
+    @apply transition-colors cursor-pointer;
+  }
+
+  .state-card-before {
+    @apply border-blue-200 bg-blue-50;
+  }
+
+  .state-card-after {
+    @apply border-green-200 bg-green-50;
+  }
+
+  .dark .state-card-before {
+    @apply border-blue-800 bg-blue-950/30;
+  }
+
+  .dark .state-card-after {
+    @apply border-green-800 bg-green-950/30;
+  }
+
+  .diff-added {
+    @apply border-green-200 bg-green-50 text-green-800;
+  }
+
+  .diff-removed {
+    @apply border-red-200 bg-red-50 text-red-800;
+  }
+
+  .diff-changed {
+    @apply border-amber-200 bg-amber-50 text-amber-800;
+  }
+
+  .dark .diff-added {
+    @apply border-green-800 bg-green-950/30 text-green-300;
+  }
+
+  .dark .diff-removed {
+    @apply border-red-800 bg-red-950/30 text-red-300;
+  }
+
+  .dark .diff-changed {
+    @apply border-amber-800 bg-amber-950/30 text-amber-300;
+  }
+
+  /* Confirmation Button Variants */
+  .confirmation-button-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+    @apply focus:ring-2 focus:ring-primary focus:ring-offset-2;
+  }
+
+  .confirmation-button-destructive {
+    @apply bg-destructive text-destructive-foreground hover:bg-destructive/90;
+    @apply focus:ring-2 focus:ring-destructive focus:ring-offset-2;
+  }
+
+  .confirmation-button-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80;
+    @apply focus:ring-2 focus:ring-secondary focus:ring-offset-2;
+  }
+
+  /* Loading States */
+  .confirmation-loading {
+    @apply animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full;
+  }
+
+  /* Timeout Progress Indicator */
+  .timeout-progress {
+    @apply w-full bg-muted rounded-full h-1;
+  }
+
+  .timeout-progress-bar {
+    @apply h-1 bg-primary rounded-full transition-all duration-100 ease-linear;
+  }
+}
+
+/* ============================================================================
+   CONFIRMATION SYSTEM ANIMATIONS
+   ============================================================================ */
+
+@keyframes voice-pulse-listening {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+  }
+}
+
+@keyframes confirmation-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+@keyframes risk-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes step-complete {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+/* ============================================================================
+   ACCESSIBILITY ENHANCEMENTS
+   ============================================================================ */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .confirmation-dialog {
+    @apply border-2 border-foreground;
+  }
+
+  .risk-low, .risk-medium, .risk-high, .risk-critical {
+    @apply border-2;
+  }
+
+  .voice-status-indicator {
+    @apply border-2 border-foreground;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .voice-status-listening {
+    animation: none;
+  }
+
+  .confirmation-loading {
+    @apply animate-none;
+  }
+
+  .step-indicator,
+  .multi-step-progress-bar,
+  .timeout-progress-bar {
+    @apply transition-none;
+  }
+
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Screen reader optimizations */
+.sr-only {
+  @apply absolute w-px h-px p-0 -m-px overflow-hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.confirmation-system .sr-only:focus {
+  @apply static w-auto h-auto p-2 m-0 overflow-visible;
+  clip: auto;
+  white-space: normal;
+}

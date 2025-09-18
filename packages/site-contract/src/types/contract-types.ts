@@ -2,6 +2,13 @@
  * Core types for the site contract system
  */
 
+import {
+  ComponentPropsDefinition,
+  ComponentPropValue,
+  JsonLdSchema,
+  VoiceResultObject
+} from '../../../../shared/types/core-engine.types';
+
 export interface SiteContract {
   version: string
   generatedAt: string
@@ -32,7 +39,7 @@ export interface ComponentContract {
   category: string
   instances: ComponentInstance[]
   metadata: {
-    props: Record<string, any>
+    props: ComponentPropsDefinition
     aria: ComponentAriaContract
     jsonld?: ComponentJsonLdContract
     actions?: ComponentActionContract[]
@@ -42,7 +49,7 @@ export interface ComponentContract {
 export interface ComponentInstance {
   id: string
   selector: string
-  props: Record<string, any>
+  props: Record<string, ComponentPropValue>
   location: {
     page: string
     xpath: string
@@ -50,9 +57,9 @@ export interface ComponentInstance {
   }
   rendered: {
     html: string
-    jsonld?: Record<string, any>
-    ariaAttributes: Record<string, any>
-    actionAttributes: Record<string, any>
+    jsonld?: JsonLdSchema
+    ariaAttributes: Record<string, string | boolean | null>
+    actionAttributes: Record<string, string | number | boolean>
   }
 }
 
@@ -68,9 +75,9 @@ export interface ComponentAriaContract {
 
 export interface ComponentJsonLdContract {
   schemaType: string
-  template: Record<string, any>
+  template: JsonLdSchema
   propMapping: Record<string, string>
-  conditions?: Record<string, any>
+  conditions?: Record<string, string | number | boolean>
 }
 
 export interface ComponentActionContract {
@@ -94,7 +101,7 @@ export interface ActionParameter {
     pattern?: string
     enum?: string[]
   }
-  defaultValue?: any
+  defaultValue?: ComponentPropValue
 }
 
 export interface ActionSecurity {
@@ -219,7 +226,7 @@ export interface JsonLdEntity {
   page: string
   selector: string
   component: string
-  data: Record<string, any>
+  data: JsonLdSchema
   validation: {
     valid: boolean
     issues: JsonLdIssue[]
@@ -237,7 +244,7 @@ export interface JsonLdIssue {
 export interface JsonLdBlock {
   page: string
   type: string
-  content: Record<string, any>
+  content: JsonLdSchema
   position: 'head' | 'body'
   minified: boolean
 }
@@ -381,7 +388,7 @@ export interface SitemapEntry {
   links: Array<{ href: string; text: string; isInternal: boolean; hasTitle: boolean }>
   images: Array<{ src: string; alt: string; hasAlt: boolean; isDecorative: boolean }>
   structuredData: {
-    jsonLd: any[]
+    jsonLd: JsonLdSchema[]
     hasMicrodata: boolean
     hasRdfa: boolean
   }
@@ -398,7 +405,7 @@ export interface SitemapValidationIssue {
   severity: 'high' | 'medium' | 'low'
   message: string
   pageUrl: string
-  details: Record<string, any>
+  details: Record<string, string | number | boolean | null>
 }
 
 export interface SitemapStats {
@@ -433,7 +440,7 @@ export interface EnhancedAriaIssue {
   pageUrl: string
   element: string | null
   wcagLevel: 'A' | 'AA' | 'AAA'
-  details: Record<string, any>
+  details: Record<string, string | number | boolean | null>
 }
 
 export interface AriaLandmark {

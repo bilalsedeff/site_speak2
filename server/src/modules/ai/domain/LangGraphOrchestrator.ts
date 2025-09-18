@@ -4,6 +4,11 @@ import { ChatOpenAI } from '@langchain/openai';
 import { createLogger } from '../../../shared/utils.js';
 import { config } from '../../../infrastructure/config';
 import { SiteAction, ActionParameter } from '../../../shared/types';
+import {
+  ToolResult,
+  ActionPlanItem,
+  ActionParameters
+} from '../../../../../shared/types';
 import { securityGuards } from '../application/services/SecurityGuards';
 import { privacyGuards } from '../application/services/PrivacyGuards';
 import { resourceBudgetsService } from '../application/services/ResourceBudgets';
@@ -36,7 +41,7 @@ const SessionState = Annotation.Root({
   intent: Annotation<{
     category: string;
     confidence: number;
-    extractedEntities: Record<string, unknown>;
+    extractedEntities: Record<string, string | number | boolean | null>;
   } | null>({
     reducer: (x, y) => y ?? x,
     default: () => null
@@ -46,27 +51,16 @@ const SessionState = Annotation.Root({
     content: string;
     url: string;
     score: number;
-    metadata: Record<string, unknown>;
+    metadata: Record<string, string | number | boolean | null>;
   }>>({
     reducer: (x, y) => y.length > 0 ? y : x,
     default: () => []
   }),
-  actionPlan: Annotation<Array<{
-    actionName: string;
-    parameters: Record<string, unknown>;
-    reasoning: string;
-    riskLevel: string;
-  }>>({
+  actionPlan: Annotation<ActionPlanItem[]>({
     reducer: (x, y) => y.length > 0 ? y : x,
     default: () => []
   }),
-  toolResults: Annotation<Array<{
-    toolName: string;
-    input: Record<string, unknown>;
-    output: unknown;
-    success: boolean;
-    error?: string;
-  }>>({
+  toolResults: Annotation<ToolResult[]>({
     reducer: (x, y) => x.concat(y),
     default: () => []
   }),
@@ -172,28 +166,17 @@ export interface SessionStateType {
   intent: {
     category: string;
     confidence: number;
-    extractedEntities: Record<string, unknown>;
+    extractedEntities: Record<string, string | number | boolean | null>;
   } | null;
   kbResults: Array<{
     id: string;
     content: string;
     url: string;
     score: number;
-    metadata: Record<string, unknown>;
+    metadata: Record<string, string | number | boolean | null>;
   }>;
-  actionPlan: Array<{
-    actionName: string;
-    parameters: Record<string, unknown>;
-    reasoning: string;
-    riskLevel: string;
-  }>;
-  toolResults: Array<{
-    toolName: string;
-    input: Record<string, unknown>;
-    output: unknown;
-    success: boolean;
-    error?: string;
-  }>;
+  actionPlan: ActionPlanItem[];
+  toolResults: ToolResult[];
   finalResponse: {
     text: string;
     audioUrl?: string;
@@ -259,13 +242,13 @@ export interface LangGraphDependencies {
       locale: string;
       tenantId?: string;
       threshold?: number;
-      filters?: Record<string, unknown>;
+      filters?: Record<string, string | number | boolean | null>;
     }): Promise<Array<{
       id: string;
       content: string;
       url: string;
       score: number;
-      metadata: Record<string, unknown>;
+      metadata: Record<string, string | number | boolean | null>;
       chunkIndex?: number;
       relevantSnippet?: string;
     }>>;
@@ -274,7 +257,7 @@ export interface LangGraphDependencies {
     execute(params: {
       siteId: string;
       actionName: string;
-      parameters: Record<string, unknown>;
+      parameters: ActionParameters;
       sessionId?: string;
       userId?: string;
       tenantId?: string;
@@ -283,17 +266,17 @@ export interface LangGraphDependencies {
       result: unknown;
       executionTime: number;
       error?: string;
-      metadata?: Record<string, unknown>;
+      metadata?: Record<string, string | number | boolean | null>;
     }>;
     getAvailableActions(siteId: string): Array<{
       name: string;
       description: string;
-      parameters: Record<string, unknown>;
+      parameters: Record<string, string | number | boolean | null>;
       confirmation?: boolean;
     }>;
   };
   languageDetector: {
-    detect(text: string, browserLanguage?: string, context?: Record<string, unknown>): Promise<string>;
+    detect(text: string, browserLanguage?: string, context?: Record<string, string | number | boolean | null>): Promise<string>;
   };
 }
 
@@ -314,7 +297,7 @@ export class LangGraphOrchestrator {
     private dependencies: LangGraphDependencies
   ) {
     this.llm = new ChatOpenAI({
-      modelName: config.AI_MODEL || 'gpt-4o',
+      model: config.AI_MODEL || 'gpt-4o',
       temperature: 0.1,
       maxTokens: 2000,
     });
@@ -426,14 +409,15 @@ export class LangGraphOrchestrator {
     userInput: string;
     sessionId: string;
     siteId: string;
+    tenantId?: string;
   }): AsyncGenerator<{ node: string; state: Partial<SessionStateType> }> {
     const config = { configurable: { thread_id: input.sessionId } };
     
     const initialState: Partial<SessionStateType> = {
       sessionId: input.sessionId,
       siteId: input.siteId,
+      tenantId: input.tenantId || 'default-tenant',
       userInput: input.userInput,
-      messages: [new HumanMessage(input.userInput)],
     };
 
     try {
@@ -623,6 +607,7 @@ export class LangGraphOrchestrator {
         query: searchQuery,
         topK: 5,
         locale: state.detectedLanguage || 'en-US',
+        tenantId: state.tenantId,
       });
 
       logger.info('KB retrieved', { 
@@ -686,7 +671,7 @@ export class LangGraphOrchestrator {
       const actionPlan = JSON.parse(response.content as string);
       
       // Check if any action requires confirmation
-      const needsConfirmation = actionPlan.some((action: any) => {
+      const needsConfirmation = actionPlan.some((action: ActionPlanItem) => {
         const actionDef = this.availableActions.get(action.actionName);
         return actionDef?.confirmation || action.riskLevel === 'high';
       });
@@ -711,7 +696,7 @@ export class LangGraphOrchestrator {
    * Node: Execute tool calls
    */
   private async toolCall(state: SessionStateType): Promise<Partial<SessionStateType>> {
-    const newToolResults: any[] = [];
+    const newToolResults: ToolResult[] = [];
 
     for (const action of state.actionPlan) {
       try {
@@ -910,6 +895,20 @@ export class LangGraphOrchestrator {
       };
 
       const securityResult = await securityGuards.validateSecurity(securityValidationRequest);
+
+      if (!securityResult.allowed) {
+        const issueSummary = (securityResult.issues || [])
+          .map(issue => `${issue.type}: ${issue.description}`)
+          .join('; ');
+        const blockedMessage = issueSummary
+          ? `Security policy blocked this request: ${issueSummary}`
+          : 'Security policy blocked this request.';
+
+        return {
+          securityResult,
+          error: blockedMessage,
+        };
+      }
 
       return { securityResult };
     } catch (error) {
@@ -1218,14 +1217,7 @@ export class LangGraphOrchestrator {
    * Validate and enhance action plan
    * TODO: Implement in future iterations
    */
-  private validateAndEnhanceActionPlan(rawPlan: any[], state: SessionStateType): Array<{
-    actionName: string;
-    parameters: Record<string, unknown>;
-    reasoning: string;
-    riskLevel: string;
-    priority?: number;
-    dependsOn?: string[];
-  }> {
+  private validateAndEnhanceActionPlan(rawPlan: unknown[], state: SessionStateType): ActionPlanItem[] {
     if (!Array.isArray(rawPlan)) {
       logger.warn('Invalid action plan format, using empty plan', {
         sessionId: state.sessionId,
@@ -1234,27 +1226,38 @@ export class LangGraphOrchestrator {
       return [];
     }
 
-    const validatedPlan = [];
-    
+    const validatedPlan: ActionPlanItem[] = [];
+
     for (const action of rawPlan) {
+      // Type guard to check if action has the required properties
+      if (!action || typeof action !== 'object' || !('actionName' in action)) {
+        logger.warn('Invalid action format, skipping', {
+          sessionId: state.sessionId,
+          action
+        });
+        continue;
+      }
+
+      const actionObj = action as { actionName: string; parameters?: unknown; reasoning?: string; riskLevel?: string; priority?: number; dependsOn?: string[] };
+
       // Validate action exists
-      if (!this.availableActions.has(action.actionName)) {
+      if (!this.availableActions.has(actionObj.actionName)) {
         logger.warn('Action not available, skipping', {
           sessionId: state.sessionId,
-          actionName: action.actionName,
+          actionName: actionObj.actionName,
           availableActions: Array.from(this.availableActions.keys())
         });
         continue;
       }
 
       // Enhance with defaults and validation
-      const enhancedAction = {
-        actionName: action.actionName,
-        parameters: action.parameters || {},
-        reasoning: action.reasoning || 'No reasoning provided',
-        riskLevel: ['low', 'medium', 'high'].includes(action.riskLevel) ? action.riskLevel : 'medium',
-        priority: action.priority || 1,
-        dependsOn: Array.isArray(action.dependsOn) ? action.dependsOn : []
+      const enhancedAction: ActionPlanItem = {
+        actionName: actionObj.actionName,
+        parameters: (actionObj.parameters && typeof actionObj.parameters === 'object' ? actionObj.parameters : {}) as ActionParameters,
+        reasoning: actionObj.reasoning || 'No reasoning provided',
+        riskLevel: (['low', 'medium', 'high', 'critical'] as const).includes(actionObj.riskLevel as any) ? actionObj.riskLevel as ActionPlanItem['riskLevel'] : 'medium',
+        priority: actionObj.priority || 1,
+        dependsOn: Array.isArray(actionObj.dependsOn) ? actionObj.dependsOn : []
       };
 
       // Apply security-based risk adjustments
@@ -1262,7 +1265,7 @@ export class LangGraphOrchestrator {
         enhancedAction.riskLevel = 'medium';
         logger.info('Elevated action risk level due to security assessment', {
           sessionId: state.sessionId,
-          actionName: action.actionName
+          actionName: enhancedAction.actionName
         });
       }
 
@@ -1279,7 +1282,13 @@ export class LangGraphOrchestrator {
   getAvailableActionsWithMetadata(): Array<{
     name: string;
     description: string;
-    parameters: Record<string, unknown>;
+    parameters: Record<string, {
+      type: string;
+      required: boolean;
+      description?: string;
+      default?: unknown;
+      validation?: unknown;
+    }>;
     confirmation: boolean;
     riskLevel: string;
     category: string;
@@ -1295,11 +1304,23 @@ export class LangGraphOrchestrator {
   }
 
   /**
-   * Convert ActionParameter[] to Record<string, unknown> for compatibility
+   * Convert ActionParameter[] to Record<string, object> for compatibility
    */
-  private convertParametersToRecord(parameters: ActionParameter[]): Record<string, unknown> {
-    const record: Record<string, unknown> = {};
-    
+  private convertParametersToRecord(parameters: ActionParameter[]): Record<string, {
+    type: string;
+    required: boolean;
+    description?: string;
+    default?: unknown;
+    validation?: unknown;
+  }> {
+    const record: Record<string, {
+      type: string;
+      required: boolean;
+      description?: string;
+      default?: unknown;
+      validation?: unknown;
+    }> = {};
+
     for (const param of parameters) {
       record[param.name] = {
         type: param.type,
@@ -1309,7 +1330,7 @@ export class LangGraphOrchestrator {
         ...(param.validation && { validation: param.validation })
       };
     }
-    
+
     return record;
   }
 

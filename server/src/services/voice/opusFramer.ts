@@ -12,7 +12,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { createLogger } from '../../shared/utils.js';
+import { createLogger, toArrayBuffer } from '../../shared/utils.js';
 
 const logger = createLogger({ service: 'opus-framer' });
 
@@ -331,9 +331,7 @@ export class OpusFramer extends EventEmitter {
       
       if (encodedFrame) {
         const buffer = encodedFrame.data.buffer;
-        const arrayBuffer = buffer instanceof SharedArrayBuffer 
-          ? (buffer.slice(0) as unknown as ArrayBuffer) 
-          : buffer;
+        const arrayBuffer = toArrayBuffer(buffer);
         return arrayBuffer.slice(
           encodedFrame.data.byteOffset,
           encodedFrame.data.byteOffset + encodedFrame.data.byteLength

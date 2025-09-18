@@ -13,6 +13,7 @@ const logger = createLogger({ service: 'ai-orchestration' });
 export interface ConversationRequest {
   input: string;
   siteId: string;
+  tenantId?: string;
   sessionId?: string;
   userId?: string;
   browserLanguage?: string;
@@ -79,6 +80,7 @@ export class AIOrchestrationService {
           query: string;
           topK: number;
           locale: string;
+          tenantId?: string;
         }): Promise<Array<{
           id: string;
           content: string;
@@ -169,7 +171,7 @@ export class AIOrchestrationService {
           userInput: request.input,
           sessionId,
           siteId: request.siteId,
-          tenantId: request.userId || 'default-tenant', // Use userId as tenantId fallback
+          tenantId: request.tenantId ?? 'default-tenant',
           ...(request.userId !== undefined && { userId: request.userId }),
           userPreferences: {
             language: request.browserLanguage || 'en-US',
@@ -196,6 +198,7 @@ export class AIOrchestrationService {
           userInput: request.input,
           sessionId,
           siteId: request.siteId,
+          tenantId: request.tenantId ?? 'default-tenant',
         });
 
         // Build standard response
@@ -258,6 +261,7 @@ export class AIOrchestrationService {
         userInput: request.input,
         sessionId,
         siteId: request.siteId,
+        tenantId: request.tenantId ?? 'default-tenant',
       })) {
         yield {
           type: 'progress',
@@ -331,6 +335,7 @@ export class AIOrchestrationService {
     parameters: Record<string, any>;
     sessionId?: string;
     userId?: string;
+    tenantId?: string;
   }): Promise<{
     success: boolean;
     result: any;
@@ -339,6 +344,7 @@ export class AIOrchestrationService {
   }> {
     logger.info('Executing action directly', {
       siteId: request.siteId,
+      tenantId: request.tenantId,
       actionName: request.actionName
     });
 
@@ -348,6 +354,7 @@ export class AIOrchestrationService {
       parameters: request.parameters,
       ...(request.sessionId !== undefined && { sessionId: request.sessionId }),
       ...(request.userId !== undefined && { userId: request.userId }),
+      ...(request.tenantId !== undefined && { tenantId: request.tenantId }),
     });
 
     return {
@@ -535,41 +542,72 @@ export class AIOrchestrationService {
    * Build response from Universal Agent result
    */
   private buildUniversalAgentResponse(
-    sessionId: string, 
-    result: any, 
+    sessionId: string,
+    result: any,
     startTime: number
   ): ConversationResponse {
     const responseTime = Date.now() - startTime;
-    
-    // Extract response text from Universal Agent result
-    const responseText = result.finalResponse || 
-      result.clarificationQuestion || 
+
+    const rawFinalResponse = result.finalResponse;
+    const finalPayload = typeof rawFinalResponse === 'string'
+      ? { text: rawFinalResponse }
+      : rawFinalResponse ?? null;
+
+    const responseText =
+      finalPayload?.text ??
+      result.clarificationQuestion ??
       "I'm working on your request...";
 
-    // Extract citations from search results
-    const citations = (result.searchResults || []).slice(0, 3).map((item: any) => ({
-      url: item.url,
-      title: item.title || item.metadata?.title || 'Untitled',
-      snippet: item.relevantSnippet || item.content?.substring(0, 200) + '...' || ''
-    }));
+    const citations =
+      Array.isArray(finalPayload?.citations) && finalPayload.citations.length > 0
+        ? finalPayload.citations
+        : (result.searchResults || []).slice(0, 3).map((item: any) => ({
+            url: item.url,
+            title: item.title || item.metadata?.title || 'Untitled',
+            snippet:
+              item.relevantSnippet || item.content?.substring(0, 200) + '...' || ''
+          }));
 
-    // Build UI hints from slot frame and tool results
+    const baseUiHints =
+      finalPayload?.uiHints && typeof finalPayload.uiHints === 'object'
+        ? finalPayload.uiHints
+        : {};
+
     const uiHints: any = {
-      highlightElements: [],
-      scrollToElement: undefined,
-      showModal: false,
-      confirmationRequired: result.needsConfirmation || false
+      ...baseUiHints,
+      confirmationRequired:
+        result.needsConfirmation ??
+        baseUiHints.confirmationRequired ??
+        false,
     };
 
-    // Add navigation hints from executed tools
-    if (result.executedTools) {
-      const navTool = result.executedTools.find((tool: any) => 
-        tool.toolName.includes('navigate') || tool.toolName.includes('scroll')
+    if (!Array.isArray(uiHints.highlightElements)) {
+      uiHints.highlightElements = [];
+    }
+
+    if (uiHints.scrollToElement === undefined && result.executedTools) {
+      const navTool = result.executedTools.find((tool: any) =>
+        typeof tool.toolName === 'string' &&
+        (tool.toolName.includes('navigate') || tool.toolName.includes('scroll'))
       );
       if (navTool) {
         uiHints.scrollToElement = navTool.parameters?.selector;
       }
     }
+
+    const tokensUsed =
+      (finalPayload?.metadata && typeof finalPayload.metadata.tokensUsed === 'number'
+        ? finalPayload.metadata.tokensUsed
+        : undefined) ??
+      result.performanceMetrics?.tokensUsed ??
+      0;
+
+    const actionsTaken = result.executedTools?.length ?? 0;
+
+    const language =
+      result.conversationContext?.userPreferences?.language ||
+      finalPayload?.metadata?.language ||
+      'en-US';
 
     return {
       sessionId,
@@ -579,20 +617,22 @@ export class AIOrchestrationService {
         uiHints,
         metadata: {
           responseTime,
-          tokensUsed: result.performanceMetrics?.tokensUsed || 0,
-          actionsTaken: result.executedTools?.length || 0,
-          language: result.conversationContext?.userPreferences?.language || 'en-US',
-          intent: result.slotFrame?.intent,
+          tokensUsed,
+          actionsTaken,
+          language,
+          ...(result.slotFrame?.intent ? { intent: result.slotFrame.intent } : {}),
         },
       },
-      actions: result.executedTools?.map((tool: any) => ({
-        name: tool.toolName,
-        parameters: tool.parameters,
-        success: tool.success,
-        executionTime: tool.executionTime
-      })) || []
+      actions:
+        result.executedTools?.map((tool: any) => ({
+          name: tool.toolName,
+          parameters: tool.parameters,
+          success: tool.success,
+          executionTime: tool.executionTime,
+        })) || [],
     };
   }
+
 
   /**
    * Load available actions for a site
@@ -708,6 +748,7 @@ export class AIOrchestrationService {
           parameters: params.parameters,
           ...(params.sessionId !== undefined && { sessionId: params.sessionId }),
           ...(params.userId !== undefined && { userId: params.userId }),
+          ...(params.tenantId !== undefined && { tenantId: params.tenantId }),
         });
 
         return {
@@ -764,7 +805,7 @@ export const aiOrchestrationService = new AIOrchestrationService({
         const searchResults = await kbService.semanticSearch({
           query: params.query,
           siteId: params.siteId,
-          tenantId: 'default-tenant', // Use default tenant for service adapter
+          tenantId: params.tenantId ?? 'default-tenant', // Use provided tenant or default
           limit: params.topK,
           threshold: 0.7,
           filters: {

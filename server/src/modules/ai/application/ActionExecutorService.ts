@@ -1,26 +1,35 @@
 import { createLogger } from '../../../shared/utils.js';
-import type { SiteAction } from '../../../shared/types';
+import type { SiteAction } from '../../../shared/types.js';
+import type {
+  ActionParameters,
+  ActionResult,
+  ActionExecutionContext,
+  ActionExecutorDependencies,
+  BrowserAutomationService,
+  APIGateway,
+  WebSocketService,
+  TypedActionResult,
+  ActionPerformanceMetrics
+} from '../types/action-execution.types.js';
 
 const logger = createLogger({ service: 'action-executor' });
 
 export interface ActionExecutionRequest {
   siteId: string;
   actionName: string;
-  parameters: Record<string, any>;
+  parameters: ActionParameters;
   sessionId?: string;
   userId?: string;
+  tenantId?: string;
 }
 
-export interface ActionExecutionResult {
-  success: boolean;
-  result: any;
+export interface ActionExecutionResult extends ActionResult {
   executionTime: number;
   sideEffects: Array<{
     type: 'navigation' | 'form_submission' | 'api_call' | 'dom_change';
     description: string;
-    data: any;
+    data: Record<string, unknown>;
   }>;
-  error?: string;
 }
 
 /**
@@ -37,11 +46,7 @@ export class ActionExecutorService {
   private executionHistory: Array<ActionExecutionRequest & { timestamp: number }> = [];
 
   constructor(
-    private dependencies: {
-      browserAutomationService?: any; // For Playwright-based actions
-      apiGateway?: any; // For API calls
-      websocketService?: any; // For real-time UI updates
-    } = {}
+    private dependencies: ActionExecutorDependencies = {}
   ) {}
 
   /**
@@ -52,6 +57,7 @@ export class ActionExecutorService {
     
     logger.info('Executing action', {
       siteId: request.siteId,
+      tenantId: request.tenantId,
       actionName: request.actionName,
       parameters: request.parameters
     });
@@ -77,7 +83,7 @@ export class ActionExecutorService {
       this.validateParameters(action, request.parameters);
 
       // Route to appropriate executor based on action type
-      let result: any;
+      let result: Record<string, unknown>;
       const sideEffects: ActionExecutionResult['sideEffects'] = [];
 
       switch (action.type) {
@@ -109,6 +115,7 @@ export class ActionExecutorService {
 
       logger.info('Action executed successfully', {
         siteId: request.siteId,
+        tenantId: request.tenantId,
         actionName: request.actionName,
         executionTime,
         sideEffectsCount: sideEffects.length
@@ -118,6 +125,7 @@ export class ActionExecutorService {
       if (this.dependencies.websocketService) {
         await this.dependencies.websocketService.notifyActionExecuted({
           siteId: request.siteId,
+          tenantId: request.tenantId,
           sessionId: request.sessionId,
           action: request.actionName,
           result,
@@ -137,6 +145,7 @@ export class ActionExecutorService {
 
       logger.error('Action execution failed', {
         siteId: request.siteId,
+        tenantId: request.tenantId,
         actionName: request.actionName,
         error: errorMessage,
         executionTime
@@ -157,7 +166,7 @@ export class ActionExecutorService {
    */
   private async executeNavigation(
     action: SiteAction,
-    parameters: Record<string, any>,
+    parameters: ActionParameters,
     sideEffects: ActionExecutionResult['sideEffects']
   ): Promise<any> {
     logger.info('Executing navigation action', {
@@ -199,7 +208,7 @@ export class ActionExecutorService {
    */
   private async executeFormAction(
     action: SiteAction,
-    parameters: Record<string, any>,
+    parameters: ActionParameters,
     sideEffects: ActionExecutionResult['sideEffects']
   ): Promise<any> {
     logger.info('Executing form action', {
@@ -255,7 +264,7 @@ export class ActionExecutorService {
    */
   private async executeButtonAction(
     action: SiteAction,
-    parameters: Record<string, any>,
+    parameters: ActionParameters,
     sideEffects: ActionExecutionResult['sideEffects']
   ): Promise<any> {
     logger.info('Executing button action', {
@@ -286,7 +295,7 @@ export class ActionExecutorService {
    */
   private async executeApiAction(
     action: SiteAction,
-    parameters: Record<string, any>,
+    parameters: ActionParameters,
     sideEffects: ActionExecutionResult['sideEffects']
   ): Promise<any> {
     logger.info('Executing API action', {
@@ -336,7 +345,7 @@ export class ActionExecutorService {
    */
   private async executeCustomAction(
     action: SiteAction,
-    parameters: Record<string, any>,
+    parameters: ActionParameters,
     sideEffects: ActionExecutionResult['sideEffects']
   ): Promise<any> {
     logger.info('Executing custom action', {
@@ -366,7 +375,7 @@ export class ActionExecutorService {
   /**
    * Validate action parameters against schema
    */
-  private validateParameters(action: SiteAction, parameters: Record<string, any>): void {
+  private validateParameters(action: SiteAction, parameters: ActionParameters): void {
     for (const paramDef of action.parameters) {
       const value = parameters[paramDef.name];
 

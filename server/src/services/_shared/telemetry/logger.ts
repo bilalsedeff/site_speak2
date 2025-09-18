@@ -150,7 +150,7 @@ export function createLoggerMiddleware(options?: {
     const requestData = {
       method: req.method,
       url: req.url,
-      correlationId: (req as any).correlationId || 'unknown',
+      correlationId: req.correlationId || 'unknown',
       userAgent: req.get('User-Agent'),
       ip: req.ip,
       ...(opts.includeBody && req.body && { body: sanitizeLogData(req.body) })

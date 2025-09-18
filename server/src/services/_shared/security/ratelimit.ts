@@ -359,21 +359,21 @@ export const rateLimitService = new RateLimitService();
 export const keyGenerators = {
   byIP: (req: Request) => `ip:${req.ip}`,
   byTenant: (req: Request) => {
-    const tenant = (req as any).tenant;
+    const tenant = req.tenant;
     return `tenant:${tenant?.tenantId || 'anonymous'}`;
   },
   byUser: (req: Request) => {
-    const user = (req as any).user;
+    const user = req.user;
     return `user:${user?.id || req.ip}`;
   },
   byUserAndEndpoint: (req: Request) => {
-    const user = (req as any).user;
-    const route = (req as any).route;
+    const user = req.user;
+    const route = req.route;
     return `user:${user?.id || req.ip}:${route?.path || req.path}`;
   },
   byTenantAndEndpoint: (req: Request) => {
-    const tenant = (req as any).tenant;
-    const route = (req as any).route;
+    const tenant = req.tenant;
+    const route = req.route;
     return `tenant:${tenant?.tenantId || 'anonymous'}:${route?.path || req.path}`;
   },
 };

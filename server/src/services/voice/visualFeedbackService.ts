@@ -18,9 +18,9 @@ const logger = createLogger({ service: 'visual-feedback' });
 
 // Visual feedback event types
 export interface VisualFeedbackEvent {
-  type: 'mic_state' | 'level_update' | 'transcript_partial' | 'transcript_final' | 
+  type: 'mic_state' | 'level_update' | 'transcript_partial' | 'transcript_final' |
         'action_highlight' | 'streaming_delta' | 'error_toast' | 'clear_feedback';
-  data: any;
+  data: Record<string, unknown>;
   timestamp: Date;
   sessionId?: string;
 }

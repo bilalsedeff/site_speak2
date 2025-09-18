@@ -32,10 +32,24 @@ const logger = createLogger({ service: 'knowledge-base-repository' });
 export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
   
   /**
+   * Map database status to IndexingStatus union type
+   */
+  private mapDbStatusToIndexingStatus(dbStatus: string): 'idle' | 'crawling' | 'processing' | 'indexing' | 'completed' | 'error' {
+    switch (dbStatus) {
+      case 'crawling': return 'crawling';
+      case 'indexing': return 'indexing';
+      case 'ready': return 'completed';
+      case 'error': return 'error';
+      default: return 'idle'; // handles 'initializing', 'outdated', etc.
+    }
+  }
+  
+  /**
    * Convert database row to domain entity
    */
   private toDomain(dbRow: DBKnowledgeBase, chunks: KnowledgeChunk[] = []): KnowledgeBase {
-    const settings = dbRow.configuration as any || getDefaultKnowledgeBaseSettings();
+    const defaultSettings = getDefaultKnowledgeBaseSettings();
+    const settings = (dbRow.configuration as typeof defaultSettings) || defaultSettings;
     
     return new KnowledgeBase(
       dbRow.id,
@@ -46,7 +60,7 @@ export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
       '', // baseUrl will be resolved from site
       chunks,
       {
-        status: dbRow.status as any,
+        status: this.mapDbStatusToIndexingStatus(dbRow.status),
         progress: 0, // Could calculate from chunks
         totalUrls: dbRow.totalPages || 0,
         processedUrls: dbRow.totalPages || 0,
@@ -60,7 +74,7 @@ export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
         excludePatterns: settings.excludePatterns || [],
         includePatterns: settings.includePatterns || ['*'],
         contentTypes: ['text/html', 'text/plain'],
-        maxChunkSize: settings.chunkSize || 1000,
+        maxChunkSize: settings.maxChunkSize || 1000,
         chunkOverlap: settings.chunkOverlap || 100,
         embeddingModel: dbRow.embeddingModel || 'text-embedding-3-small',
         autoReindex: settings.autoReindex || false,
@@ -474,37 +488,57 @@ export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
     try {
       const { knowledgeBaseId, embedding, topK, threshold = 0.7, filters } = options;
 
-      // Convert embedding to string format for pgvector
       const embeddingStr = `[${embedding.join(',')}]`;
 
-      let whereConditions = [`knowledge_base_id = '${knowledgeBaseId}'`];
+      const params: any[] = [embeddingStr];
+      let paramIndex = 2;
+      const whereConditions: string[] = [];
 
-      if (filters?.contentType) {
-        whereConditions.push(`content_type = ANY(ARRAY[${filters.contentType.map(t => `'${t}'`).join(',')}])`);
+      whereConditions.push(`knowledge_base_id = $${paramIndex}`);
+      params.push(knowledgeBaseId);
+      paramIndex++;
+
+      if (filters?.contentType?.length) {
+        const placeholders = filters.contentType.map(() => `$${paramIndex++}`);
+        whereConditions.push(`content_type IN (${placeholders.join(', ')})`);
+        params.push(...filters.contentType);
       }
 
       if (filters?.language) {
-        whereConditions.push(`language = '${filters.language}'`);
+        whereConditions.push(`language = $${paramIndex}`);
+        params.push(filters.language);
+        paramIndex++;
       }
 
       if (filters?.url) {
-        whereConditions.push(`url LIKE '%${filters.url}%'`);
+        whereConditions.push(`url ILIKE '%' || $${paramIndex} || '%'`);
+        params.push(filters.url);
+        paramIndex++;
       }
 
       if (filters?.pageType) {
-        whereConditions.push(`page_type = '${filters.pageType}'`);
+        whereConditions.push(`page_type = $${paramIndex}`);
+        params.push(filters.pageType);
+        paramIndex++;
       }
 
-      const whereClause = whereConditions.join(' AND ');
+      const thresholdParam = `$${paramIndex}`;
+      params.push(threshold);
+      paramIndex++;
 
-      // Use raw SQL for vector similarity search
+      const limitParam = `$${paramIndex}`;
+      params.push(topK);
+
+      const whereClause = whereConditions.join(' AND ') || 'TRUE';
+
       const results = await dbUtils.raw<{
         id: string;
         knowledge_base_id: string;
         url: string;
         content: string;
-        embedding: number[];
-        title: string;
+        embedding: number[] | string | Float32Array | Float64Array;
+        title: string | null;
+        selector: string | null;
         content_type: string;
         content_hash: string;
         language: string;
@@ -517,20 +551,21 @@ export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
           1 - (embedding <=> $1::vector) as similarity
         FROM knowledge_chunks
         WHERE ${whereClause}
-          AND 1 - (embedding <=> $1::vector) >= $2
+          AND 1 - (embedding <=> $1::vector) >= ${thresholdParam}
         ORDER BY embedding <=> $1::vector
-        LIMIT $3
-      `, [embeddingStr, threshold, topK]);
+        LIMIT ${limitParam}
+      `, params);
 
       return results.map(result => ({
         chunk: {
           id: result.id,
           knowledgeBaseId: result.knowledge_base_id,
           content: result.content,
-          embedding: result.embedding,
+          embedding: this.normalizeEmbedding(result.embedding),
           metadata: {
             url: result.url,
-            title: result.title,
+            title: result.title ?? undefined,
+            section: result.selector ?? undefined,
             contentType: result.content_type as 'text' | 'html' | 'markdown' | 'json',
             hash: result.content_hash,
           },
@@ -543,6 +578,30 @@ export class KnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
       logger.error('Vector search failed', { options, error });
       throw new VectorSearchError(error instanceof Error ? error.message : 'Unknown error');
     }
+  }
+
+  private normalizeEmbedding(embedding: unknown): number[] {
+    if (embedding instanceof Float32Array || embedding instanceof Float64Array) {
+      return Array.from(embedding);
+    }
+
+    if (Array.isArray(embedding)) {
+      return embedding.map(value => (typeof value === 'number' ? value : Number(value)));
+    }
+
+    if (typeof embedding === 'string') {
+      const trimmed = embedding.trim().replace(/^\[|\]$/g, '');
+      if (!trimmed) {
+        return [];
+      }
+
+      return trimmed
+        .split(',')
+        .map(value => Number(value.trim()))
+        .filter(value => Number.isFinite(value));
+    }
+
+    return [];
   }
 
   async getStats(knowledgeBaseId: string): Promise<{

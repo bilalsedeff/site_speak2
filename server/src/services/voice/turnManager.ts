@@ -16,12 +16,12 @@ const logger = createLogger({ service: 'turn-manager' });
 
 // Turn Event Types (matching source-of-truth specification)
 export type TurnEvent =
-  | { type: 'ready' | 'mic_opened' | 'mic_closed' | 'tts_play'; data?: any }
+  | { type: 'ready' | 'mic_opened' | 'mic_closed' | 'tts_play'; data?: Record<string, unknown> }
   | { type: 'vad'; active: boolean; level: number }
   | { type: 'partial_asr'; text: string; confidence?: number }
   | { type: 'final_asr'; text: string; lang: string }
   | { type: 'barge_in' }
-  | { type: 'agent_delta' | 'agent_tool' | 'agent_final'; data: any }
+  | { type: 'agent_delta' | 'agent_tool' | 'agent_final'; data: Record<string, unknown> }
   | { type: 'error'; code: string; message: string };
 
 export interface TurnManagerConfig {
@@ -43,13 +43,13 @@ export interface TurnManagerConfig {
 
 export interface VoiceTransport {
   send(data: ArrayBuffer | object): Promise<void>;
-  on(event: string, callback: (data: any) => void): void;
+  on(event: string, callback: (data: Record<string, unknown>) => void): void;
   disconnect(): void;
 }
 
 export interface AudioProcessorMessage {
   type: 'audio_data' | 'vad_state' | 'opus_frame' | 'config';
-  data?: any;
+  data?: Record<string, unknown>;
   level?: number;
   active?: boolean;
   frame?: ArrayBuffer;

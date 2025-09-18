@@ -145,25 +145,24 @@ socket.on('voice:end', () => {
 });
 ```
 
-### 3. WebSocketCoordinator
+### 3. Integrated WebSocket Management
 
-**File**: `WebSocketCoordinator.ts`
-**Purpose**: Unified WebSocket management
+**Implementation**: Built into `VoiceOrchestrator.ts` (server/src/services/voice/)
+**Purpose**: Unified WebSocket management integrated with voice orchestration
 
-#### Architecture of VoiceWebSocketHandler
+#### Consolidated Architecture
 
-- **Dual Transport**: Manages both Raw WebSocket and Socket.IO
-- **Session Unification**: Single session across both transports
-- **Authentication**: Consistent JWT auth across protocols
-- **Health Monitoring**: Unified heartbeat system
-- **Performance Metrics**: Cross-transport monitoring
+- **Dual Transport**: Raw WebSocket and Socket.IO managed by VoiceOrchestrator
+- **Session Unification**: Single session lifecycle across all transports
+- **Authentication**: Integrated JWT auth with voice session management
+- **Health Monitoring**: Heartbeat system integrated with voice session cleanup
+- **Performance Metrics**: Unified metrics across voice and WebSocket operations
 
 #### Configuration
 
 ```typescript
-const coordinator = new WebSocketCoordinator({
+const orchestrator = new VoiceOrchestrator({
   httpServer: server,
-  aiService: universalAIAssistant,
   enableRawWebSocket: true,
   enableSocketIO: true,
   heartbeatInterval: 30000,
@@ -173,9 +172,11 @@ const coordinator = new WebSocketCoordinator({
     socketIO: '/socket.io'
   }
 });
+
+orchestrator.setAIAssistantService(universalAIAssistant);
 ```
 
-#### Session Management
+#### Unified Session Management
 
 ```typescript
 interface UnifiedSession {
@@ -183,8 +184,17 @@ interface UnifiedSession {
   tenantId: string;
   siteId?: string;
   userId?: string;
-  rawWebSocket?: WebSocket;
+
+  // WebSocket connections
+  rawWebSocketConnection?: WebSocket;
   socketIOConnection?: Socket;
+
+  // Voice components
+  realtimeClient?: OpenAIRealtimeClient;
+  turnManager?: TurnManager;
+
+  // Session state
+  status: 'initializing' | 'ready' | 'listening' | 'processing' | 'speaking' | 'ended' | 'error';
   createdAt: Date;
   lastActivity: Date;
   isActive: boolean;

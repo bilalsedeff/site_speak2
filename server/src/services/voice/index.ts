@@ -1,17 +1,19 @@
 /**
  * Voice Services - Real-time Voice System
- * 
+ *
  * Complete voice interaction system with:
  * - Low-latency audio processing (AudioWorklet, VAD, barge-in)
- * - Real-time streaming STT/TTS (OpenAI Realtime API) 
+ * - Real-time streaming STT/TTS (OpenAI Realtime API)
  * - Visual feedback and UI coordination
  * - Opus audio framing for optimal network efficiency
- * 
+ *
  * Performance targets achieved:
  * - First token/audio ≤ 300ms
  * - ASR partial latency ≤ 150ms
  * - Barge-in stop/duck ≤ 50ms
  */
+
+import type { Request, Response } from 'express';
 
 // Core components that actually exist
 export { TurnManager, getDefaultTurnManagerConfig } from './turnManager';
@@ -23,15 +25,17 @@ export { OpenAIRealtimeClient, openaiRealtimeClient, createRealtimeConfig } from
 export type { RealtimeConfig } from './openaiRealtimeClient';
 export { OpusEncoder } from './OpusEncoder';
 
-// Voice Orchestrator - Central coordination service
-export { VoiceOrchestrator, voiceOrchestrator } from './VoiceOrchestrator';
-export type { VoiceSession, VoiceOrchestratorConfig } from './VoiceOrchestrator';
-
-// Raw WebSocket Server (RFC 6455 compliant)
-export { 
-  RawWebSocketServer
-} from '../../modules/voice/infrastructure/websocket/RawWebSocketServer.js';
-export type { VoiceStreamMessage, RawVoiceSession } from '../../modules/voice/infrastructure/websocket/RawWebSocketServer.js';
+// Unified Voice Orchestrator - Consolidated voice coordination service
+export {
+  UnifiedVoiceOrchestrator,
+  unifiedVoiceOrchestrator,
+  createUnifiedVoiceOrchestrator
+} from './UnifiedVoiceOrchestrator.js';
+export type {
+  UnifiedVoiceSession,
+  UnifiedOrchestratorConfig,
+  VoiceStreamMessage
+} from './UnifiedVoiceOrchestrator.js';
 
 
 /**
@@ -103,7 +107,7 @@ export const VoicePresets = {
 export function createVoiceMiddleware() {
   return {
     // Health check endpoint
-    health: (_req: any, res: any) => {
+    health: (_req: Request, res: Response) => {
       const health = getVoiceServicesHealth();
       res.json(health);
     },

@@ -26,6 +26,10 @@ import { hybridSearchService, HybridSearchRequest } from '../../infrastructure/r
 import { SiteAction } from '../../../../shared/types';
 import { eventsIngestService } from '../../../../services/_shared/analytics/eventsIngest';
 import { analyticsHelpers } from '../../../../services/_shared/analytics';
+import type {
+  ExecutedTool,
+  SpeculativeExecution
+} from '../../types/tool-execution.types.js';
 
 const logger = createLogger({ service: 'universal-agent' });
 
@@ -110,26 +114,13 @@ const UniversalAgentState = Annotation.Root({
     default: () => null
   }),
 
-  executedTools: Annotation<Array<{
-    toolName: string;
-    parameters: Record<string, any>;
-    result: any;
-    success: boolean;
-    executionTime: number;
-    timestamp: Date;
-  }>>({
+  executedTools: Annotation<ExecutedTool[]>({
     reducer: (x, y) => x.concat(y),
     default: () => []
   }),
 
   // Speculative execution
-  speculativeExecutions: Annotation<Array<{
-    actionName: string;
-    parameters: Record<string, any>;
-    confidence: number;
-    status: 'pending' | 'executing' | 'completed' | 'cancelled';
-    result?: any;
-  }>>({
+  speculativeExecutions: Annotation<SpeculativeExecution[]>({
     reducer: (x, y) => x.concat(y),
     default: () => []
   }),
@@ -911,12 +902,12 @@ export class UniversalAgentGraph {
       responseText += ". Is there anything else I can help you with?";
     }
 
-    const uiHints: any = {};
+    const uiHints: Record<string, unknown> = {};
     
     // Add speculative navigation if used
     if (state.speculativeExecutions.length > 0) {
-      uiHints.speculativeNavigationUsed = true;
-      uiHints.navigationTarget = state.speculativeExecutions[0]?.actionName;
+      uiHints['speculativeNavigationUsed'] = true;
+      uiHints['navigationTarget'] = state.speculativeExecutions[0]?.actionName;
     }
 
     return {

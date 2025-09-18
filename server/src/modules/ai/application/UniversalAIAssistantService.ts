@@ -258,6 +258,7 @@ export class UniversalAIAssistantService {
       const orchestrationRequest: ConversationRequest = {
         input: request.input,
         siteId: request.siteId,
+        tenantId: request.tenantId,
         browserLanguage: detectedLanguage,
         // Only include optional properties if they have values
         ...(request.sessionId && { sessionId: request.sessionId }),
@@ -349,6 +350,7 @@ export class UniversalAIAssistantService {
       const orchestrationRequest: ConversationRequest = {
         input: request.input,
         siteId: request.siteId,
+        tenantId: request.tenantId,
         sessionId,
         browserLanguage: detectedLanguage,
         // Only include optional properties if they have values
@@ -493,6 +495,7 @@ export class UniversalAIAssistantService {
   }> {
     logger.info('Executing direct action', {
       siteId: request.siteId,
+      tenantId: request.tenantId,
       actionName: request.actionName,
     });
 
@@ -501,6 +504,7 @@ export class UniversalAIAssistantService {
       
       logger.info('Action executed successfully', {
         siteId: request.siteId,
+        tenantId: request.tenantId,
         actionName: request.actionName,
         success: result.success,
         executionTime: result.executionTime,

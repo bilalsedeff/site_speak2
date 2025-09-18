@@ -515,43 +515,42 @@ export class SessionManager {
 /**
  * Create session manager with appropriate store based on environment
  */
-function createSessionManager(): SessionManager {
+async function createSessionManager(): Promise<SessionManager> {
   const redisUrl = process.env['REDIS_URL'];
   const nodeEnv = process.env['NODE_ENV'];
-  
+
   if (nodeEnv === 'production' && redisUrl) {
-    // In production with Redis URL, use Redis store
-    const { createClient } = require('redis');
-    const redisClient = createClient({ url: redisUrl });
-    
-    // Handle Redis connection
-    redisClient.on('error', (err: Error) => {
-      logger.error('Redis client error', { error: err });
-    });
-    
-    redisClient.on('connect', () => {
+    try {
+      const { createClient } = await import('redis');
+      const redisClient = createClient({ url: redisUrl });
+
+      redisClient.on('error', (err: Error) => {
+        logger.error('Redis client error', { error: err });
+      });
+
+      await redisClient.connect();
       logger.info('Redis session store connected');
-    });
-    
-    // Connect to Redis
-    redisClient.connect().catch((err: Error) => {
-      logger.error('Failed to connect to Redis, falling back to in-memory store', { error: err });
-      return new SessionManager(new InMemorySessionStore());
-    });
-    
-    const redisStore = new RedisSessionStore(redisClient);
-    logger.info('Using Redis session store for production');
-    return new SessionManager(redisStore);
-  } else {
-    // Development or when Redis is not available
-    logger.warn('Using in-memory session store', {
-      nodeEnv,
-      hasRedisUrl: !!redisUrl,
-      reason: nodeEnv !== 'production' ? 'development environment' : 'Redis URL not configured'
-    });
-    return new SessionManager(new InMemorySessionStore());
+
+      const redisStore = new RedisSessionStore(redisClient);
+      logger.info('Using Redis session store for production');
+      return new SessionManager(redisStore);
+    } catch (error) {
+      logger.error('Failed to initialize Redis session store, falling back to in-memory store', {
+        error: error instanceof Error ? error.message : String(error),
+        nodeEnv,
+      });
+    }
   }
+
+  logger.warn('Using in-memory session store', {
+    nodeEnv,
+    hasRedisUrl: !!redisUrl,
+    reason: nodeEnv !== 'production'
+      ? 'development environment'
+      : 'Redis URL not configured or initialization failed',
+  });
+  return new SessionManager(new InMemorySessionStore());
 }
 
-// Export singleton instance
-export const sessionManager = createSessionManager();
+export const sessionManager = await createSessionManager();
+

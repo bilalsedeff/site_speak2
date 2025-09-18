@@ -1,16 +1,12 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createLogger } from '../../../../shared/utils.js';
-import { jwtService, type VoiceJWTPayload } from '../../../../infrastructure/auth/jwt.js';
+import { voiceAuthService, type VoiceAuthData } from '../../../../services/_shared/auth/voice-auth.js';
 import type { UniversalAIAssistantService } from '../../../ai/application/UniversalAIAssistantService.js';
 
 const logger = createLogger({ service: 'voice-websocket' });
 
-export interface WsAuth {
-  tenantId: string;
-  userId?: string;
-  siteId: string;
-  locale?: string;
-}
+// Use shared VoiceAuthData interface
+export type WsAuth = VoiceAuthData;
 
 export interface VoiceSession {
   id: string;
@@ -170,48 +166,18 @@ export class VoiceWebSocketHandler {
    * Authenticate WebSocket connection using JWT (optional in development)
    */
   private async authenticateConnection(socket: Socket): Promise<WsAuth> {
-    const token = socket.handshake.auth['token'] || socket.handshake.auth['accessToken'] || socket.handshake.query['token'];
-    const sessionId = socket.handshake.auth['sessionId'] || socket.handshake.query['sessionId'];
-    
-    // For development: Allow connections without authentication
-    if (process.env['NODE_ENV'] === 'development' && !token) {
-      logger.info('WebSocket connection authenticated (development mode)', {
-        socketId: socket.id,
-        sessionId: sessionId || 'none'
-      });
-      
-      return {
-        tenantId: '00000000-0000-0000-0000-000000000000',
-        siteId: '00000000-0000-0000-0000-000000000000',
-        userId: `dev-ws-user-${Date.now()}`,
-        locale: 'en-US',
-      };
-    }
-    
-    if (!token) {
-      throw new Error('No authentication token provided');
-    }
-
     try {
-      const decoded: VoiceJWTPayload = jwtService.verifyVoiceToken(token as string);
-      
-      if (!decoded.tenantId || !decoded.siteId) {
-        throw new Error('Invalid token: missing required claims');
-      }
+      const authData = await voiceAuthService.authenticateVoiceConnection(
+        { socketHandshake: socket.handshake },
+        {
+          allowDevelopmentMode: true,
+          logAuthAttempts: true
+        }
+      );
 
-      const wsAuth: WsAuth = {
-        tenantId: decoded.tenantId,
-        siteId: decoded.siteId,
-        locale: decoded.locale || 'en-US',
-      };
-
-      if (decoded.userId) {
-        wsAuth.userId = decoded.userId;
-      }
-
-      return wsAuth;
+      return authData;
     } catch (error) {
-      throw new Error(`Token verification failed: ${error instanceof Error ? error.message : 'Unknown'}`);
+      throw new Error(`Socket.IO authentication failed: ${error instanceof Error ? error.message : 'Unknown'}`);
     }
   }
 

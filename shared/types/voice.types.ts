@@ -81,7 +81,7 @@ export interface VoiceInteraction extends BaseEntity {
   input?: VoiceInput;
   output?: VoiceOutput;
   processing: ProcessingMetadata;
-  error?: VoiceError;
+  error?: VoiceSystemError;
 }
 
 export type VoiceInteractionType = 'question' | 'command' | 'confirmation' | 'clarification' | 'interruption';
@@ -145,15 +145,15 @@ export interface ProcessingMetadata {
   toolsUsed?: string[];
 }
 
-export interface VoiceError {
-  code: VoiceErrorCode;
+export interface VoiceSystemError {
+  code: VoiceSystemErrorCode;
   message: string;
   details?: any;
   retryable: boolean;
   suggestedAction?: string;
 }
 
-export type VoiceErrorCode = 
+export type VoiceSystemErrorCode =
   | 'microphone_permission_denied'
   | 'microphone_not_available'
   | 'speaker_not_available'
@@ -217,18 +217,18 @@ export interface WidgetAnalytics {
   avgSessionDuration: number;
   completionRate: number;
   mostUsedFeatures: string[];
-  userFeedback: UserFeedback[];
-  performanceMetrics: PerformanceMetrics;
+  userFeedback: VoiceUserFeedback[];
+  performanceMetrics: VoicePerformanceMetrics;
 }
 
-export interface UserFeedback {
+export interface VoiceUserFeedback {
   sessionId: string;
   rating: number; // 1-5
   feedback?: string;
   timestamp: Date;
 }
 
-export interface PerformanceMetrics {
+export interface VoicePerformanceMetrics {
   avgLoadTime: number;
   avgResponseTime: number;
   errorRate: number;
@@ -293,5 +293,5 @@ export interface VoiceStreamData {
   audioChunk?: ArrayBuffer;
   action?: string;
   parameters?: Record<string, any>;
-  error?: VoiceError;
+  error?: VoiceSystemError;
 }

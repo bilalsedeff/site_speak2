@@ -39,62 +39,35 @@ export interface RealtimeConfig {
   tools?: RealtimeTool[];
 }
 
-// Tool definition for function calling
-export interface RealtimeTool {
-  type: 'function';
-  name: string;
-  description: string;
-  parameters: any; // JSON Schema
-}
+// Import comprehensive type definitions
+import type {
+  RealtimeTool,
+  RealtimeEvent,
+  RealtimeEventHandlers,
+  SessionConfig,
+  ConversationItem,
+  Response,
+  RealtimeError,
+  ConnectionStatus,
+  RealtimeMetrics,
+  ClientMessage,
+  JSONSchema
+} from './openai-realtime-types.js';
 
-// Realtime API event types
-export type RealtimeEvent = 
-  // Session events
-  | { type: 'session.created' | 'session.updated'; session: any }
-  | { type: 'error'; error: any }
-  
-  // Input audio events
-  | { type: 'input_audio_buffer.append'; audio: string }
-  | { type: 'input_audio_buffer.clear' }
-  | { type: 'input_audio_buffer.committed'; item_id: string }
-  
-  // Conversation events  
-  | { type: 'conversation.item.created'; item: any }
-  | { type: 'conversation.item.truncated'; item_id: string; content_index: number; audio_end_ms: number }
-  
-  // Response events
-  | { type: 'response.created' | 'response.done'; response: any }
-  | { type: 'response.output_item.added' | 'response.output_item.done'; item: any }
-  | { type: 'response.content_part.added' | 'response.content_part.done'; part: any }
-  
-  // Audio events
-  | { type: 'response.audio.delta'; delta: string }
-  | { type: 'response.audio.done'; item_id: string }
-  | { type: 'response.audio_transcript.delta'; delta: string }
-  | { type: 'response.audio_transcript.done'; transcript: string }
-  
-  // Function calling events
-  | { type: 'response.function_call_arguments.delta'; call_id: string; delta: string }
-  | { type: 'response.function_call_arguments.done'; call_id: string; arguments: string }
-  
-  // Input speech events  
-  | { type: 'input_audio_buffer.speech_started'; audio_start_ms: number; item_id: string }
-  | { type: 'input_audio_buffer.speech_stopped'; audio_end_ms: number; item_id: string }
-  | { type: 'conversation.item.input_audio_transcription.completed'; item_id: string; transcript: string }
-  | { type: 'conversation.item.input_audio_transcription.failed'; item_id: string; error: any };
-
-// Performance metrics
-export interface RealtimeMetrics {
-  connectionLatency: number;
-  firstTokenLatency: number[];
-  audioStreamingLatency: number[];
-  transcriptionLatency: number[];
-  totalMessages: number;
-  audioBytesSent: number;
-  audioBytesReceived: number;
-  errors: number;
-  reconnections: number;
-}
+// Re-export types for backwards compatibility
+export type {
+  RealtimeTool,
+  RealtimeEvent,
+  RealtimeEventHandlers,
+  SessionConfig,
+  ConversationItem,
+  Response,
+  RealtimeError,
+  ConnectionStatus,
+  RealtimeMetrics,
+  ClientMessage,
+  JSONSchema
+} from './openai-realtime-types.js';
 
 /**
  * OpenAI Realtime API Client
@@ -192,15 +165,29 @@ export class OpenAIRealtimeClient extends EventEmitter {
       });
 
       this.ws.on('error', (error) => {
+        // Type-safe error property extraction for network errors
+        const isNodeError = (err: unknown): err is NodeJS.ErrnoException => {
+          return typeof err === 'object' && err !== null && 'code' in err;
+        };
+
+        const isNetworkError = (err: unknown): err is Error & {
+          address?: string;
+          port?: number;
+          errno?: number | string;
+          syscall?: string;
+        } => {
+          return typeof err === 'object' && err !== null && ('address' in err || 'port' in err);
+        };
+
         const errorDetails = {
           message: error.message,
           stack: error.stack,
           name: error.name,
-          code: (error as any).code,
-          errno: (error as any).errno,
-          syscall: (error as any).syscall,
-          address: (error as any).address,
-          port: (error as any).port,
+          code: isNodeError(error) ? error.code : undefined,
+          errno: isNodeError(error) ? error.errno : undefined,
+          syscall: isNodeError(error) ? error.syscall : undefined,
+          address: isNetworkError(error) ? error.address : undefined,
+          port: isNetworkError(error) ? error.port : undefined,
           raw: error
         };
         
@@ -419,29 +406,29 @@ export class OpenAIRealtimeClient extends EventEmitter {
       // Handle different message types
       switch (message.type) {
         case 'session.created':
-          this.sessionId = (message as any).session.id;
+          this.sessionId = message.session.id;
           this.emit('session_ready', message.session);
           break;
 
         case 'input_audio_buffer.speech_started':
           logger.info('Speech started detected', { 
-            audioStartMs: (message as any).audio_start_ms,
-            itemId: (message as any).item_id
+            audioStartMs: message.audio_start_ms,
+            itemId: message.item_id
           });
           this.emit('speech_started', {
-            audioStartMs: (message as any).audio_start_ms,
-            itemId: (message as any).item_id,
+            audioStartMs: message.audio_start_ms,
+            itemId: message.item_id,
           });
           break;
 
         case 'input_audio_buffer.speech_stopped':
           logger.info('Speech stopped detected', { 
-            audioEndMs: (message as any).audio_end_ms,
-            itemId: (message as any).item_id
+            audioEndMs: message.audio_end_ms,
+            itemId: message.item_id
           });
           this.emit('speech_stopped', {
-            audioEndMs: (message as any).audio_end_ms,
-            itemId: (message as any).item_id,
+            audioEndMs: message.audio_end_ms,
+            itemId: message.item_id,
           });
           break;
 
@@ -452,14 +439,14 @@ export class OpenAIRealtimeClient extends EventEmitter {
           delete this.audioBufferStart;
 
           this.emit('conversation.item.input_audio_transcription.completed', {
-            itemId: (message as any).item_id,
-            transcript: (message as any).transcript,
+            itemId: message.item_id,
+            transcript: message.transcript,
             latency: transcriptionLatency,
           });
           break; }
 
         case 'response.audio.delta':
-          { const audioData = Buffer.from((message as any).delta, 'base64');
+          { const audioData = Buffer.from(message.delta, 'base64');
           this.metrics.audioBytesReceived += audioData.length;
           
           this.emit('response.audio.delta', {
@@ -470,29 +457,29 @@ export class OpenAIRealtimeClient extends EventEmitter {
 
         case 'response.audio_transcript.delta':
           this.emit('response.text.delta', {
-            delta: (message as any).delta,
+            delta: message.delta,
             timestamp: Date.now(),
           });
           break;
 
         case 'response.audio_transcript.done':
           this.emit('response.text.done', {
-            text: (message as any).transcript,
+            text: message.transcript,
             timestamp: Date.now(),
           });
           break;
 
         case 'response.function_call_arguments.delta':
           this.emit('function_call_delta', {
-            callId: (message as any).call_id,
-            delta: (message as any).delta,
+            callId: message.call_id,
+            delta: message.delta,
           });
           break;
 
         case 'response.function_call_arguments.done':
           this.emit('function_call_complete', {
-            callId: (message as any).call_id,
-            arguments: (message as any).arguments,
+            callId: message.call_id,
+            arguments: message.arguments,
           });
           break;
 
@@ -503,7 +490,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
 
         case 'error':
           this.metrics.errors++;
-          this.emit('error', (message as any).error);
+          this.emit('error', message.error);
           break;
 
         default:
@@ -518,7 +505,7 @@ export class OpenAIRealtimeClient extends EventEmitter {
   /**
    * Send message to the API
    */
-  private sendMessage(message: any): void {
+  private sendMessage(message: ClientMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       logger.warn('Cannot send message: WebSocket not open');
       return;

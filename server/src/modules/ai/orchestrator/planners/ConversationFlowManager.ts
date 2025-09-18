@@ -15,6 +15,7 @@ import { createLogger } from '../../../../shared/utils.js';
 import { HumanMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { config } from '../../../../infrastructure/config';
+import type { ToolParameterValue, IntentResult } from '../../types/tool-execution.types.js';
 
 const logger = createLogger({ service: 'conversation-flow' });
 
@@ -31,7 +32,7 @@ export interface SlotFrame {
 
 export interface SlotValue {
   raw: string;
-  normalized: any;
+  normalized: ToolParameterValue;
   confidence: number;
   source: 'user_input' | 'context' | 'inference' | 'default';
   needsConfirmation?: boolean;
@@ -41,7 +42,7 @@ export interface Constraint {
   type: 'temporal' | 'spatial' | 'categorical' | 'quantitative';
   field: string;
   operator: 'equals' | 'greater' | 'less' | 'contains' | 'near' | 'within';
-  value: any;
+  value: ToolParameterValue;
   priority: number;
 }
 
@@ -79,7 +80,7 @@ export interface ClarificationResponse {
   question?: string;
   suggestedValues?: Array<{
     display: string;
-    value: any;
+    value: ToolParameterValue;
     confidence: number;
   }>;
   canProceedWithDefaults?: boolean;
@@ -95,7 +96,7 @@ export class ConversationFlowManager {
   
   constructor() {
     this.llm = new ChatOpenAI({
-      modelName: config.AI_MODEL || 'gpt-4o',
+      model: config.AI_MODEL || 'gpt-4o',
       temperature: 0.1,
       maxTokens: 1000,
     });
@@ -379,7 +380,7 @@ Normalize common expressions:
    * Process slot extraction and normalization
    */
   private async processSlotExtraction(
-    intentResult: any,
+    intentResult: IntentResult,
     context: ConversationContext
   ): Promise<SlotFrame> {
     const slotFrame: SlotFrame = {
@@ -388,7 +389,9 @@ Normalize common expressions:
       slots: {},
       missingSlots: [],
       resolvedSlots: [],
-      constraints: intentResult.constraints || []
+      constraints: (intentResult.constraints || []).filter((constraint): constraint is Constraint => {
+        return ['temporal', 'spatial', 'categorical', 'quantitative'].includes(constraint.type);
+      })
     };
 
     // Process each slot with specialized extractors
@@ -677,16 +680,17 @@ Return JSON:
     return !location || location.lat >= 0 ? 'northern' : 'southern';
   }
 
-  private createFallbackIntentResult(userInput: string): any {
+  private createFallbackIntentResult(userInput: string): IntentResult {
     return {
       intent: 'get_information',
       confidence: 0.3,
-      slots: {
+      entities: {
         query: {
-          raw: userInput,
-          type: 'general'
+          value: userInput,
+          confidence: 0.3
         }
       },
+      toolCalls: [],
       constraints: []
     };
   }

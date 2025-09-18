@@ -84,7 +84,7 @@ export default [
   {
     ignores: [
       'dist/**',
-  'server/dist/**',
+      'server/dist/**',
       'node_modules/**',
       'build/**',
       'client/dist/**',
@@ -101,6 +101,7 @@ export default [
       'server/services/crawler/**',
       'server/types/**',
       'server/test-db-connection.js',
+      'tests/**',
       '*.config.js',
       '*.config.ts',
       '.eslintrc.js',

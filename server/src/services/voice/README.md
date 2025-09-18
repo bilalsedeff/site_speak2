@@ -198,15 +198,14 @@ visualFeedbackService.setListeningState('partial');
 
 - `/voice` - Voice interaction namespace
 
-### WebSocket Coordinator
+### Integrated WebSocket Management
 
-**File**: `WebSocketCoordinator.ts`
-**Purpose**: Unified WebSocket management coordinating both Raw WebSocket and Socket.IO.
+**Implementation**: Built into `VoiceOrchestrator.ts`
+**Purpose**: Unified WebSocket server management integrated directly into the voice orchestrator.
 
 ```typescript
-const coordinator = new WebSocketCoordinator({
+const orchestrator = new VoiceOrchestrator({
   httpServer: server,
-  aiService: universalAIAssistant,
   enableRawWebSocket: true,
   enableSocketIO: true,
   paths: {
@@ -215,7 +214,8 @@ const coordinator = new WebSocketCoordinator({
   }
 });
 
-await coordinator.start();
+orchestrator.setAIAssistantService(universalAIAssistant);
+await orchestrator.start();
 ```
 
 ## Configuration Presets

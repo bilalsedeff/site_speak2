@@ -70,6 +70,17 @@ export interface ActionContext {
   userId?: string;
   origin: string;
   timestamp: Date;
+
+  // Voice editor specific properties
+  mode?: 'editor' | 'preview' | 'design';
+  activePanel?: string;
+  selectedElements?: string;
+  viewport?: {
+    width: number;
+    height: number;
+    zoom: number;
+  };
+  constraints?: Record<string, unknown>;
 }
 
 export interface ActionParameter {

@@ -1,12 +1,13 @@
-# SiteSpeak Development Docker Compose
+# SiteSpeak Development Docker Compose (12-Factor Compliant)
 
 services:
-  # Development SiteSpeak Application
-  sitespeak-dev:
+  # Development SiteSpeak Web Process
+  sitespeak-web-dev:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: sitespeak-dev
+      target: web
+    container_name: sitespeak-web-dev
     ports:
       - '3000:3000' # Client dev server
       - '5000:5000' # API server
@@ -18,10 +19,10 @@ services:
       - /app/server/node_modules
       - sitespeak-dev-uploads:/app/uploads
       - sitespeak-dev-temp:/app/temp
-      - sitespeak-dev-knowledge-base:/app/server/knowledge-base
     environment:
       NODE_ENV: development
       PORT: 5000
+      PROCESS_TYPE: web
       CLIENT_URL: http://localhost:3000
       API_URL: http://localhost:5000
       FRONTEND_URL: http://localhost:3000
@@ -34,12 +35,8 @@ services:
       OPENAI_MODEL: gpt-4o
       EMBEDDING_MODEL: text-embedding-3-small
       VOICE_AI_ENABLED: true
-      AUTO_CRAWLER_ENABLED: true
       INTENT_ENGINE_ENABLED: true
-      USE_PLAYWRIGHT_CRAWLER: true
-      ENABLE_ANALYTICS: true
       LOG_LEVEL: info
-      SITESPEAK_KB_QUIET: false
       HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
@@ -48,7 +45,55 @@ services:
       - sitespeak-redis-dev
     networks:
       - sitespeak-dev-network
-    command: npm run dev
+    command: npm run dev:web
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health/ready']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Development SiteSpeak Worker Process
+  sitespeak-worker-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: worker
+    container_name: sitespeak-worker-dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/client/node_modules
+      - /app/server/node_modules
+      - sitespeak-dev-uploads:/app/uploads
+      - sitespeak-dev-temp:/app/temp
+      - sitespeak-dev-knowledge-base:/app/server/knowledge-base
+    environment:
+      NODE_ENV: development
+      PROCESS_TYPE: worker
+      DATABASE_URL: postgresql://postgres:postgres@sitespeak-postgres-dev:5432/sitespeak_dev_db
+      REDIS_URL: redis://sitespeak-redis-dev:6379
+      JWT_SECRET: development-jwt-secret-key-32-chars-min
+      ENCRYPTION_KEY: development-encryption-key-32-ch
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: gpt-4o
+      EMBEDDING_MODEL: text-embedding-3-small
+      AUTO_CRAWLER_ENABLED: true
+      USE_PLAYWRIGHT_CRAWLER: true
+      ENABLE_ANALYTICS: true
+      LOG_LEVEL: info
+      SITESPEAK_KB_QUIET: false
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
+    depends_on:
+      - sitespeak-postgres-dev
+      - sitespeak-redis-dev
+    networks:
+      - sitespeak-dev-network
+    command: npm run dev:worker
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'process.exit(0)']
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
   # PostgreSQL for Development
   sitespeak-postgres-dev:
@@ -111,6 +156,23 @@ services:
     container_name: sitespeak-redis-admin-dev
     ports:
       - '8082:8001'
+    depends_on:
+      - sitespeak-redis-dev
+    networks:
+      - sitespeak-dev-network
+    profiles:
+      - admin
+
+  # Queue Dashboard (Optional - for monitoring workers)
+  sitespeak-queue-dashboard:
+    image: deadly0/bull-board
+    container_name: sitespeak-queue-dashboard
+    environment:
+      REDIS_HOST: sitespeak-redis-dev
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ''
+    ports:
+      - '8083:3000'
     depends_on:
       - sitespeak-redis-dev
     networks:
