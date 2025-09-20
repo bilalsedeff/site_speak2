@@ -1,9 +1,9 @@
 import { createLogger } from '../../../../shared/utils.js';
 import { embeddingService } from './EmbeddingService';
-import { webCrawlerService, type CrawlOptions } from './WebCrawlerService.js';
+import { crawlerAdapter, type CrawlOptions } from './CrawlerAdapter.js';
 import { KnowledgeBaseRepository } from '../../../../domain/repositories/KnowledgeBaseRepository';
 import { knowledgeBaseRepository } from '../../../../infrastructure/repositories';
-import type { 
+import type {
   KnowledgeChunk
 } from '../../domain/entities/KnowledgeBase';
 
@@ -162,8 +162,8 @@ export class KnowledgeBaseService {
         ...request.options
       };
 
-      const webCrawlerServiceInstance = webCrawlerService.getInstance(this);
-      const sessionId = await webCrawlerServiceInstance.startCrawl({
+      const crawlerAdapterInstance = crawlerAdapter.getInstance(this);
+      const sessionId = await crawlerAdapterInstance.startCrawl({
         url: request.baseUrl,
         siteId: request.siteId,
         tenantId: request.tenantId,
@@ -216,8 +216,8 @@ export class KnowledgeBaseService {
    */
   async getCrawlingProgress(sessionId: string): Promise<IndexingProgress> {
     try {
-      const webCrawlerServiceInstance = webCrawlerService.getInstance(this);
-      const crawlSession = webCrawlerServiceInstance.getCrawlStatus(sessionId);
+      const crawlerAdapterInstance = crawlerAdapter.getInstance(this);
+      const crawlSession = crawlerAdapterInstance.getCrawlStatus(sessionId);
       
       if (!crawlSession) {
         return {
@@ -669,7 +669,7 @@ export class KnowledgeBaseService {
     };
   } {
     return {
-      webCrawler: webCrawlerService.getInstance().getCacheStats()
+      webCrawler: crawlerAdapter.getInstance().getCacheStats()
     };
   }
 
@@ -677,7 +677,7 @@ export class KnowledgeBaseService {
    * Clear all service caches
    */
   clearAllCaches(): void {
-    webCrawlerService.getInstance().clearCaches();
+    crawlerAdapter.getInstance().clearCaches();
     logger.info('All knowledge base service caches cleared');
   }
 

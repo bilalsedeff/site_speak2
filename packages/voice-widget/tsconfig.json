@@ -1,0 +1,48 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "sourceMap": true,
+    "strict": true,
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "preserveWatchOutput": true,
+    "useDefineForClassFields": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable",
+      "WebWorker"
+    ],
+    "jsx": "react-jsx",
+    "declaration": true,
+    "declarationMap": true
+  },
+  "include": [
+    "src/**/*",
+    "*.config.*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.*",
+    "**/*.spec.*"
+  ]
+}

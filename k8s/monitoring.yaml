@@ -1,0 +1,404 @@
+---
+# Prometheus ServiceMonitor for web services
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sitespeak-web-metrics
+  namespace: sitespeak
+  labels:
+    app: sitespeak-web
+spec:
+  selector:
+    matchLabels:
+      app: sitespeak-web
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - sitespeak
+
+---
+# Prometheus ServiceMonitor for worker services
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sitespeak-worker-metrics
+  namespace: sitespeak
+  labels:
+    app: sitespeak-worker
+spec:
+  selector:
+    matchLabels:
+      app: sitespeak-worker
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - sitespeak
+
+---
+# PrometheusRule for SiteSpeak alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sitespeak-alerts
+  namespace: sitespeak
+  labels:
+    app: sitespeak
+spec:
+  groups:
+  - name: sitespeak.rules
+    rules:
+    # High error rate alert
+    - alert: SiteSpeakHighErrorRate
+      expr: rate(http_requests_total{job="sitespeak-web",status=~"5.."}[5m]) / rate(http_requests_total{job="sitespeak-web"}[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: critical
+        service: sitespeak-web
+      annotations:
+        summary: "High error rate detected"
+        description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.instance }}"
+
+    # High latency alert
+    - alert: SiteSpeakHighLatency
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="sitespeak-web"}[5m])) > 2
+      for: 5m
+      labels:
+        severity: warning
+        service: sitespeak-web
+      annotations:
+        summary: "High latency detected"
+        description: "95th percentile latency is {{ $value }}s for {{ $labels.instance }}"
+
+    # Voice latency alert (critical for performance)
+    - alert: SiteSpeakVoiceHighLatency
+      expr: histogram_quantile(0.95, rate(voice_latency_seconds_bucket{type="first_token"}[5m])) > 0.3
+      for: 1m
+      labels:
+        severity: critical
+        service: sitespeak-voice
+      annotations:
+        summary: "Voice first token latency too high"
+        description: "Voice first token latency is {{ $value }}s, exceeding 300ms target"
+
+    # Deployment health alert
+    - alert: SiteSpeakDeploymentDown
+      expr: up{job="sitespeak-web"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: sitespeak-web
+      annotations:
+        summary: "SiteSpeak deployment is down"
+        description: "SiteSpeak web service {{ $labels.instance }} is down"
+
+    # Memory usage alert
+    - alert: SiteSpeakHighMemoryUsage
+      expr: container_memory_usage_bytes{pod=~"sitespeak-web-.*"} / container_spec_memory_limit_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        service: sitespeak-web
+      annotations:
+        summary: "High memory usage"
+        description: "Memory usage is {{ $value | humanizePercentage }} for {{ $labels.pod }}"
+
+    # CPU usage alert
+    - alert: SiteSpeakHighCPUUsage
+      expr: rate(container_cpu_usage_seconds_total{pod=~"sitespeak-web-.*"}[5m]) / container_spec_cpu_quota * container_spec_cpu_period > 0.8
+      for: 10m
+      labels:
+        severity: warning
+        service: sitespeak-web
+      annotations:
+        summary: "High CPU usage"
+        description: "CPU usage is {{ $value | humanizePercentage }} for {{ $labels.pod }}"
+
+    # Blue-Green deployment alert
+    - alert: SiteSpeakBlueGreenImbalance
+      expr: |
+        (
+          count by(version) (up{job="sitespeak-web"} == 1) > 0
+        ) and (
+          count by(version) (up{job="sitespeak-web"} == 1) != 1
+        )
+      for: 5m
+      labels:
+        severity: warning
+        service: sitespeak-deployment
+      annotations:
+        summary: "Blue-Green deployment imbalance detected"
+        description: "Both blue and green deployments are active simultaneously"
+
+    # Voice session alert
+    - alert: SiteSpeakVoiceSessionsHigh
+      expr: voice_sessions_active > 800
+      for: 2m
+      labels:
+        severity: warning
+        service: sitespeak-voice
+      annotations:
+        summary: "High number of active voice sessions"
+        description: "{{ $value }} active voice sessions, approaching limit"
+
+    # Database connection alert
+    - alert: SiteSpeakDatabaseConnectionHigh
+      expr: db_connections_active > 80
+      for: 5m
+      labels:
+        severity: warning
+        service: sitespeak-database
+      annotations:
+        summary: "High database connection usage"
+        description: "{{ $value }} active database connections"
+
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sitespeak-dashboard
+  namespace: sitespeak
+  labels:
+    grafana_dashboard: "1"
+data:
+  sitespeak-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "SiteSpeak Overview",
+        "description": "SiteSpeak application monitoring dashboard",
+        "tags": ["sitespeak"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{job=\"sitespeak-web\"}[5m])",
+                "legendFormat": "{{instance}} - {{method}} {{status}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 0
+            }
+          },
+          {
+            "id": 2,
+            "title": "Error Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{job=\"sitespeak-web\",status=~\"5..\"}[5m])",
+                "legendFormat": "Errors - {{instance}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Errors/sec"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 0
+            }
+          },
+          {
+            "id": 3,
+            "title": "Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"sitespeak-web\"}[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"sitespeak-web\"}[5m]))",
+                "legendFormat": "50th percentile"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Seconds"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 8
+            }
+          },
+          {
+            "id": 4,
+            "title": "Voice Latency",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(voice_latency_seconds_bucket{type=\"first_token\"}[5m]))",
+                "legendFormat": "First Token (95th)"
+              },
+              {
+                "expr": "histogram_quantile(0.95, rate(voice_latency_seconds_bucket{type=\"partial_asr\"}[5m]))",
+                "legendFormat": "Partial ASR (95th)"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Seconds"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 8
+            }
+          },
+          {
+            "id": 5,
+            "title": "Active Voice Sessions",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "voice_sessions_active",
+                "legendFormat": "Active Sessions"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Sessions"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 16
+            }
+          },
+          {
+            "id": 6,
+            "title": "Blue-Green Deployment Status",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "up{job=\"sitespeak-web\"}",
+                "format": "table",
+                "instant": true
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 16
+            }
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+
+---
+# PodDisruptionBudget for blue deployment
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sitespeak-web-blue-pdb
+  namespace: sitespeak
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: sitespeak-web
+      version: blue
+
+---
+# PodDisruptionBudget for green deployment
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sitespeak-web-green-pdb
+  namespace: sitespeak
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: sitespeak-web
+      version: green
+
+---
+# NetworkPolicy for web services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sitespeak-web-netpol
+  namespace: sitespeak
+spec:
+  podSelector:
+    matchLabels:
+      app: sitespeak-web
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: nginx-ingress
+    - podSelector:
+        matchLabels:
+          app: nginx-ingress
+    ports:
+    - protocol: TCP
+      port: 5000
+  - from:
+    - podSelector:
+        matchLabels:
+          app: deployment-controller
+    ports:
+    - protocol: TCP
+      port: 5000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to: []  # Allow external HTTPS for APIs
+    ports:
+    - protocol: TCP
+      port: 443

@@ -8,6 +8,9 @@ export { VoiceWidget, VoiceWidgetMetadata } from './components/VoiceWidget'
 export * from './utils/cn'
 export * from './utils/component-metadata'
 
+// Component registry for editor integration
+export * from './registry/component-registry'
+
 // Schema exports (verified to exist and used by consumers)
 export * from './schemas/component-schemas'
 export * from './schemas/aria-schemas'

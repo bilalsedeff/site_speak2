@@ -25,9 +25,14 @@ COPY client/package*.json ./client/
 COPY server/package*.json ./server/
 
 # Install dependencies
+# Install root dependencies
 RUN npm install
-RUN cd client && npm install
-RUN cd server && npm install
+
+# Install client dependencies when present (monorepo-compatible)
+RUN if [ -f client/package.json ]; then cd client && npm install; fi
+
+# Install server-specific dependencies only if that package exists
+RUN if [ -f server/package.json ]; then cd server && npm install; fi
 
 # Create necessary directories
 RUN mkdir -p temp/audio uploads/optimized uploads/thumbnails project_definitions server/knowledge-base

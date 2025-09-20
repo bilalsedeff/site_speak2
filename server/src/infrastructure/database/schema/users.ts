@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index, integer } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 import { tenants } from './tenants';
@@ -28,7 +28,7 @@ export const users = pgTable('users', {
   // Login tracking
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   lastLoginIp: varchar('last_login_ip', { length: 45 }),
-  loginCount: jsonb('login_count').default(0),
+  loginCount: integer('login_count').notNull().default(0),
   
   // User preferences
   preferences: jsonb('preferences').notNull().default({}),

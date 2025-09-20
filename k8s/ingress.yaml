@@ -1,0 +1,195 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sitespeak-ingress
+  namespace: sitespeak
+  annotations:
+    # NGINX Ingress Controller annotations
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+    # WebSocket support
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "sitespeak-active-service"
+
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options DENY always;
+      add_header X-Content-Type-Options nosniff always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.sitespeak.ai; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss: https:; font-src 'self' data:; media-src 'self'; object-src 'none'; frame-src 'none';" always;
+
+    # Blue-green deployment routing
+    nginx.ingress.kubernetes.io/server-snippet: |
+      # Blue-green routing based on header or cookie
+      set $backend "sitespeak-blue-service";
+      if ($cookie_deployment = "green") {
+        set $backend "sitespeak-green-service";
+      }
+      if ($http_x_deployment_target = "green") {
+        set $backend "sitespeak-green-service";
+      }
+
+    # CORS for production
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.sitespeak.ai,https://sitespeak.ai"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, Keep-Alive, X-Requested-With, If-Modified-Since"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+
+    # Cert Manager for Let's Encrypt
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+spec:
+  tls:
+  - hosts:
+    - api.sitespeak.ai
+    - app.sitespeak.ai
+    - "*.sites.sitespeak.ai"
+    secretName: sitespeak-tls
+  rules:
+  - host: api.sitespeak.ai
+    http:
+      paths:
+      # Health check endpoint (no rate limiting)
+      - path: /health
+        pathType: Prefix
+        backend:
+          service:
+            name: sitespeak-active-service
+            port:
+              number: 5000
+
+      # API endpoints with enhanced rate limiting
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: sitespeak-active-service
+            port:
+              number: 5000
+
+      # Voice WebSocket endpoint
+      - path: /voice-ws
+        pathType: Prefix
+        backend:
+          service:
+            name: sitespeak-active-service
+            port:
+              number: 5000
+
+      # Admin deployment management
+      - path: /admin/deployment
+        pathType: Prefix
+        backend:
+          service:
+            name: deployment-controller-service
+            port:
+              number: 3001
+
+  - host: app.sitespeak.ai
+    http:
+      paths:
+      # Main application
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sitespeak-active-service
+            port:
+              number: 5000
+
+      # Static assets with long-term caching
+      - path: /static
+        pathType: Prefix
+        backend:
+          service:
+            name: sitespeak-active-service
+            port:
+              number: 5000
+
+      # Voice widget assets
+      - path: /voice-widget
+        pathType: Prefix
+        backend:
+          service:
+            name: sitespeak-active-service
+            port:
+              number: 5000
+
+  # Published sites wildcard routing
+  - host: "*.sites.sitespeak.ai"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sitespeak-active-service
+            port:
+              number: 5000
+
+---
+# Active service selector (points to current blue/green deployment)
+apiVersion: v1
+kind: Service
+metadata:
+  name: sitespeak-active-service
+  namespace: sitespeak
+  labels:
+    app: sitespeak-web
+    role: active
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+spec:
+  selector:
+    app: sitespeak-web
+    version: blue  # This gets updated during blue-green switches
+  ports:
+  - name: http
+    port: 5000
+    targetPort: 5000
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours for WebSocket sessions
+
+---
+# Staging ingress for testing green deployments
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sitespeak-staging-ingress
+  namespace: sitespeak
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+spec:
+  tls:
+  - hosts:
+    - staging.sitespeak.ai
+    secretName: sitespeak-staging-tls
+  rules:
+  - host: staging.sitespeak.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sitespeak-green-service
+            port:
+              number: 5000

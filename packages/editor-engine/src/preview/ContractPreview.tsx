@@ -1,25 +1,31 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  FileText, 
-  Code, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  FileText,
+  Code,
+  CheckCircle,
+  AlertCircle,
   ExternalLink,
   Download,
   Eye,
-  EyeOff 
+  EyeOff,
+  RefreshCw
 } from 'lucide-react'
 
 import { useEditorStore } from '../store/editorStore'
+import { useContractGeneration } from '../hooks/useContractGeneration'
 
 type PreviewTab = 'overview' | 'jsonld' | 'actions' | 'aria' | 'sitemap'
 
 export function ContractPreview() {
   const [activeTab, setActiveTab] = useState<PreviewTab>('overview')
   const [isMinified, setIsMinified] = useState(false)
-  
-  // Tab components access editor store directly
+
+  // Initialize contract generation
+  const { isGenerating, generateContract, error } = useContractGeneration({
+    autoGenerate: true,
+    debounceMs: 1500
+  })
 
   const tabs = [
     { id: 'overview' as const, label: 'Overview', icon: FileText },
@@ -40,6 +46,15 @@ export function ContractPreview() {
           
           <div className="flex items-center space-x-2">
             <button
+              onClick={generateContract}
+              disabled={isGenerating}
+              className="p-2 hover:bg-muted rounded-lg touch-target-ios disabled:opacity-50"
+              title="Regenerate contract"
+            >
+              <RefreshCw className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
+            </button>
+
+            <button
               onClick={() => setIsMinified(!isMinified)}
               className="p-2 hover:bg-muted rounded-lg touch-target-ios"
               title={isMinified ? 'Show formatted' : 'Show minified'}
@@ -50,7 +65,7 @@ export function ContractPreview() {
                 <EyeOff className="h-4 w-4" />
               )}
             </button>
-            
+
             <button
               onClick={() => downloadContract()}
               className="p-2 hover:bg-muted rounded-lg touch-target-ios"
@@ -60,6 +75,18 @@ export function ContractPreview() {
             </button>
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-destructive" />
+              <span className="text-sm text-destructive">
+                Contract generation failed: {error}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Tab Navigation */}
         <div className="flex space-x-1 overflow-x-auto">
@@ -211,23 +238,40 @@ function OverviewTab() {
 // JSON-LD Tab Component
 function JsonLdTab({ minified }: { minified: boolean }) {
   const { contractData } = useEditorStore()
-  
-  const jsonLdOutput = JSON.stringify(contractData.jsonLd, null, minified ? 0 : 2)
+
+  // Show the actual JSON-LD entities if available
+  const hasJsonLd = contractData.jsonLd && contractData.jsonLd.length > 0
+  const jsonLdOutput = hasJsonLd
+    ? JSON.stringify(contractData.jsonLd, null, minified ? 0 : 2)
+    : null
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="font-medium">Structured Data (JSON-LD)</h4>
-        <span className="text-xs text-muted-foreground">
-          Schema.org compliant
-        </span>
+        <div className="flex items-center space-x-2">
+          {hasJsonLd && (
+            <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+              {contractData.jsonLd.length} entities
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">
+            Schema.org compliant
+          </span>
+        </div>
       </div>
-      
+
       <div className="bg-muted rounded-lg p-4 font-mono text-sm overflow-x-auto">
         <pre className="whitespace-pre-wrap max-reading-width">
-          {jsonLdOutput || '// No JSON-LD data generated yet'}
+          {jsonLdOutput || '// No JSON-LD data generated yet\n// Add components to see structured data'}
         </pre>
       </div>
+
+      {hasJsonLd && (
+        <div className="text-xs text-muted-foreground">
+          <p>💡 This JSON-LD will be automatically injected into the &lt;head&gt; of your published site for SEO and rich results.</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -235,23 +279,46 @@ function JsonLdTab({ minified }: { minified: boolean }) {
 // Actions Tab Component
 function ActionsTab({ minified }: { minified: boolean }) {
   const { contractData } = useEditorStore()
-  
-  const actionsOutput = JSON.stringify(contractData.actions, null, minified ? 0 : 2)
+
+  // Show the actual actions if available
+  const hasActions = contractData.actions && Object.keys(contractData.actions).length > 0
+  const actionCount = hasActions
+    ? Object.values(contractData.actions).reduce((total: number, actions: any) => {
+        return total + (Array.isArray(actions) ? actions.length : 0)
+      }, 0)
+    : 0
+
+  const actionsOutput = hasActions
+    ? JSON.stringify(contractData.actions, null, minified ? 0 : 2)
+    : null
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="font-medium">Action Manifest</h4>
-        <span className="text-xs text-muted-foreground">
-          Deterministic actions
-        </span>
+        <div className="flex items-center space-x-2">
+          {hasActions && (
+            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+              {actionCount} actions
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">
+            Voice AI compatible
+          </span>
+        </div>
       </div>
-      
+
       <div className="bg-muted rounded-lg p-4 font-mono text-sm overflow-x-auto">
         <pre className="whitespace-pre-wrap max-reading-width">
-          {actionsOutput || '// No actions defined yet'}
+          {actionsOutput || '// No actions defined yet\n// Add interactive components to see available actions'}
         </pre>
       </div>
+
+      {hasActions && (
+        <div className="text-xs text-muted-foreground">
+          <p>💡 These actions will be available to the voice AI assistant for executing user commands.</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -273,25 +340,51 @@ function AriaTab() {
   )
 }
 
-// Sitemap Tab Component  
+// Sitemap Tab Component
 function SitemapTab() {
-  return (
-    <div className="space-y-4">
-      <h4 className="font-medium">XML Sitemap</h4>
-      
-      <div className="bg-muted rounded-lg p-4 font-mono text-sm overflow-x-auto">
-        <pre className="whitespace-pre-wrap max-reading-width">
-{`<?xml version="1.0" encoding="UTF-8"?>
+  const { contractData } = useEditorStore()
+
+  // Show the actual sitemap if available
+  const hasSitemap = contractData.sitemap && contractData.sitemap.xmlSitemap
+  const sitemapContent = hasSitemap
+    ? contractData.sitemap.xmlSitemap
+    : `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://example.com/</loc>
+    <loc>https://preview.sitespeak.ai/</loc>
     <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
-</urlset>`}
+</urlset>`
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="font-medium">XML Sitemap</h4>
+        <div className="flex items-center space-x-2">
+          {hasSitemap && contractData.sitemap.entries && (
+            <span className="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded-full">
+              {contractData.sitemap.entries.length} pages
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">
+            SEO optimized
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-muted rounded-lg p-4 font-mono text-sm overflow-x-auto">
+        <pre className="whitespace-pre-wrap max-reading-width">
+          {sitemapContent}
         </pre>
       </div>
+
+      {hasSitemap && (
+        <div className="text-xs text-muted-foreground">
+          <p>💡 This sitemap will be served at /sitemap.xml to help search engines discover your content.</p>
+        </div>
+      )}
     </div>
   )
 }

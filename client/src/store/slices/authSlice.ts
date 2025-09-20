@@ -1,8 +1,16 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import { authApi, type User } from '@/services/api/auth'
+import {
+  authApi,
+  type User,
+  type TenantSummary,
+  type SessionInfo,
+  type ProfileResponse,
+} from '@/services/api/auth'
 
 interface AuthState {
   user: User | null
+  tenant: TenantSummary | null
+  session: SessionInfo | null
   token: string | null
   refreshToken: string | null
   isLoading: boolean
@@ -12,6 +20,8 @@ interface AuthState {
 
 const initialState: AuthState = {
   user: null,
+  tenant: null,
+  session: null,
   token: localStorage.getItem('token'),
   refreshToken: localStorage.getItem('refreshToken'),
   isLoading: false,
@@ -22,7 +32,7 @@ const initialState: AuthState = {
 // Async thunks
 export const login = createAsyncThunk(
   'auth/login',
-  async (credentials: { email: string; password: string }, { rejectWithValue }) => {
+  async (credentials: { email: string; password: string; rememberMe?: boolean }, { rejectWithValue }) => {
     try {
       const response = await authApi.login(credentials)
       localStorage.setItem('token', response.token)
@@ -70,8 +80,8 @@ export const fetchProfile = createAsyncThunk(
   'auth/profile',
   async (_, { rejectWithValue }) => {
     try {
-      const user = await authApi.getProfile()
-      return user
+      const profile = await authApi.getProfile()
+      return profile
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to fetch profile')
     }
@@ -84,6 +94,8 @@ const authSlice = createSlice({
   reducers: {
     logout: (state) => {
       state.user = null
+      state.tenant = null
+      state.session = null
       state.token = null
       state.refreshToken = null
       state.isAuthenticated = false
@@ -117,6 +129,8 @@ const authSlice = createSlice({
         state.isLoading = false
         state.isAuthenticated = true
         state.user = action.payload.user
+        state.tenant = action.payload.tenant
+        state.session = action.payload.session
         state.token = action.payload.token
         state.refreshToken = action.payload.refreshToken
         state.error = null
@@ -125,6 +139,8 @@ const authSlice = createSlice({
         state.isLoading = false
         state.isAuthenticated = false
         state.user = null
+        state.tenant = null
+        state.session = null
         state.token = null
         state.refreshToken = null
         state.error = action.payload as string
@@ -140,12 +156,16 @@ const authSlice = createSlice({
         state.isLoading = false
         state.isAuthenticated = true
         state.user = action.payload.user
+        state.tenant = action.payload.tenant
+        state.session = action.payload.session
         state.token = action.payload.token
         state.refreshToken = action.payload.refreshToken
         state.error = null
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false
+        state.tenant = null
+        state.session = null
         state.error = action.payload as string
       })
 
@@ -158,6 +178,8 @@ const authSlice = createSlice({
       })
       .addCase(refreshAuth.rejected, (state) => {
         state.user = null
+        state.tenant = null
+        state.session = null
         state.token = null
         state.refreshToken = null
         state.isAuthenticated = false
@@ -170,9 +192,10 @@ const authSlice = createSlice({
       .addCase(fetchProfile.pending, (state) => {
         state.isLoading = true
       })
-      .addCase(fetchProfile.fulfilled, (state, action) => {
+      .addCase(fetchProfile.fulfilled, (state, action: PayloadAction<ProfileResponse>) => {
         state.isLoading = false
-        state.user = action.payload
+        state.user = action.payload.user
+        state.tenant = action.payload.tenant
       })
       .addCase(fetchProfile.rejected, (state, action) => {
         state.isLoading = false

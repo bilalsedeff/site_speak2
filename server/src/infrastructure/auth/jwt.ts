@@ -46,22 +46,6 @@ export interface TokenOptions {
 }
 
 /**
- * Parse expiration time string (e.g., "15m", "7d") to seconds
- */
-function parseExpirationTime(timeStr: string): number {
-  const unit = timeStr.slice(-1);
-  const value = parseInt(timeStr.slice(0, -1));
-
-  switch (unit) {
-    case 's': return value;
-    case 'm': return value * 60;
-    case 'h': return value * 60 * 60;
-    case 'd': return value * 24 * 60 * 60;
-    default: throw new Error(`Invalid time unit: ${unit}`);
-  }
-}
-
-/**
  * JWT Service for authentication token management
  */
 export class JWTService {
@@ -82,23 +66,21 @@ export class JWTService {
    */
   generateAccessToken(payload: Omit<JWTPayload, 'iat' | 'exp' | 'iss' | 'aud'>, options?: TokenOptions): string {
     try {
-      const now = Math.floor(Date.now() / 1000);
+      const sessionId = payload.sessionId || randomUUID();
+      const issuer = options?.issuer || this.defaultIssuer;
+      const audience = options?.audience || this.defaultAudience;
       const expiresIn = options?.expiresIn || config.JWT_ACCESS_EXPIRES_IN;
-      const expSeconds = typeof expiresIn === 'string' ? parseExpirationTime(expiresIn) : expiresIn;
 
-      const tokenPayload: JWTPayload = {
+      const tokenPayload: Omit<JWTPayload, 'iat' | 'exp' | 'iss' | 'aud'> = {
         ...payload,
-        iat: now,
-        exp: now + expSeconds,
-        iss: options?.issuer || this.defaultIssuer,
-        aud: options?.audience || this.defaultAudience,
-        sessionId: payload.sessionId || randomUUID(),
+        sessionId,
       };
 
       return jwt.sign(tokenPayload, this.accessTokenSecret, {
         algorithm: 'HS256',
-        issuer: tokenPayload.iss,
-        audience: tokenPayload.aud,
+        issuer,
+        audience,
+        expiresIn: expiresIn as any,
       });
     } catch (error) {
       logger.error('Failed to generate access token', { 
@@ -118,19 +100,22 @@ export class JWTService {
    */
   generateRefreshToken(payload: Pick<JWTPayload, 'userId' | 'tenantId' | 'sessionId'>, options?: TokenOptions): string {
     try {
+      const sessionId = payload.sessionId || randomUUID();
+      const issuer = options?.issuer || this.defaultIssuer;
+      const audience = options?.audience || this.defaultAudience;
+      const expiresIn = options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN;
+
       const tokenPayload = {
-        ...payload,
-        iss: options?.issuer || this.defaultIssuer,
-        aud: options?.audience || this.defaultAudience,
+        userId: payload.userId,
+        tenantId: payload.tenantId,
+        sessionId,
       };
 
-      const expiresIn = options?.expiresIn || config.JWT_REFRESH_EXPIRES_IN;
-      const signOptions: jwt.SignOptions = {
+      return jwt.sign(tokenPayload, this.refreshTokenSecret, {
         expiresIn: expiresIn as any,
-        issuer: tokenPayload.iss,
-        audience: tokenPayload.aud,
-      };
-      return jwt.sign(tokenPayload, this.refreshTokenSecret, signOptions);
+        issuer,
+        audience,
+      });
     } catch (error) {
       logger.error('Failed to generate refresh token', { error, userId: payload.userId });
       throw new Error('Token generation failed');

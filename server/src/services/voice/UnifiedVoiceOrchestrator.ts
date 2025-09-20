@@ -336,19 +336,159 @@ export class UnifiedVoiceOrchestrator extends EventEmitter {
    * Get orchestrator status
    */
   getStatus(): VoiceServiceStatus {
-    return {
-      isRunning: this.isRunning,
-      activeSessions: this.sessionManager.getSessionsCount(),
-      performance: this.performanceOptimizer.getPerformanceMetrics(),
-      optimizations: this.performanceOptimizer.getOptimizationStatus(),
-      components: {
-        visualFeedback: this.visualFeedbackService.getCurrentState(),
-        connectionPool: this.config.performance.enableConnectionPooling ? realtimeConnectionPool.getStats() : null,
-        audioConverter: this.config.optimization.enableMemoryPooling ? optimizedAudioConverter.getStats() : null,
-        performanceMonitor: this.performanceOptimizer.getOptimizationStatus().currentSnapshot,
-      },
-      circuitBreaker: this.performanceOptimizer.getCircuitBreakerStatus(),
-    };
+    try {
+      // Safely get each component status with fallbacks
+      let activeSessions = 0;
+      try {
+        activeSessions = this.sessionManager?.getSessionsCount() || 0;
+      } catch (error) {
+        logger.warn('Failed to get active sessions count', { error });
+      }
+
+      let performance = {
+        totalSessions: 0,
+        avgFirstTokenLatency: 0,
+        avgPartialLatency: 0,
+        avgBargeInLatency: 0,
+        avgAudioProcessingLatency: 0,
+        errorRate: 0,
+        connectionPoolHitRate: 0,
+        streamingProcessingRate: 0,
+        autoOptimizationsTriggered: 0
+      };
+      try {
+        const metrics = this.performanceOptimizer?.getPerformanceMetrics();
+        if (metrics) {
+          performance = {
+            totalSessions: metrics.totalSessions || 0,
+            avgFirstTokenLatency: metrics.avgFirstTokenLatency || 0,
+            avgPartialLatency: metrics.avgPartialLatency || 0,
+            avgBargeInLatency: metrics.avgBargeInLatency || 0,
+            avgAudioProcessingLatency: metrics.avgAudioProcessingLatency || 0,
+            errorRate: metrics.errorRate || 0,
+            connectionPoolHitRate: metrics.connectionPoolHitRate || 0,
+            streamingProcessingRate: metrics.streamingProcessingRate || 0,
+            autoOptimizationsTriggered: metrics.autoOptimizationsTriggered || 0
+          };
+        }
+      } catch (error) {
+        logger.warn('Failed to get performance metrics', { error });
+      }
+
+      let optimizations = {
+        connectionPooling: false,
+        streamingAudio: false,
+        adaptiveOptimization: false,
+        performanceMonitoring: false
+      };
+      try {
+        const optimizationStatus = this.performanceOptimizer?.getOptimizationStatus();
+        if (optimizationStatus) {
+          optimizations = {
+            connectionPooling: optimizationStatus.connectionPooling || false,
+            streamingAudio: optimizationStatus.streamingAudio || false,
+            adaptiveOptimization: optimizationStatus.adaptiveOptimization || false,
+            performanceMonitoring: optimizationStatus.performanceMonitoring || false
+          };
+        }
+      } catch (error) {
+        logger.warn('Failed to get optimization status', { error });
+      }
+
+      let visualFeedback = { state: 'unknown' };
+      try {
+        const feedbackState = this.visualFeedbackService?.getCurrentState();
+        if (feedbackState) {
+          visualFeedback = {
+            state: feedbackState.isActive ? 'active' : 'inactive'
+          };
+        }
+      } catch (error) {
+        logger.warn('Failed to get visual feedback state', { error });
+      }
+
+      let connectionPool = null;
+      try {
+        if (this.config.performance.enableConnectionPooling) {
+          connectionPool = realtimeConnectionPool.getStats();
+        }
+      } catch (error) {
+        logger.warn('Failed to get connection pool stats', { error });
+      }
+
+      let audioConverter = null;
+      try {
+        if (this.config.optimization.enableMemoryPooling) {
+          audioConverter = optimizedAudioConverter.getStats();
+        }
+      } catch (error) {
+        logger.warn('Failed to get audio converter stats', { error });
+      }
+
+      let circuitBreaker: { state: 'closed' | 'open' | 'half-open'; failureCount: number; failureThreshold: number } = {
+        state: 'closed',
+        failureCount: 0,
+        failureThreshold: 5
+      };
+      try {
+        const cbStatus = this.performanceOptimizer?.getCircuitBreakerStatus();
+        if (cbStatus) {
+          const validStates: Array<'closed' | 'open' | 'half-open'> = ['closed', 'open', 'half-open'];
+          circuitBreaker = {
+            state: validStates.includes(cbStatus.state as any) ? (cbStatus.state as 'closed' | 'open' | 'half-open') : 'closed',
+            failureCount: cbStatus.failureCount || 0,
+            failureThreshold: cbStatus.failureThreshold || 5
+          };
+        }
+      } catch (error) {
+        logger.warn('Failed to get circuit breaker status', { error });
+      }
+
+      return {
+        isRunning: this.isRunning,
+        activeSessions,
+        performance,
+        optimizations,
+        components: {
+          visualFeedback,
+          connectionPool,
+          audioConverter,
+          performanceMonitor: null,
+        },
+        circuitBreaker,
+      };
+    } catch (error) {
+      logger.error('Failed to get orchestrator status', { error });
+      // Return minimal status if everything fails
+      return {
+        isRunning: this.isRunning,
+        activeSessions: 0,
+        performance: {
+          totalSessions: 0,
+          avgFirstTokenLatency: 0,
+          avgPartialLatency: 0,
+          avgBargeInLatency: 0,
+          avgAudioProcessingLatency: 0,
+          errorRate: 0,
+          connectionPoolHitRate: 0,
+          streamingProcessingRate: 0,
+          autoOptimizationsTriggered: 0
+        },
+        optimizations: {
+          connectionPooling: false,
+          streamingAudio: false,
+          adaptiveOptimization: false,
+          performanceMonitoring: false
+        },
+        components: {
+          visualFeedback: { state: 'error' },
+          connectionPool: null,
+          audioConverter: null,
+          performanceMonitor: null,
+        },
+        circuitBreaker: { state: 'closed', failureCount: 0, failureThreshold: 5 },
+      };
+    }
   }
 
   /**

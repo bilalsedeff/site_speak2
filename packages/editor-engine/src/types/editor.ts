@@ -25,7 +25,7 @@ export interface ComponentInstance {
 export interface EditorComponent {
   name: string
   displayName: string
-  category: 'layout' | 'content' | 'ui' | 'voice'
+  category: 'ui' | 'layout' | 'form' | 'navigation' | 'feedback' | 'content' | 'voice'
   icon: string
   metadata: ComponentMetadata
   defaultProps: Record<string, any>

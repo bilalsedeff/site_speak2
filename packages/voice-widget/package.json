@@ -1,0 +1,88 @@
+{
+  "name": "@sitespeak/voice-widget",
+  "version": "1.0.0",
+  "description": "Embeddable voice-first AI assistant widget for SiteSpeak websites",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.js"
+    },
+    "./embed": {
+      "types": "./dist/embed.d.ts",
+      "import": "./dist/embed.es.js",
+      "require": "./dist/embed.js"
+    },
+    "./styles": "./dist/style.css"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:embed": "vite build --config vite.embed.config.ts",
+    "build:all": "npm run build && npm run build:embed",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.11",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@typescript-eslint/eslint-plugin": "^8.39.1",
+    "@typescript-eslint/parser": "^8.39.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "eslint": "^9.33.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.0.6",
+    "vite-plugin-dts": "^4.3.0",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "voice",
+    "ai",
+    "assistant",
+    "widget",
+    "embed",
+    "sitespeak",
+    "speech-to-text",
+    "text-to-speech",
+    "real-time",
+    "websocket"
+  ],
+  "author": "SiteSpeak Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sitespeak/sitespeak",
+    "directory": "packages/voice-widget"
+  },
+  "homepage": "https://sitespeak.ai",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

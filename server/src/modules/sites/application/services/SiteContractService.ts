@@ -181,8 +181,16 @@ export class SiteContractService {
       };
     } catch (error) {
       logger.error('Site contract generation failed', {
-        error,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : 'Unknown'
+        },
         siteId: request.site.id,
+        requestData: {
+          includeAnalytics: request.includeAnalytics,
+          wcagLevel: request.wcagLevel
+        }
       });
       throw error;
     }

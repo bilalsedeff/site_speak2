@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sitespeak-worker
+  namespace: sitespeak
+  labels:
+    app: sitespeak-worker
+    component: worker
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: sitespeak-worker
+  template:
+    metadata:
+      labels:
+        app: sitespeak-worker
+        component: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: sitespeak-worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: worker
+        image: sitespeak/sitespeak:latest
+        imagePullPolicy: Always
+        command: ["node", "server/worker.js"]
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PROCESS_TYPE
+          value: "worker"
+        - name: CRAWLER_CONCURRENCY
+          value: "5"
+        - name: INDEXER_BATCH_SIZE
+          value: "100"
+        - name: CHROMIUM_PATH
+          value: "/usr/bin/chromium-browser"
+        - name: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+          value: "true"
+        envFrom:
+        - configMapRef:
+            name: sitespeak-worker-config
+        - secretRef:
+            name: sitespeak-secrets
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep '[n]ode.*worker' > /dev/null"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "node -e 'process.exit(0)'"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: temp-storage
+          mountPath: /app/temp
+        - name: knowledge-base
+          mountPath: /app/knowledge-base
+        - name: published-sites
+          mountPath: /app/published-sites
+        - name: project-definitions
+          mountPath: /app/project_definitions
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - SYS_ADMIN  # Required for Chromium sandbox
+      volumes:
+      - name: temp-storage
+        emptyDir:
+          sizeLimit: 2Gi
+      - name: knowledge-base
+        persistentVolumeClaim:
+          claimName: sitespeak-knowledge-base
+      - name: published-sites
+        persistentVolumeClaim:
+          claimName: sitespeak-published-sites
+      - name: project-definitions
+        persistentVolumeClaim:
+          claimName: sitespeak-project-definitions
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node-type: worker  # Dedicated worker nodes for heavy processing
+      tolerations:
+      - key: "worker-node"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: sitespeak-worker
+
+---
+# Service Account for worker pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sitespeak-worker
+  namespace: sitespeak
+  labels:
+    app: sitespeak-worker
+
+---
+# PVC for knowledge base storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sitespeak-knowledge-base
+  namespace: sitespeak
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: fast-ssd
+
+---
+# PVC for published sites storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sitespeak-published-sites
+  namespace: sitespeak
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard
+
+---
+# PVC for project definitions
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sitespeak-project-definitions
+  namespace: sitespeak
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard

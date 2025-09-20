@@ -1,0 +1,153 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sitespeak-web-green
+  namespace: sitespeak
+  labels:
+    app: sitespeak-web
+    version: green
+    component: web
+spec:
+  replicas: 0  # Start with 0 replicas, scale up during deployment
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sitespeak-web
+      version: green
+  template:
+    metadata:
+      labels:
+        app: sitespeak-web
+        version: green
+        component: web
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: sitespeak-web
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: web
+        image: sitespeak/sitespeak:green
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 5000
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PROCESS_TYPE
+          value: "web"
+        - name: PORT
+          value: "5000"
+        - name: DEPLOYMENT_COLOR
+          value: "green"
+        envFrom:
+        - configMapRef:
+            name: sitespeak-config
+        - secretRef:
+            name: sitespeak-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 5000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        startupProbe:
+          httpGet:
+            path: /health/startup
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 20
+          successThreshold: 1
+        volumeMounts:
+        - name: temp-storage
+          mountPath: /app/temp
+        - name: uploads
+          mountPath: /app/uploads
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: temp-storage
+        emptyDir:
+          sizeLimit: 1Gi
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: sitespeak-uploads
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: sitespeak-web
+            version: green
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sitespeak-green-service
+  namespace: sitespeak
+  labels:
+    app: sitespeak-web
+    version: green
+spec:
+  selector:
+    app: sitespeak-web
+    version: green
+  ports:
+  - name: http
+    port: 5000
+    targetPort: 5000
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours for WebSocket sessions

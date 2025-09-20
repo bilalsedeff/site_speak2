@@ -63,9 +63,18 @@ export class SiteController {
    */
   async listSites(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = req.user!;
+      const user = req.user;
       const correlationId = HttpHeaders.getCorrelationId(req);
       const query = ListSitesQuerySchema.parse(req.query);
+
+      // Handle development mode when no user is authenticated
+      if (!user) {
+        logger.warn('No authenticated user for sites listing', { correlationId });
+        res.status(401).json(
+          ProblemDetails.unauthorized('Authentication required to list sites', correlationId)
+        );
+        return;
+      }
 
       logger.info('Listing sites', {
         userId: user.id,

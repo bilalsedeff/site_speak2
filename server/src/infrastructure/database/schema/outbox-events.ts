@@ -1,5 +1,5 @@
 import { pgTable, uuid, varchar, text, jsonb, timestamp, integer, index } from 'drizzle-orm/pg-core';
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 import { tenants } from './tenants';
@@ -53,7 +53,7 @@ export const outboxEvents = pgTable('outbox_events', {
   // Composite index for efficient polling
   pendingEventsIdx: index('outbox_events_pending_polling_idx')
     .on(table.status, table.createdAt)
-    .where(eq(table.status, 'pending')),
+    .where(sql`${table.status} = 'pending'`),
     
   // Index for correlation tracking
   correlationIdx: index('outbox_events_correlation_idx').on(table.correlationId),

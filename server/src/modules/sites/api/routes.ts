@@ -5,17 +5,22 @@ import { SiteOrchestrator } from '../application/services/SiteOrchestrator';
 import { HttpHeaders } from '../adapters/http/HttpHeaders';
 import { problemDetailsErrorHandler } from '../adapters/http/ProblemDetails';
 import { EventBus } from '../../../services/_shared/events/eventBus';
+import { devAuth } from '../../../infrastructure/auth/middleware';
+import { siteRepository } from '../../../infrastructure/repositories';
 
 const router = express.Router();
 
-// Initialize dependencies (in production, use proper DI container)
+// Initialize dependencies with proper repository injection
 const eventBus = new EventBus();
-const siteOrchestrator = new SiteOrchestrator({} as any, eventBus); // Repository would be injected
-const siteController = new SiteController({} as any, siteOrchestrator); // Repository would be injected
+const siteOrchestrator = new SiteOrchestrator(siteRepository, eventBus);
+const siteController = new SiteController(siteRepository, siteOrchestrator);
 
 // Add CORS and security headers
 router.use(HttpHeaders.corsHeaders);
 router.use(HttpHeaders.securityHeaders);
+
+// Add development authentication that provides default user context
+router.use(devAuth());
 
 // Health check
 router.get('/health', (_req, res) => {

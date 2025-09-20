@@ -142,14 +142,14 @@ async function initializeAIServices() {
     // For now, creating placeholder structure
 
     const aiServices = {
-      crawler: null, // WebCrawlerService instance
+      crawler: null, // CrawlerAdapter instance
       indexer: null, // IncrementalIndexer instance
       processor: null, // AI processing service instance
     };
 
     // TODO: Initialize actual AI services
-    // const { WebCrawlerService } = await import('../../modules/ai/application/services/WebCrawlerService.js');
-    // aiServices.crawler = new WebCrawlerService();
+    // const { CrawlerAdapter } = await import('../../modules/ai/application/services/CrawlerAdapter.js');
+    // aiServices.crawler = new CrawlerAdapter();
 
     // const { IncrementalIndexer } = await import('../../modules/ai/application/services/IncrementalIndexer.js');
     // aiServices.indexer = new IncrementalIndexer();

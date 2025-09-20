@@ -181,7 +181,7 @@ Essential variables that must be set in `.env`:
 This codebase implements a sophisticated AI-powered website builder with integrated voice assistance. The architecture supports both rapid development iteration and production deployment with Docker.
 
 - There are readmes everywhere, before doing something, make sure to read the readme file in the relevant folder
-- Make sure to check todo-highlevel folder before doing something, every todo, gap, vision and every plan is in that folder. make sure to read first
+- Make sure to check final-directives folder before doing something, every todo, gap, vision and every plan is in that folder. make sure to read first
 - Always act like senior fullstack developer with 20+ years experience, make precise, to the point and wise
 - Check for errors after your works done
 - We are trying to make the crawler as universal as possible we dont hardcode things about websites

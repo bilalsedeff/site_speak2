@@ -20,8 +20,9 @@ services:
       - CLIENT_URL=${CLIENT_URL:-https://yourdomain.com}
       - API_URL=${API_URL:-https://api.yourdomain.com}
       - FRONTEND_URL=${FRONTEND_URL:-https://yourdomain.com}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:sitespeak2024@sitespeak-postgres:5432/sitespeak_db}
-      - REDIS_URL=${REDIS_URL:-redis://:sitespeak2024@sitespeak-redis:6379}
+      # Use container-internal defaults unless DOCKER_* overrides are provided
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-postgresql://postgres:sitespeak2024@sitespeak-postgres:5432/sitespeak_db}
+      - REDIS_URL=${DOCKER_REDIS_URL:-redis://:sitespeak2024@sitespeak-redis:6379}
       - JWT_SECRET=${JWT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - SESSION_SECRET=${SESSION_SECRET:-${JWT_SECRET}}
@@ -71,8 +72,9 @@ services:
     environment:
       - NODE_ENV=production
       - PROCESS_TYPE=worker
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:sitespeak2024@sitespeak-postgres:5432/sitespeak_db}
-      - REDIS_URL=${REDIS_URL:-redis://:sitespeak2024@sitespeak-redis:6379}
+      # Use container-internal defaults unless DOCKER_* overrides are provided
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-postgresql://postgres:sitespeak2024@sitespeak-postgres:5432/sitespeak_db}
+      - REDIS_URL=${DOCKER_REDIS_URL:-redis://:sitespeak2024@sitespeak-redis:6379}
       - JWT_SECRET=${JWT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}

@@ -4,6 +4,7 @@ import { createLogger } from '../../../shared/utils.js';
 import { siteContractService } from '../application/services/SiteContractService';
 import { SiteContractRepositoryImpl } from '../../../infrastructure/repositories/SiteContractRepositoryImpl.js';
 import { db } from '../../../infrastructure/database/index.js';
+import { Site } from '../../../domain/entities/Site';
 
 const logger = createLogger({ service: 'site-contract-controller' });
 
@@ -72,19 +73,19 @@ export class SiteContractController {
       // TODO: Get site from repository
       // TODO: Verify user has access to site
 
-      // Mock site for demonstration
-      const mockSite = {
-        id: siteId,
-        name: 'Demo Business Site',
-        description: 'A modern business website with contact forms and services',
-        tenantId: user.tenantId,
-        templateId: 'business-modern',
-        configuration: {
+      // Create a proper Site instance for demonstration
+      const mockSite = new Site(
+        siteId,
+        'Demo Business Site',
+        'A modern business website with contact forms and services',
+        user.tenantId,
+        'business-modern',
+        {
           theme: {
             primaryColor: '#3B82F6',
             secondaryColor: '#10B981',
             fontFamily: 'Inter',
-            layout: 'modern',
+            layout: 'modern' as const,
           },
           seo: {
             title: 'Demo Business - Professional Services',
@@ -92,9 +93,14 @@ export class SiteContractController {
             keywords: ['business', 'services', 'professional', 'consulting'],
           },
           analytics: { enabled: true },
-          voice: { enabled: true, personality: 'professional', language: 'en' },
+          voice: {
+            enabled: true,
+            personality: 'professional' as const,
+            language: 'en',
+            fallbackBehavior: 'message' as const
+          },
         },
-        content: {
+        {
           pages: [
             {
               id: 'home',
@@ -135,11 +141,12 @@ export class SiteContractController {
           components: [],
           assets: [],
         },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        isPublished: true,
-        getUrl: () => `https://${siteId}.sitespeak.com`,
-      } as any;
+        new Date(),
+        new Date(),
+        new Date(),
+        true,
+        siteId
+      );
 
       // Generate contract
       const result = await siteContractService.generateContract({
@@ -197,7 +204,11 @@ export class SiteContractController {
       });
     } catch (error) {
       logger.error('Site contract generation failed', {
-        error,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : 'Unknown'
+        },
         userId: req.user?.id,
         siteId: req.params['siteId'],
         correlationId: req.correlationId,
@@ -361,7 +372,11 @@ export class SiteContractController {
       });
     } catch (error) {
       logger.error('Action manifest generation failed', {
-        error,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : 'Unknown'
+        },
         userId: req.user?.id,
         siteId: req.params['siteId'],
         correlationId: req.correlationId,

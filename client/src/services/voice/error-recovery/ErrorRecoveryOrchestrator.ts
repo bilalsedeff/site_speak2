@@ -25,6 +25,7 @@ import {
   ErrorRecoveryCallbacks,
   ErrorRecoveryEvent,
   UserFeedback,
+  VoiceErrorCode,
   DEFAULT_ERROR_RECOVERY_CONFIG
 } from '@shared/types/error-recovery.types';
 
@@ -33,6 +34,12 @@ import { ClarificationOrchestrator } from './ClarificationOrchestrator';
 import { RecoveryStrategyManager } from './RecoveryStrategyManager';
 import { ErrorUIOrchestrator } from './ErrorUIOrchestrator';
 import { ErrorLearningService } from './ErrorLearningService';
+
+const NON_RECOVERABLE_CODES: VoiceErrorCode[] = [
+  'SYSTEM_API_FAILURE',
+  'SYSTEM_SECURITY_RESTRICTION',
+  'SYSTEM_BROWSER_COMPATIBILITY'
+];
 
 interface ErrorRecoveryState {
   activeErrors: Map<string, VoiceError>;
@@ -71,6 +78,7 @@ interface PerformanceMetrics {
 export class ErrorRecoveryOrchestrator {
   private config: ErrorRecoveryConfig;
   private callbacks: ErrorRecoveryCallbacks;
+  private fallbackCallbacks: ErrorRecoveryCallbacks;
   private state: ErrorRecoveryState;
 
   private classificationEngine!: ErrorClassificationEngine;
@@ -84,7 +92,8 @@ export class ErrorRecoveryOrchestrator {
 
   constructor(
     config: Partial<ErrorRecoveryConfig> = {},
-    callbacks: ErrorRecoveryCallbacks = {}
+    callbacks: ErrorRecoveryCallbacks = {},
+    fallbackCallbacks: ErrorRecoveryCallbacks = {}
   ) {
     this.config = {
       ...DEFAULT_ERROR_RECOVERY_CONFIG,
@@ -92,6 +101,7 @@ export class ErrorRecoveryOrchestrator {
     };
 
     this.callbacks = callbacks;
+    this.fallbackCallbacks = fallbackCallbacks;
 
     this.state = {
       activeErrors: new Map(),
@@ -143,31 +153,43 @@ export class ErrorRecoveryOrchestrator {
 
     try {
       // Step 1: Classify the error
+      const inputContext = context ?? {};
       const classificationResult = await this.classificationEngine.classifyError(
         error,
-        context
+        inputContext
       );
 
       const voiceError = classificationResult.error;
+      const executionContext = this.buildExecutionContext(voiceError, inputContext);
+      if (process.env['ERROR_RECOVERY_DEBUG'] === 'true') {
+        console.debug('[ErrorRecovery] classified error', voiceError.code, voiceError.clarificationRequired, voiceError.retryable, voiceError.fallbackAvailable);
+        if (voiceError.code === 'SYSTEM_SECURITY_RESTRICTION') {
+          console.debug('[ErrorRecovery] security restriction encountered');
+        }
+      }
       this.state.activeErrors.set(voiceError.id, voiceError);
 
       // Record error occurrence
       this.recordEvent('error_detected', { error: voiceError });
       this.callbacks.onErrorDetected?.(voiceError);
+      this.fallbackCallbacks.onErrorDetected?.(voiceError);
 
       // Learn from error occurrence
       if (this.config.learning.enabled) {
         await this.learningService.learnFromError(
           voiceError,
-          context.userId,
-          voiceError.context
+          executionContext.userId,
+          executionContext
         );
       }
 
       // Step 2: Determine if clarification is needed
       let clarificationRequested = false;
-      if (voiceError.clarificationRequired && this.config.clarification.enabled) {
-        const clarificationRequest = await this.requestClarification(voiceError, context);
+      const defaultClarificationPreference = voiceError.type === 'understanding';
+      const allowClarification = options.requestClarification ?? defaultClarificationPreference;
+      const shouldRequestClarification = this.config.clarification.enabled && allowClarification && (voiceError.clarificationRequired || options.requestClarification === true);
+      if (shouldRequestClarification) {
+        const clarificationRequest = await this.requestClarification(voiceError, executionContext);
         clarificationRequested = true;
 
         // Show clarification UI
@@ -190,9 +212,11 @@ export class ErrorRecoveryOrchestrator {
       let recovered = false;
 
       if (options.autoRecover !== false && this.config.recovery.enabled) {
-        const recoveryResult = await this.executeRecovery(voiceError, context);
-        recoveryStarted = true;
-        recovered = recoveryResult.success;
+        if (this.canAttemptRecovery(voiceError)) {
+          const recoveryResult = await this.executeRecovery(voiceError, executionContext);
+          recoveryStarted = true;
+          recovered = recoveryResult.success;
+        }
       }
 
       // Step 4: Show error UI if needed
@@ -235,6 +259,39 @@ export class ErrorRecoveryOrchestrator {
     }
   }
 
+  private buildExecutionContext(
+    voiceError: VoiceError,
+    override?: Partial<ErrorContext> | null
+  ): ErrorContext {
+    const base = voiceError.context;
+    const overrideData = override ?? {};
+    const browserInfo = {
+      ...base.browserInfo,
+      ...(overrideData.browserInfo ?? {}),
+      capabilities: {
+        ...base.browserInfo.capabilities,
+        ...(overrideData.browserInfo?.capabilities ?? {})
+      }
+    };
+
+    const voiceConfig = {
+      ...base.voiceConfig,
+      ...(overrideData.voiceConfig ?? {})
+    };
+
+    return {
+      ...base,
+      ...overrideData,
+      browserInfo,
+      voiceConfig,
+      recentCommands: overrideData.recentCommands ?? base.recentCommands,
+      contextualData: {
+        ...(base.contextualData ?? {}),
+        ...(overrideData.contextualData ?? {})
+      }
+    };
+  }
+
   /**
    * Request clarification for an ambiguous error
    */
@@ -255,6 +312,7 @@ export class ErrorRecoveryOrchestrator {
 
       this.recordEvent('clarification_requested', { clarification: request });
       this.callbacks.onClarificationRequested?.(request);
+      this.fallbackCallbacks.onClarificationRequested?.(request);
 
       const processingTime = performance.now() - startTime;
       this.performanceTracker.recordClarificationGeneration(processingTime);
@@ -300,7 +358,10 @@ export class ErrorRecoveryOrchestrator {
         if (request) {
           const originalError = this.state.activeErrors.get(request.errorId);
           if (originalError) {
-            const recoveryResult = await this.executeRecovery(originalError, {});
+            const recoveryResult = await this.executeRecovery(
+              originalError,
+              this.buildExecutionContext(originalError, {})
+            );
             return {
               resolved: true,
               recovery: recoveryResult
@@ -331,6 +392,10 @@ export class ErrorRecoveryOrchestrator {
   }> {
     const startTime = performance.now();
 
+    if (!this.canAttemptRecovery(error)) {
+      return { success: false };
+    }
+
     try {
       // Select recovery strategy
       const strategy = await this.recoveryManager.selectRecoveryStrategy(
@@ -357,6 +422,7 @@ export class ErrorRecoveryOrchestrator {
 
       this.recordEvent('recovery_started', { recovery: strategy });
       this.callbacks.onRecoveryStarted?.(strategy);
+      this.fallbackCallbacks.onRecoveryStarted?.(strategy);
 
       // Execute recovery strategy
       const executionResult = await this.recoveryManager.executeRecoveryStrategy(
@@ -404,6 +470,10 @@ export class ErrorRecoveryOrchestrator {
 
       this.recordEvent('recovery_completed', { recovery: strategy });
       this.callbacks.onRecoveryCompleted?.(executionResult.success, executionResult.result);
+      this.fallbackCallbacks.onRecoveryCompleted?.(executionResult.success, executionResult.result);
+      if (process.env['ERROR_RECOVERY_DEBUG'] === 'true') {
+        console.debug('[ErrorRecovery] recovery completed callbacks', Boolean(this.callbacks.onRecoveryCompleted), Boolean(this.fallbackCallbacks.onRecoveryCompleted));
+      }
 
       // Show success feedback
       if (executionResult.success) {
@@ -484,6 +554,7 @@ export class ErrorRecoveryOrchestrator {
 
       this.recordEvent('user_feedback', { feedback });
       this.callbacks.onUserFeedback?.(feedback);
+      this.fallbackCallbacks.onUserFeedback?.(feedback);
 
     } catch (error) {
       console.error('Failed to process feedback:', error);
@@ -670,6 +741,18 @@ export class ErrorRecoveryOrchestrator {
     };
   }
 
+  private canAttemptRecovery(error: VoiceError): boolean {
+    if (NON_RECOVERABLE_CODES.includes(error.code)) {
+      return false;
+    }
+
+    if (!error.retryable && !error.fallbackAvailable) {
+      return false;
+    }
+
+    return true;
+  }
+
   private generateSessionId(): string {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
@@ -776,9 +859,10 @@ class EventBus {
 // Factory function
 export function createErrorRecoveryOrchestrator(
   config?: Partial<ErrorRecoveryConfig>,
-  callbacks?: ErrorRecoveryCallbacks
+  callbacks?: ErrorRecoveryCallbacks,
+  fallbackCallbacks?: ErrorRecoveryCallbacks
 ): ErrorRecoveryOrchestrator {
-  return new ErrorRecoveryOrchestrator(config, callbacks);
+  return new ErrorRecoveryOrchestrator(config, callbacks, fallbackCallbacks);
 }
 
 export default ErrorRecoveryOrchestrator;

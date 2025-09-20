@@ -12,6 +12,7 @@
  * - Production-ready service boundaries
  */
 
+import { EventEmitter } from 'events';
 import { createLogger } from '../../../../shared/utils';
 import { AudioWorkletManager, AudioWorkletConfig, AudioWorkletCapabilities } from './AudioWorkletManager';
 import { AudioProcessingPipeline, ProcessedAudioFrame } from './AudioProcessingPipeline';
@@ -99,6 +100,14 @@ export interface IntegrationCallbacks {
   onError?: (error: Error) => void;
 }
 
+// Interface for VoiceTutorialEngine compatibility
+export interface ListeningOptions {
+  enableVAD?: boolean;
+  enablePartialResults?: boolean;
+  confidenceThreshold?: number;
+  timeout?: number;
+}
+
 const DEFAULT_INTEGRATION_CONFIG: IntegrationConfig = {
   enableAudioWorklet: true,
   enableFallback: true,
@@ -121,7 +130,7 @@ const DEFAULT_INTEGRATION_CONFIG: IntegrationConfig = {
 /**
  * Universal AudioWorklet integration service
  */
-export class AudioWorkletIntegrationService {
+export class AudioWorkletIntegrationService extends EventEmitter {
   private config: IntegrationConfig;
   private sessionId: string;
   private isInitialized = false;
@@ -147,6 +156,8 @@ export class AudioWorkletIntegrationService {
   // Removed _isCapturing as it was not being used
 
   constructor(config: Partial<IntegrationConfig> = {}) {
+    super(); // Call EventEmitter constructor
+
     this.config = { ...DEFAULT_INTEGRATION_CONFIG, ...config };
     this.sessionId = `integration_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
@@ -310,6 +321,74 @@ export class AudioWorkletIntegrationService {
         sessionId: this.sessionId,
         error
       });
+    }
+  }
+
+  /**
+   * Start listening with tutorial-compatible interface
+   * Compatible with VoiceTutorialEngine expectations
+   */
+  async startListening(options: ListeningOptions = {}): Promise<void> {
+    try {
+      // Initialize if not already done
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
+      // Request microphone permission and start audio processing
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 48000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      await this.startAudioProcessing(stream);
+
+      // Configure VAD if requested
+      if (options.enableVAD && this.vadDetector) {
+        // VAD is already initialized in startAudioProcessing
+        logger.debug('VAD enabled for listening session', { sessionId: this.sessionId });
+      }
+
+      // Emit audio level events for tutorial feedback
+      this.emit('audio_level', { level: 0.0 });
+
+      logger.info('Started listening session', {
+        sessionId: this.sessionId,
+        options
+      });
+
+    } catch (error) {
+      logger.error('Failed to start listening', {
+        sessionId: this.sessionId,
+        error
+      });
+      this.emit('error', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop listening with tutorial-compatible interface
+   * Compatible with VoiceTutorialEngine expectations
+   */
+  async stopListening(): Promise<void> {
+    try {
+      await this.stopAudioProcessing();
+
+      logger.info('Stopped listening session', { sessionId: this.sessionId });
+
+    } catch (error) {
+      logger.error('Failed to stop listening', {
+        sessionId: this.sessionId,
+        error
+      });
+      this.emit('error', error);
+      throw error;
     }
   }
 
@@ -637,10 +716,20 @@ export class AudioWorkletIntegrationService {
 
       this.audioWorkletManager.addEventListener('vad_decision', (event) => {
         this.callbacks?.onVADDecision?.(event.data);
+
+        // Emit VAD events for VoiceTutorialEngine compatibility
+        this.emit('vad', {
+          active: event.data.isActive || false,
+          level: event.data.level || 0
+        });
       });
 
       this.audioWorkletManager.addEventListener('error', (event) => {
-        this.handleError(new Error(event.data.error));
+        const error = new Error(event.data.error);
+        this.handleError(error);
+
+        // Emit error events for VoiceTutorialEngine compatibility
+        this.emit('error', error);
       });
     }
 
@@ -777,6 +866,9 @@ export class AudioWorkletIntegrationService {
     };
 
     this.callbacks?.onAudioFrame?.(integratedFrame);
+
+    // Emit audio level events for VoiceTutorialEngine compatibility
+    this.emit('audio_level', { level: integratedFrame.quality.rmsLevel });
   }
 
   /**

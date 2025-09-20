@@ -1,153 +1,63 @@
 import { useDrag } from 'react-dnd'
-import { 
-  Type, 
-  Square, 
-  Image, 
-  MousePointer, 
+import {
+  Type,
+  Square,
+  Image,
+  MousePointer,
   Layout,
   Mic,
-  BarChart3
+  BarChart3,
+  Edit3,
+  ExternalLink,
+  Heading,
+  AlignLeft,
+  List,
+  Minus,
+  CheckSquare,
+  Circle,
+  FileText,
+  ChevronDown
 } from 'lucide-react'
 
+import { getEditorComponents, getEditorComponentsByCategory, getComponentCategories } from '@sitespeak/design-system'
 import type { EditorComponent } from '../types/editor'
 
-// Available components for the palette
-const COMPONENT_PALETTE: EditorComponent[] = [
-  {
-    name: 'Button',
-    displayName: 'Button',
-    category: 'ui',
-    icon: 'MousePointer',
-    metadata: {
-      name: 'Button',
-      version: '1.0.0',
-      description: 'Interactive button component',
-      category: 'ui',
-      tags: ['interactive', 'form', 'action'],
-      props: {},
-      requiredProps: [],
-      defaultProps: { children: 'Click me', variant: 'default' },
-      variants: {},
-    },
-    defaultProps: { 
-      children: 'Click me',
-      variant: 'default',
-      size: 'default'
-    },
-    previewProps: { 
-      children: 'Preview Button',
-      variant: 'outline'
-    },
-  },
-  {
-    name: 'Text',
-    displayName: 'Text',
-    category: 'content',
-    icon: 'Type',
-    metadata: {
-      name: 'Text',
-      version: '1.0.0',
-      description: 'Text content component',
-      category: 'content',
-      tags: ['text', 'content'],
-      props: {},
-      requiredProps: [],
-      defaultProps: { text: 'Sample text' },
-      variants: {},
-    },
-    defaultProps: { 
-      text: 'Your text here',
-      fontSize: 'base',
-      fontWeight: 'normal'
-    },
-    previewProps: { 
-      text: 'Sample Text'
-    },
-  },
-  {
-    name: 'Image',
-    displayName: 'Image',
-    category: 'content',
-    icon: 'Image',
-    metadata: {
-      name: 'Image',
-      version: '1.0.0',
-      description: 'Image display component',
-      category: 'content',
-      tags: ['media', 'image'],
-      props: {},
-      requiredProps: [],
-      defaultProps: { src: '', alt: '' },
-      variants: {},
-    },
-    defaultProps: { 
-      src: 'https://via.placeholder.com/300x200',
-      alt: 'Placeholder image',
-      width: '100%',
-      height: 'auto'
-    },
-    previewProps: { 
-      src: 'https://via.placeholder.com/150x100',
-      alt: 'Preview image'
-    },
-  },
-  {
-    name: 'Card',
-    displayName: 'Card',
-    category: 'layout',
-    icon: 'Square',
-    metadata: {
-      name: 'Card',
-      version: '1.0.0',
-      description: 'Container card component',
-      category: 'layout',
-      tags: ['container', 'card', 'layout'],
-      props: {},
-      requiredProps: [],
-      defaultProps: { title: '', description: '' },
-      variants: {},
-    },
-    defaultProps: { 
-      title: 'Card Title',
-      description: 'Card description goes here'
-    },
-    previewProps: { 
-      title: 'Preview Card',
-      description: 'Sample card'
-    },
-  },
-  {
-    name: 'Container',
-    displayName: 'Container',
-    category: 'layout',
-    icon: 'Layout',
-    metadata: {
-      name: 'Container',
-      version: '1.0.0',
-      description: 'Layout container component',
-      category: 'layout',
-      tags: ['container', 'layout', 'wrapper'],
-      props: {},
-      requiredProps: [],
-      defaultProps: {},
-      variants: {},
-    },
-    defaultProps: { 
-      padding: 'medium',
-      background: 'transparent'
-    },
-    previewProps: {},
-  },
-]
+// Helper to get icon component from string name
+function getIconComponent(iconName: string) {
+  const icons: Record<string, any> = {
+    MousePointer,
+    Type,
+    Image,
+    Square,
+    Layout,
+    Mic,
+    BarChart3,
+    Edit3,
+    ExternalLink,
+    Heading,
+    AlignLeft,
+    List,
+    Minus,
+    CheckSquare,
+    Circle,
+    FileText,
+    ChevronDown,
+  }
+  return icons[iconName] || Layout
+}
 
-// Component categories
-const CATEGORIES = [
-  { id: 'all', label: 'All Components', icon: Layout },
-  { id: 'ui', label: 'UI Components', icon: MousePointer },
-  { id: 'content', label: 'Content', icon: Type },
-  { id: 'layout', label: 'Layout', icon: Layout },
-  { id: 'voice', label: 'Voice AI', icon: Mic },
-]
+// Get components from design system registry
+function getAvailableComponents(): EditorComponent[] {
+  return getEditorComponents()
+}
+
+// Get component categories from design system
+function getAvailableCategories() {
+  return getComponentCategories().map(category => ({
+    ...category,
+    icon: getIconComponent(category.icon)
+  }))
+}
 
 interface ComponentPaletteProps {
   selectedCategory?: string
@@ -158,10 +68,14 @@ export function ComponentPalette({
   selectedCategory = 'all',
   onCategoryChange,
 }: ComponentPaletteProps) {
+  // Get components from design system registry
+  const availableComponents = getAvailableComponents()
+  const availableCategories = getAvailableCategories()
+
   // Filter components by category
-  const filteredComponents = selectedCategory === 'all' 
-    ? COMPONENT_PALETTE
-    : COMPONENT_PALETTE.filter(comp => comp.category === selectedCategory)
+  const filteredComponents = selectedCategory === 'all'
+    ? availableComponents
+    : getEditorComponentsByCategory(selectedCategory)
 
   return (
     <div className="component-palette">
@@ -169,7 +83,7 @@ export function ComponentPalette({
       <div className="mb-4">
         <label className="form-label">Component Category</label>
         <div className="flex flex-wrap gap-1 mt-2">
-          {CATEGORIES.map((category) => {
+          {availableCategories.map((category) => {
             const Icon = category.icon
             return (
               <button
@@ -235,16 +149,7 @@ function DraggableComponent({ component }: DraggableComponentProps) {
   })
 
   const getIcon = (iconName: string) => {
-    const icons: Record<string, any> = {
-      MousePointer,
-      Type,
-      Image,
-      Square,
-      Layout,
-      Mic,
-      BarChart3,
-    }
-    return icons[iconName] || Layout
+    return getIconComponent(iconName)
   }
 
   const Icon = getIcon(component.icon)

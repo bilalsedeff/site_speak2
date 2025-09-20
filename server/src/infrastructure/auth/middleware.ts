@@ -160,6 +160,87 @@ export function optionalAuth() {
 }
 
 /**
+ * Development authentication - provides default user context when no auth is present
+ * This ensures controllers that expect req.user work in development mode
+ */
+export function devAuth() {
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const authHeader = req.headers.authorization;
+      const token = jwtService.extractTokenFromHeader(authHeader);
+
+      if (token) {
+        try {
+          const payload = jwtService.verifyAccessToken(token);
+          req.user = {
+            id: payload.userId,
+            tenantId: payload.tenantId,
+            role: payload.role as UserRole,
+            email: payload.email,
+            permissions: payload.permissions || [],
+            ...(payload.sessionId && { sessionId: payload.sessionId }),
+          };
+
+          logger.debug('Dev auth: Valid token provided', {
+            userId: req.user.id,
+            tenantId: req.user.tenantId,
+            correlationId: req.correlationId,
+          });
+        } catch (error) {
+          logger.debug('Dev auth: Invalid token, falling back to default user', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            correlationId: req.correlationId,
+          });
+
+          // Provide default user for development
+          req.user = {
+            id: 'dev-user-default',
+            tenantId: 'dev-tenant-default',
+            role: 'admin' as UserRole,
+            email: 'dev@sitespeak.local',
+            permissions: ['*'], // All permissions for development
+            sessionId: `dev-session-${Date.now()}`,
+          };
+        }
+      } else {
+        // No token provided, use development default user
+        req.user = {
+          id: 'dev-user-default',
+          tenantId: 'dev-tenant-default',
+          role: 'admin' as UserRole,
+          email: 'dev@sitespeak.local',
+          permissions: ['*'], // All permissions for development
+          sessionId: `dev-session-${Date.now()}`,
+        };
+
+        logger.debug('Dev auth: No token provided, using default user', {
+          correlationId: req.correlationId,
+        });
+      }
+
+      next();
+    } catch (error) {
+      // Fallback to default user even on errors
+      req.user = {
+        id: 'dev-user-fallback',
+        tenantId: 'dev-tenant-default',
+        role: 'admin' as UserRole,
+        email: 'dev@sitespeak.local',
+        permissions: ['*'],
+        sessionId: `dev-fallback-${Date.now()}`,
+      };
+
+      logger.debug('Dev auth: Error occurred, using fallback user', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        correlationId: req.correlationId,
+      });
+
+      next();
+    }
+  };
+}
+
+/**
  * Role-based authorization middleware
  */
 export function requireRole(...allowedRoles: UserRole[]) {

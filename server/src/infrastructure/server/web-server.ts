@@ -106,20 +106,110 @@ export class SiteSeakWebServer {
   }
 
   private setupSecurityMiddleware(): void {
-    // TODO: Import and configure security middleware
-    // from existing server setup but web-optimized
+    // Import and configure security middleware from API Gateway
+    // Web-optimized security headers and CORS
+    this.app.use((_req, res, next) => {
+      // Security headers
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+      // Web process specific headers
+      res.setHeader('X-Process-Type', 'web');
+      res.setHeader('X-Service', 'sitespeak-web');
+
+      next();
+    });
+
     logger.debug('Security middleware configured for web process');
   }
 
   private setupRequestMiddleware(): void {
-    // TODO: Import and configure request middleware
-    // from existing server setup but web-optimized
+    // Import and configure request middleware for web process
+    // Express JSON and URL encoded parsing
+    this.app.use(express.json({
+      limit: '10mb',
+      type: ['application/json', 'application/vnd.api+json']
+    }));
+
+    this.app.use(express.urlencoded({
+      extended: true,
+      limit: '10mb'
+    }));
+
+    // Request correlation ID middleware
+    this.app.use((req, res, next) => {
+      const correlationId = req.headers['x-correlation-id'] as string ||
+                           `web-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      (req as any).correlationId = correlationId;
+      res.setHeader('X-Correlation-ID', correlationId);
+
+      next();
+    });
+
+    // Request logging middleware for web process
+    this.app.use((req, res, next) => {
+      const start = Date.now();
+
+      res.on('finish', () => {
+        const duration = Date.now() - start;
+        logger.info('HTTP request processed', {
+          method: req.method,
+          url: req.url,
+          statusCode: res.statusCode,
+          duration,
+          correlationId: (req as any).correlationId,
+          processType: 'web',
+          userAgent: req.get('User-Agent'),
+          ip: req.ip
+        });
+      });
+
+      next();
+    });
+
     logger.debug('Request middleware configured for web process');
   }
 
   private setupAuthMiddleware(): void {
-    // TODO: Import and configure auth middleware
-    // from existing server setup but web-optimized
+    // Import and configure auth middleware for web process
+    // Basic JWT token parsing middleware (optional for public endpoints)
+    this.app.use((req, _res, next) => {
+      const authHeader = req.headers.authorization;
+
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        (req as any).token = token;
+
+        // Add basic token validation without blocking requests
+        // Full authentication will be handled by API Gateway routes
+        try {
+          // Basic token structure validation
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            (req as any).hasValidTokenStructure = true;
+          }
+        } catch (error) {
+          logger.debug('Invalid token structure in request', {
+            correlationId: (req as any).correlationId,
+            processType: 'web'
+          });
+        }
+      }
+
+      // Set auth context for web process
+      (req as any).authContext = {
+        processType: 'web',
+        hasToken: !!authHeader,
+        timestamp: new Date().toISOString()
+      };
+
+      next();
+    });
+
     logger.debug('Auth middleware configured for web process');
   }
 
@@ -222,8 +312,37 @@ export class SiteSeakWebServer {
     voiceHandler.setAIAssistant(aiAssistant);
 
     // Initialize Unified Voice Orchestrator for ≤300ms voice performance
-    const { UnifiedVoiceOrchestrator } = await import('../../services/voice/index.js');
-    const rawWebSocketServer = new UnifiedVoiceOrchestrator();
+    const { createUnifiedVoiceOrchestrator } = await import('../../services/voice/index.js');
+
+    // Create a properly configured orchestrator instance
+    const rawWebSocketServer = createUnifiedVoiceOrchestrator(this.httpServer, aiAssistant, {
+      enableRawWebSocket: true,
+      enableSocketIO: true,
+      paths: {
+        rawWebSocket: '/voice-ws',
+        socketIO: '/socket.io',
+      },
+      performance: {
+        targetFirstTokenMs: 200,
+        targetPartialLatencyMs: 100,
+        targetBargeInMs: 30,
+        enableConnectionPooling: true,
+        enableStreamingAudio: true,
+        enablePredictiveProcessing: true,
+        enableAdaptiveOptimization: true,
+        enablePerformanceMonitoring: true,
+      },
+      optimization: {
+        audioBufferPoolSize: 100,
+        connectionPoolSize: 50,
+        enableMemoryPooling: true,
+        enableSpeculativeProcessing: true,
+        autoOptimizationThreshold: 300,
+      }
+    });
+
+    // Start the orchestrator with both WebSocket servers
+    await rawWebSocketServer.start();
 
     logger.info('WebSocket servers attached', {
       socketIO: 'enabled',

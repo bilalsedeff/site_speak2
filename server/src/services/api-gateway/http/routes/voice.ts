@@ -17,6 +17,7 @@ import { enforceTenancy } from '../../../_shared/security/tenancy';
 import { validateRequest } from '../../../../infrastructure/middleware/validation';
 import { addProblemDetailMethod } from '../middleware/problem-details';
 import { createCustomRateLimit } from '../middleware/rate-limit-headers';
+import { voiceOrchestrator } from '../../../voice';
 
 const logger = createLogger({ service: 'voice-api' });
 const router = express.Router();
@@ -79,42 +80,43 @@ router.post('/session',
 
       // Generate a session ID for the HTTP-created session configuration
       const sessionId = `http-session-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-      
-      // Create session configuration (to be used when WebSocket connects)
-      const sessionConfig = {
-        id: sessionId,
+
+      // Import voice orchestrator to register the session
+      const { voiceOrchestrator } = await import('../../../../services/voice');
+
+      // Ensure orchestrator is running
+      if (!voiceOrchestrator.getStatus().isRunning) {
+        await voiceOrchestrator.start();
+      }
+
+      // Register session with orchestrator
+      await voiceOrchestrator.startVoiceSession({
+        sessionId,
         tenantId,
-        userId,
         siteId: sessionData.siteId,
-        voice: sessionData.voice,
-        maxDuration: sessionData.maxDuration,
-        audioConfig: {
-          sampleRate: sessionData.audioConfig?.sampleRate || 48000,
-          frameMs: sessionData.audioConfig?.frameMs || 20,
-          inputFormat: sessionData.audioConfig?.inputFormat || 'opus',
-          outputFormat: sessionData.audioConfig?.outputFormat || 'pcm16',
-          enableVAD: sessionData.enableVAD
-        },
-        locales: {
-          tts: sessionData.preferredTTSLocale || locale,
-          stt: sessionData.preferredSTTLocale || locale
-        },
+        userId,
+        locale: sessionData.preferredTTSLocale || locale,
         metadata: {
           userAgent: req.get('User-Agent'),
           ip: req.ip,
           correlationId: req.correlationId,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          voice: sessionData.voice,
+          maxDuration: sessionData.maxDuration,
+          audioConfig: {
+            sampleRate: sessionData.audioConfig?.sampleRate || 48000,
+            frameMs: sessionData.audioConfig?.frameMs || 20,
+            inputFormat: sessionData.audioConfig?.inputFormat || 'opus',
+            outputFormat: sessionData.audioConfig?.outputFormat || 'pcm16',
+            enableVAD: sessionData.enableVAD
+          }
         }
-      };
+      });
 
-      // Store session configuration for later WebSocket connection
-      // Note: In a production system, this would be stored in Redis or similar
-      // For now, we'll create a minimal session object
-      const session = { id: sessionId };
       const expiresAt = new Date(Date.now() + (sessionData.maxDuration * 1000));
 
       logger.info('Voice session created successfully', {
-        sessionId: session.id,
+        sessionId,
         tenantId,
         expiresAt,
         correlationId: req.correlationId
@@ -123,16 +125,22 @@ router.post('/session',
       res.json({
         success: true,
         data: {
-          sessionId: session.id,
-          ttsLocale: sessionConfig.locales.tts,
-          sttLocale: sessionConfig.locales.stt,
+          sessionId,
+          ttsLocale: sessionData.preferredTTSLocale || locale,
+          sttLocale: sessionData.preferredSTTLocale || locale,
           expiresIn: sessionData.maxDuration,
           expiresAt: expiresAt.toISOString(),
           voice: sessionData.voice,
-          audioConfig: sessionConfig.audioConfig,
+          audioConfig: {
+            sampleRate: sessionData.audioConfig?.sampleRate || 48000,
+            frameMs: sessionData.audioConfig?.frameMs || 20,
+            inputFormat: sessionData.audioConfig?.inputFormat || 'opus',
+            outputFormat: sessionData.audioConfig?.outputFormat || 'pcm16',
+            enableVAD: sessionData.enableVAD
+          },
           endpoints: {
-            websocket: `/api/v1/voice/stream?sessionId=${session.id}`,
-            sse: `/api/v1/voice/stream?sessionId=${session.id}&format=sse`
+            websocket: `/api/v1/voice/stream?sessionId=${sessionId}`,
+            sse: `/api/v1/voice/stream?sessionId=${sessionId}&format=sse`
           }
         },
         metadata: {
@@ -607,9 +615,15 @@ router.get('/health',
   }),
   async (_req, res) => {
     try {
-      // Import voice orchestrator for health check
-      const { voiceOrchestrator } = await import('../../../../services/voice');
+      logger.info('Voice health check starting');
+
+      if (!voiceOrchestrator) {
+        throw new Error('Voice orchestrator is undefined');
+      }
+
+      logger.info('Calling getStatus on voice orchestrator');
       const status = voiceOrchestrator.getStatus();
+      logger.info('Voice orchestrator status received', { isRunning: status.isRunning, activeSessions: status.activeSessions });
 
       const health = {
         status: {
@@ -634,9 +648,14 @@ router.get('/health',
       };
 
       const httpStatus = status.isRunning && status.activeSessions < 100 ? 200 : 503;
+      logger.info('Voice health check completed', { httpStatus, isRunning: status.isRunning });
       res.status(httpStatus).json(health);
 
     } catch (error) {
+      logger.error('Voice health check failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       res.status(503).json({
         status: 'unhealthy',
         service: 'voice-api',

@@ -303,7 +303,13 @@ async function collectSystemMetrics(): Promise<void> {
 export function createMetricsMiddleware() {
   return (req: any, res: any, next: any) => {
     const startTime = Date.now();
-    
+
+    // Safety check: Skip metrics if not initialized
+    if (!metrics) {
+      next();
+      return;
+    }
+
     // Increment in-flight requests
     metrics.httpRequestsInFlight.inc(1, {
       method: req.method,
@@ -314,19 +320,23 @@ export function createMetricsMiddleware() {
     const originalEnd = res.end;
     res.end = function(this: any, ...args: any[]) {
       const duration = Date.now() - startTime;
-      const labels = {
-        method: req.method,
-        status_code: String(res.statusCode),
-        route: req.route?.path || req.path,
-      };
 
-      // Record metrics
-      metrics.httpRequestsTotal.inc(1, labels);
-      metrics.httpRequestDuration.observe(duration, labels);
-      metrics.httpRequestsInFlight.dec(1, {
-        method: req.method,
-        route: req.route?.path || req.path,
-      });
+      // Safety check: Skip metrics if not initialized
+      if (metrics) {
+        const labels = {
+          method: req.method,
+          status_code: String(res.statusCode),
+          route: req.route?.path || req.path,
+        };
+
+        // Record metrics
+        metrics.httpRequestsTotal.inc(1, labels);
+        metrics.httpRequestDuration.observe(duration, labels);
+        metrics.httpRequestsInFlight.dec(1, {
+          method: req.method,
+          route: req.route?.path || req.path,
+        });
+      }
 
       originalEnd.apply(this, args);
     };

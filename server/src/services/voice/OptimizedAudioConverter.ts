@@ -17,7 +17,9 @@
 import { EventEmitter } from 'events';
 import { createLogger } from '../../shared/utils';
 import { Worker } from 'worker_threads';
-import path from 'path';
+import path, { dirname } from 'path';
+import { cpus } from 'os';
+import { fileURLToPath } from 'url';
 
 const logger = createLogger({ service: 'optimized-audio-converter' });
 
@@ -235,10 +237,11 @@ class StreamingAudioDecoder {
 class AudioWorkerManager {
   private workers: Worker[] = [];
   private workerQueue: Worker[] = [];
-  private maxWorkers = Math.max(2, Math.floor(require('os').cpus().length / 2));
+  private maxWorkers = Math.max(2, Math.floor(cpus().length / 2));
   private workerScriptPath: string;
 
   constructor() {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
     this.workerScriptPath = path.join(__dirname, 'audio-conversion-worker.js');
   }
 

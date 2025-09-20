@@ -15,11 +15,14 @@ import { z } from 'zod';
  * Create Redis connection for BullMQ
  */
 function createRedisConnection(): Redis {
+  const maxRetriesConfig = cfg.REDIS_MAX_RETRIES_PER_REQUEST;
+  const maxRetriesPerRequest = maxRetriesConfig === 'null' ? null : maxRetriesConfig;
+
   return new Redis(cfg.REDIS_URL, {
-    family: parseInt(cfg.REDIS_FAMILY),
+    family: parseInt(cfg.REDIS_FAMILY, 10),
     connectTimeout: cfg.REDIS_CONNECT_TIMEOUT,
     lazyConnect: cfg.REDIS_LAZY_CONNECT,
-    maxRetriesPerRequest: cfg.REDIS_MAX_RETRIES_PER_REQUEST,
+    maxRetriesPerRequest,
     enableReadyCheck: false,
   });
 }

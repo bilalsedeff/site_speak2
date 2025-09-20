@@ -115,7 +115,6 @@ export class VoiceTutorialEngine extends EventEmitter {
       this.tutorialOrchestrator = tutorialOrchestrator
 
       // Ensure audio service is initialized
-      // TODO: Fix audioService.getStatus() method call - property doesn't exist on type
       if (audioService.getStatus().mode === 'disabled') {
         await audioService.initialize()
       }
@@ -164,13 +163,12 @@ export class VoiceTutorialEngine extends EventEmitter {
     // Start audio worklet session
     if (this.audioService) {
       try {
-        // TODO: Fix startListening method - doesn't exist on AudioWorkletIntegrationService
-        // await this.audioService.startListening({
-        //   enableVAD: true,
-        //   enablePartialResults: this.config.enablePartialResults,
-        //   confidenceThreshold: this.config.confidenceThreshold,
-        //   timeout: this.config.timeoutMs
-        // })
+        await this.audioService.startListening({
+          enableVAD: true,
+          enablePartialResults: this.config.enablePartialResults,
+          confidenceThreshold: this.config.confidenceThreshold,
+          timeout: this.config.timeoutMs
+        })
       } catch (error) {
         console.warn('Failed to start audio service, continuing without voice input:', error)
       }
@@ -341,13 +339,12 @@ export class VoiceTutorialEngine extends EventEmitter {
 
     if (this.audioService) {
       try {
-        // TODO: Fix startListening method - doesn't exist on AudioWorkletIntegrationService
-        // await this.audioService.startListening({
-        //   enableVAD: true,
-        //   enablePartialResults: this.config.enablePartialResults,
-        //   confidenceThreshold: this.config.confidenceThreshold,
-        //   timeout: this.config.timeoutMs
-        // })
+        await this.audioService.startListening({
+          enableVAD: true,
+          enablePartialResults: this.config.enablePartialResults,
+          confidenceThreshold: this.config.confidenceThreshold,
+          timeout: this.config.timeoutMs
+        })
       } catch (error) {
         voiceSession.isListening = false
         console.error('Failed to start listening:', error)
@@ -372,8 +369,7 @@ export class VoiceTutorialEngine extends EventEmitter {
 
     if (this.audioService) {
       try {
-        // TODO: Fix stopListening method - doesn't exist on AudioWorkletIntegrationService
-        // await this.audioService.stopListening()
+        await this.audioService.stopListening()
       } catch (error) {
         console.warn('Error stopping audio service:', error)
       }
@@ -510,31 +506,30 @@ export class VoiceTutorialEngine extends EventEmitter {
   private setupAudioServiceListeners(): void {
     if (!this.audioService) {return}
 
-    // TODO: Fix event listeners - 'on' method doesn't exist on AudioWorkletIntegrationService
     // Listen for audio events
-    // this.audioService.on('audio_level', (data: { level: number }) => {
-    //   // Emit audio level to UI components
-    //   this.emit('audio_level', data)
-    // })
+    this.audioService.on('audio_level', (data: { level: number }) => {
+      // Emit audio level to UI components
+      this.emit('audio_level', data)
+    })
 
-    // this.audioService.on('speech_result', (data: {
-    //   transcript: string
-    //   confidence: number
-    //   isFinal: boolean
-    // }) => {
-    //   // Handle speech recognition results
-    //   this.handleSpeechResult(data)
-    // })
+    this.audioService.on('speech_result', (data: {
+      transcript: string
+      confidence: number
+      isFinal: boolean
+    }) => {
+      // Handle speech recognition results
+      this.handleSpeechResult(data)
+    })
 
-    // this.audioService.on('vad_change', (data: { active: boolean }) => {
-    //   // Handle voice activity detection
-    //   this.emit('voice_activity', data)
-    // })
+    this.audioService.on('vad', (data: { active: boolean }) => {
+      // Handle voice activity detection
+      this.emit('voice_activity', data)
+    })
 
-    // this.audioService.on('error', (error: any) => {
-    //   console.error('Audio service error:', error)
-    //   this.emit('audio_error', error)
-    // })
+    this.audioService.on('error', (error: any) => {
+      console.error('Audio service error:', error)
+      this.emit('audio_error', error)
+    })
   }
 
   private setupTutorialOrchestratorListeners(): void {
@@ -544,6 +539,45 @@ export class VoiceTutorialEngine extends EventEmitter {
       // Handle tutorial events
       this.handleTutorialEvent(event)
     })
+  }
+
+  private handleSpeechResult(data: {
+    transcript: string
+    confidence: number
+    isFinal: boolean
+  }): void {
+    // Find active voice session
+    const activeSession = Array.from(this.voiceSessions.values()).find(
+      session => session.isListening && !session.isProcessing
+    )
+
+    if (activeSession && data.isFinal) {
+      // Process the command
+      this.processVoiceCommand(
+        activeSession.sessionId,
+        data.transcript,
+        data.confidence
+      ).catch(error => {
+        console.error('Error processing voice command:', error)
+      })
+    }
+
+    // Emit partial results if enabled
+    if (this.config.enablePartialResults && !data.isFinal) {
+      this.emit('partial_result', {
+        transcript: data.transcript,
+        confidence: data.confidence
+      })
+    }
+
+    // Emit final results
+    if (data.isFinal) {
+      this.emit('speech_result', {
+        transcript: data.transcript,
+        confidence: data.confidence,
+        sessionId: activeSession?.sessionId
+      })
+    }
   }
 
   // TODO: Unused method - commented out due to AudioWorkletIntegrationService interface mismatch

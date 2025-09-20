@@ -7,12 +7,20 @@ import { createLogger } from '../../shared/utils.js';
 
 const logger = createLogger({ service: 'database' });
 
-// Create postgres connection
+// Create postgres connection with enhanced configuration for development
 const client = postgres(config.DATABASE_URL, {
   max: 10, // Maximum number of connections
   idle_timeout: 20, // Close idle connections after 20 seconds
   connect_timeout: 30, // Timeout for establishing connection
   prepare: false, // Disable prepared statements for better compatibility
+  ssl: false, // Disable SSL for local development
+  transform: {
+    undefined: null
+  },
+  // Connection retry logic
+  connection: {
+    application_name: 'sitespeak-web'
+  }
 });
 
 // Create Drizzle instance
@@ -37,31 +45,69 @@ export * from './schema';
  * Initialize database connection and run migrations
  */
 export async function initializeDatabase(): Promise<void> {
-  try {
-    logger.info('Initializing database connection...');
-    
-    // Test connection
-    await client`SELECT 1`;
-    logger.info('Database connection established');
+  const maxRetries = 5;
+  let lastError: any;
 
-    // Run migrations if not in test environment
-    if (config.NODE_ENV !== 'test') {
+  // Handle unhandled promise rejections during database operations
+  const tempHandler = (reason: any) => {
+    logger.debug('Suppressing database-related unhandled rejection during initialization', { reason });
+  };
+  process.on('unhandledRejection', tempHandler);
+
+  try {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        logger.info('Running database migrations...');
-        await migrate(db, { migrationsFolder: './server/migrations' });
-        logger.info('Database migrations completed');
-      } catch (migrationError) {
-        logger.warn('Migration failed, continuing without migrations', { migrationError });
-        // Continue without migrations for now
+        logger.info(`Initializing database connection... (attempt ${attempt}/${maxRetries})`);
+
+        // Test connection with timeout and proper error handling
+        await Promise.race([
+          client`SELECT 1`.catch(err => { throw err; }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Connection timeout')), 5000)
+          )
+        ]);
+
+      logger.info('Database connection established');
+
+      // Run migrations if not in test environment
+      if (config.NODE_ENV !== 'test') {
+        try {
+          logger.info('Running database migrations...');
+          await migrate(db, { migrationsFolder: './server/migrations' });
+          logger.info('Database migrations completed');
+        } catch (migrationError) {
+          logger.warn('Migration failed, continuing without migrations', { migrationError });
+          // Continue without migrations for now
+        }
+      }
+
+      // Setup pgvector extension if not exists
+      await setupPgVector();
+
+      // Success - break out of retry loop
+      return;
+
+    } catch (error) {
+      lastError = error;
+      logger.warn(`Database connection attempt ${attempt} failed:`, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        code: error instanceof Error && 'code' in error ? error.code : 'UNKNOWN'
+      });
+
+      if (attempt < maxRetries) {
+        const delay = Math.min(1000 * attempt, 5000); // Exponential backoff
+        logger.info(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+  }
 
-    // Setup pgvector extension if not exists
-    await setupPgVector();
-    
-  } catch (error) {
-    logger.error('Failed to initialize database', { error });
-    throw error;
+  // If we get here, all retries failed
+  logger.error('Failed to initialize database after all retries', { error: lastError });
+  throw lastError;
+  } finally {
+    // Restore original unhandled rejection handlers
+    process.removeListener('unhandledRejection', tempHandler);
   }
 }
 

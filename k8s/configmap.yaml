@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sitespeak-config
+  namespace: sitespeak
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  VOICE_WS_PORT: "5000"
+  VOICE_MAX_CONNECTIONS: "1000"
+  VOICE_SESSION_TIMEOUT: "300000"
+  VOICE_TARGET_FIRST_TOKEN_MS: "300"
+  VOICE_TARGET_PARTIAL_LATENCY_MS: "150"
+  VOICE_TARGET_BARGE_IN_MS: "50"
+  VOICE_SAMPLE_RATE: "48000"
+  VOICE_FRAME_MS: "20"
+  VOICE_BITRATE: "16000"
+  VOICE_METRICS_ENABLED: "true"
+  VOICE_HEALTH_CHECK_INTERVAL: "30000"
+  VOICE_PERFORMANCE_WARNINGS: "true"
+  PORT: "5000"
+  PROCESS_TYPE: "web"
+  DEPLOYMENT_COLOR: "blue"  # This gets updated during deployments
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sitespeak-worker-config
+  namespace: sitespeak
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PROCESS_TYPE: "worker"
+  CRAWLER_CONCURRENCY: "5"
+  CRAWLER_DELAY_MS: "1000"
+  INDEXER_BATCH_SIZE: "100"
+  VECTOR_DIMENSIONS: "1536"
+  KB_REFRESH_INTERVAL: "3600000"  # 1 hour
+  CHROMIUM_PATH: "/usr/bin/chromium-browser"
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: sitespeak
+data:
+  nginx.conf: |
+    # Auto-generated NGINX config for blue-green deployment
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        upstream backend {
+            server sitespeak-blue-service:5000 max_fails=3 fail_timeout=10s;
+        }
+
+        server {
+            listen 80;
+
+            location /health {
+                proxy_pass http://backend/health;
+                proxy_set_header Host $host;
+            }
+
+            location / {
+                proxy_pass http://backend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+        }
+    }

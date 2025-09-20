@@ -599,14 +599,66 @@ export class VoiceAnalyticsService {
         ? totalMinutes / totalSessions 
         : 0;
 
+      // Get top languages aggregation
+      const topLanguagesData = await db
+        .select({
+          language: voiceSessions.language,
+          count: count(voiceSessions.id)
+        })
+        .from(voiceSessions)
+        .leftJoin(users, eq(voiceSessions.userId, users.id))
+        .where(
+          and(
+            eq(users.tenantId, tenantId),
+            sql`${voiceSessions.startedAt} >= ${cutoffDate}`
+          )
+        )
+        .groupBy(voiceSessions.language)
+        .orderBy(desc(count(voiceSessions.id)))
+        .limit(5);
+
+      // Get top intents aggregation
+      const topIntentsData = await db
+        .select({
+          intent: voiceInteractions.detectedIntent,
+          count: count(voiceInteractions.id),
+          avgConfidence: avg(voiceInteractions.intentConfidence)
+        })
+        .from(voiceInteractions)
+        .leftJoin(voiceSessions, eq(voiceInteractions.sessionId, voiceSessions.id))
+        .leftJoin(users, eq(voiceSessions.userId, users.id))
+        .where(
+          and(
+            eq(users.tenantId, tenantId),
+            sql`${voiceSessions.startedAt} >= ${cutoffDate}`,
+            sql`${voiceInteractions.detectedIntent} IS NOT NULL`
+          )
+        )
+        .groupBy(voiceInteractions.detectedIntent)
+        .orderBy(desc(count(voiceInteractions.id)))
+        .limit(10);
+
+      const topLanguages = topLanguagesData.map(lang => ({
+        language: lang.language,
+        count: Number(lang.count),
+        percentage: totalSessions > 0 ? (Number(lang.count) / totalSessions) * 100 : 0
+      }));
+
+      const topIntents = topIntentsData.map(intent => ({
+        intent: intent.intent || 'unknown',
+        count: Number(intent.count),
+        averageConfidence: Number(intent.avgConfidence || 0),
+        percentage: stats?.totalInteractions ? (Number(intent.count) / Number(stats.totalInteractions)) * 100 : 0
+      }));
+
       return {
         totalSessions,
         totalInteractions: Number(stats?.totalInteractions || 0),
         totalMinutes,
         averageSessionDuration,
         averageQualityScore: Number(stats?.avgQuality || 0),
-        topLanguages: [], // TODO: implement language aggregation
-        topIntents: [] // TODO: implement intent aggregation
+        topLanguages,
+        topIntents
       };
     } catch (error) {
       logger.error('Failed to get tenant analytics summary', { error, tenantId });

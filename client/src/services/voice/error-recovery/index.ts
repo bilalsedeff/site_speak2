@@ -128,6 +128,9 @@ export type {
 // ============================================================================
 
 import { ErrorRecoveryOrchestrator, createErrorRecoveryOrchestrator } from './ErrorRecoveryOrchestrator';
+
+let lastRegisteredCallbacks: ErrorRecoveryCallbacks | undefined;
+const CALLBACK_SOURCE_SYMBOL = Symbol.for('sitespeak:errorRecoveryCallbackSource');
 import {
   ErrorRecoveryConfig,
   ErrorRecoveryCallbacks
@@ -230,7 +233,32 @@ export async function createErrorRecoverySystem(
     ...config?.advanced
   };
 
-  const orchestrator = createErrorRecoveryOrchestrator(systemConfig, callbacks);
+  let callbackSource = callbacks && (callbacks as any)[CALLBACK_SOURCE_SYMBOL];
+
+  if (callbacks && !callbackSource) {
+    Object.defineProperty(callbacks, CALLBACK_SOURCE_SYMBOL, {
+      value: callbacks,
+      enumerable: true,
+      configurable: true
+    });
+    callbackSource = callbacks;
+  }
+
+  let fallbackCallbacks: ErrorRecoveryCallbacks | undefined;
+
+  if (callbackSource && callbackSource !== callbacks) {
+    fallbackCallbacks = callbackSource;
+  } else if (lastRegisteredCallbacks && lastRegisteredCallbacks !== callbacks) {
+    fallbackCallbacks = lastRegisteredCallbacks;
+  }
+
+  if (callbackSource) {
+    lastRegisteredCallbacks = callbackSource;
+  } else if (callbacks) {
+    lastRegisteredCallbacks = callbacks;
+  }
+
+  const orchestrator = createErrorRecoveryOrchestrator(systemConfig, callbacks, fallbackCallbacks);
 
   return orchestrator;
 }
@@ -331,6 +359,30 @@ export async function setupErrorRecoveryPreset(
 export async function createLightweightErrorRecovery(
   callbacks?: ErrorRecoveryCallbacks
 ): Promise<ErrorRecoveryOrchestrator> {
+  let callbackSource = callbacks && (callbacks as any)[CALLBACK_SOURCE_SYMBOL];
+
+  if (callbacks && !callbackSource) {
+    Object.defineProperty(callbacks, CALLBACK_SOURCE_SYMBOL, {
+      value: callbacks,
+      enumerable: true,
+      configurable: true
+    });
+    callbackSource = callbacks;
+  }
+
+  let fallbackCallbacks: ErrorRecoveryCallbacks | undefined;
+
+  if (callbackSource && callbackSource !== callbacks) {
+    fallbackCallbacks = callbackSource;
+  } else if (lastRegisteredCallbacks && lastRegisteredCallbacks !== callbacks) {
+    fallbackCallbacks = lastRegisteredCallbacks;
+  }
+
+  if (callbackSource) {
+    lastRegisteredCallbacks = callbackSource;
+  } else if (callbacks) {
+    lastRegisteredCallbacks = callbacks;
+  }
 
   return createErrorRecoveryOrchestrator({
     classification: {
@@ -379,7 +431,7 @@ export async function createLightweightErrorRecovery(
       uiTransition: 100,
       totalCycle: 500
     }
-  }, callbacks);
+  }, callbacks, fallbackCallbacks);
 }
 
 /**

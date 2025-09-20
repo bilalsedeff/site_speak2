@@ -1,0 +1,9 @@
+# Docker Compose Override for PostgreSQL Trust Authentication (Development)
+services:
+  sitespeak-postgres-dev:
+    environment:
+      POSTGRES_DB: sitespeak_dev_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8'
+      POSTGRES_HOST_AUTH_METHOD: trust  # Enable trust authentication for development

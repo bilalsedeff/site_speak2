@@ -35,7 +35,10 @@ const RedisConfigSchema = z.object({
   // Redis connection settings
   REDIS_CONNECT_TIMEOUT: z.coerce.number().int().positive().default(10000),
   REDIS_LAZY_CONNECT: z.coerce.boolean().default(true),
-  REDIS_MAX_RETRIES_PER_REQUEST: z.coerce.number().int().nonnegative().default(3),
+  REDIS_MAX_RETRIES_PER_REQUEST: z.union([
+    z.literal('null'),
+    z.coerce.number().int().nonnegative(),
+  ]).default('null'),
 });
 
 // Application configuration

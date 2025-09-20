@@ -2,92 +2,15 @@ import { useState, useCallback } from 'react'
 import { useParams } from 'wouter'
 import { DndProvider } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
+import { EditorCanvasWithDnd, ComponentPalette, ContractPreview, useEditorStore } from '@sitespeak/editor-engine'
 
 // Type definitions
-interface EditorCanvasProps {
-  className?: string;
-  showGrid: boolean;
-  onInstanceSelect?: (instanceId: string | null) => void;
-  onInstanceUpdate?: (instanceId: string, updates: ComponentUpdates) => void;
-}
-
 interface ComponentUpdates {
   style?: Record<string, unknown>;
   content?: string;
   props?: Record<string, unknown>;
   position?: { x: number; y: number };
 }
-
-// Placeholder editor store hook
-const useEditorStore = () => ({
-  isPreviewMode: false,
-  showGrid: true,
-  zoomLevel: 1,
-  selectedInstanceId: null,
-  validationErrors: [],
-  setPreviewMode: (mode: boolean) => console.log('setPreviewMode:', mode),
-  setShowGrid: (show: boolean) => console.log('setShowGrid:', show),
-  setZoomLevel: (level: number) => console.log('setZoomLevel:', level),
-  undo: () => console.log('undo'),
-  redo: () => console.log('redo')
-})
-
-// Placeholder components
-const ComponentPalette = () => (
-  <div className="space-y-4">
-    <div className="form-group">
-      <label className="form-label">Basic Components</label>
-      <div className="grid grid-cols-2 gap-2">
-        {['Button', 'Text', 'Image', 'Container', 'Form', 'Navigation'].map((component) => (
-          <div
-            key={component}
-            className="p-3 bg-muted rounded-lg text-center text-sm font-medium hover:bg-muted/80 cursor-pointer transition-colors touch-target"
-          >
-            {component}
-          </div>
-        ))}
-      </div>
-    </div>
-  </div>
-)
-
-const EditorCanvas = ({ className, showGrid }: EditorCanvasProps) => (
-  <div className={className} style={{ 
-    backgroundColor: '#f8f9fa',
-    backgroundImage: showGrid ? 'linear-gradient(to right, #e9ecef 1px, transparent 1px), linear-gradient(to bottom, #e9ecef 1px, transparent 1px)' : undefined,
-    backgroundSize: showGrid ? '20px 20px' : undefined
-  }}>
-    <div className="flex items-center justify-center h-full">
-      <div className="text-center">
-        <div className="text-lg font-semibold mb-2">Visual Editor Canvas</div>
-        <div className="text-sm text-muted-foreground">Drag components from the palette to start building</div>
-      </div>
-    </div>
-  </div>
-)
-
-const ContractPreview = () => (
-  <div className="p-4 space-y-4">
-    <div>
-      <h4 className="font-medium mb-2">Site Contract</h4>
-      <p className="text-sm text-muted-foreground mb-4">
-        Generated contract information for the current site
-      </p>
-    </div>
-    
-    <div className="bg-muted rounded-lg p-3">
-      <div className="text-xs font-mono">
-        {JSON.stringify({
-          "version": "1.0",
-          "components": 0,
-          "jsonLD": {},
-          "actions": [],
-          "aria": "valid"
-        }, null, 2)}
-      </div>
-    </div>
-  </div>
-)
 import { Button } from '@/components/ui/Button'
 import { 
   Layers, 
@@ -343,7 +266,7 @@ export function Editor() {
 
           {/* Canvas */}
           <div className="flex-1 relative overflow-hidden">
-            <EditorCanvas
+            <EditorCanvasWithDnd
               className="w-full h-full"
               showGrid={showGrid}
               onInstanceSelect={handleInstanceSelect}

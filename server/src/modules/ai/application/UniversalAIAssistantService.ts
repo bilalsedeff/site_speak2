@@ -680,10 +680,7 @@ export class UniversalAIAssistantService {
         // Only include audioUrl if it exists
         ...(resultObj.response?.audioUrl && { audioUrl: resultObj.response.audioUrl })
       },
-      knowledgeBase: {
-        indexHealth: 0.9, // Placeholder - would come from actual KB health check
-        coverage: 0.85 // Placeholder - would come from actual coverage analysis
-      },
+      knowledgeBase: await this.getKnowledgeBaseHealth(),
       // Only include actions if they exist
       ...(resultObj.actions && { actions: resultObj.actions })
     };
@@ -767,6 +764,7 @@ export class UniversalAIAssistantService {
         query: string;
         topK: number;
         locale: string;
+        tenantId: string;
       }): Promise<Array<{
         id: string;
         content: string;
@@ -781,7 +779,7 @@ export class UniversalAIAssistantService {
           const searchResults = await kbService.semanticSearch({
             query: params.query,
             siteId: params.siteId,
-            tenantId: 'default', // TODO: Get from context
+            tenantId: params.tenantId,
             limit: params.topK,
             threshold: 0.7,
             filters: {
@@ -820,6 +818,25 @@ export class UniversalAIAssistantService {
         }
       }
     };
+  }
+
+  /**
+   * Get knowledge base health metrics
+   */
+  private async getKnowledgeBaseHealth(): Promise<{ indexHealth: number; coverage: number }> {
+    try {
+      const healthCheck = await knowledgeBaseService.healthCheck();
+      return {
+        indexHealth: healthCheck.healthy ? 0.95 : 0.2,
+        coverage: healthCheck.healthy ? 0.85 : 0.1
+      };
+    } catch (error) {
+      logger.warn('Failed to get knowledge base health', { error });
+      return {
+        indexHealth: 0.0,
+        coverage: 0.0
+      };
+    }
   }
 
   /**

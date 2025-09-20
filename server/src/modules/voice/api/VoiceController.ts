@@ -219,25 +219,18 @@ export class VoiceController {
       const user = req.user!;
       const { sessionId } = req.params;
 
-      // TODO: Get actual session analytics from database
-      // Implement tenant isolation and user authentication
-      const mockAnalytics = {
-        sessionId,
-        userId: user.id,
-        tenantId: user.tenantId,
-        totalInteractions: 15,
-        duration: 8.5, // minutes
-        speechToTextAccuracy: 0.92,
-        averageResponseTime: 1200, // milliseconds
-        emotionsDetected: ['neutral', 'happy', 'curious'],
-        languagesUsed: ['en'],
-        qualityScore: 0.88,
-        // TODO: Replace with real analytics query filtered by user.tenantId
-      };
+      if (!sessionId) {
+        throw new Error('Session ID is required');
+      }
+
+      // Get actual session analytics from database with tenant isolation
+      const userId = user.id || 'anonymous';
+      const tenantId = user.tenantId || 'default';
+      const sessionAnalytics = await voiceAnalyticsService.getSessionAnalytics(sessionId, userId, tenantId);
 
       res.json({
         success: true,
-        data: mockAnalytics,
+        data: sessionAnalytics,
       });
     } catch (error) {
       logger.error('Failed to get session analytics', {

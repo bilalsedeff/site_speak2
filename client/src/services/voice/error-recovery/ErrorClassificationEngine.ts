@@ -26,8 +26,44 @@ import {
   ErrorPattern,
   SystemInfo,
   NetworkInfo,
-  PermissionInfo
+  PermissionInfo,
+  BrowserInfo,
+  BrowserCapabilities,
+  VoiceConfig
 } from '@shared/types/error-recovery.types';
+
+const KNOWN_ERROR_CODES: VoiceErrorCode[] = [
+  'VOICE_LOW_CONFIDENCE',
+  'VOICE_NOISE_INTERFERENCE',
+  'VOICE_MULTIPLE_SPEAKERS',
+  'VOICE_ACCENT_VARIATION',
+  'VOICE_PARTIAL_COMMAND',
+  'VOICE_AUDIO_QUALITY',
+  'VOICE_MICROPHONE_ISSUE',
+  'INTENT_AMBIGUOUS',
+  'INTENT_OUT_OF_CONTEXT',
+  'INTENT_CONFLICTING',
+  'INTENT_UNKNOWN_COMMAND',
+  'INTENT_COMPLEX_MULTI_STEP',
+  'INTENT_INSUFFICIENT_CONTEXT',
+  'ACTION_ELEMENT_NOT_FOUND',
+  'ACTION_PERMISSION_DENIED',
+  'ACTION_STATE_CONFLICT',
+  'ACTION_TIMING_ISSUE',
+  'ACTION_NETWORK_ERROR',
+  'ACTION_SERVICE_UNAVAILABLE',
+  'SYSTEM_API_FAILURE',
+  'SYSTEM_TIMEOUT',
+  'SYSTEM_BROWSER_COMPATIBILITY',
+  'SYSTEM_RESOURCE_CONSTRAINT',
+  'SYSTEM_SECURITY_RESTRICTION',
+  'SYSTEM_SERVICE_DEGRADATION',
+  'CONTEXT_UNAVAILABLE_ACTION',
+  'CONTEXT_INVALID_STATE',
+  'CONTEXT_MISSING_PERMISSION',
+  'CONTEXT_NAVIGATION_BLOCKED',
+  'CONTEXT_CONTENT_CHANGED'
+];
 
 interface ClassificationResult {
   error: VoiceError;
@@ -105,6 +141,7 @@ export class ErrorClassificationEngine {
     additionalData?: Record<string, any>
   ): Promise<ClassificationResult> {
     const startTime = performance.now();
+    const normalizedContext = this.normalizeContext(context);
 
     try {
       // Step 1: Basic error detection and normalization
@@ -113,23 +150,23 @@ export class ErrorClassificationEngine {
       // Step 2: Multi-dimensional classification
       const primaryClassification = await this.performPrimaryClassification(
         normalizedError,
-        context,
+        normalizedContext,
         additionalData
       );
 
       // Step 3: Alternative classifications (parallel processing)
       const alternatives = this.config.multiTypeDetection
-        ? await this.findAlternativeClassifications(normalizedError, context)
+        ? await this.findAlternativeClassifications(normalizedError, normalizedContext)
         : [];
 
       // Step 4: Context analysis
       const contextualFactors = this.config.contextAnalysis
-        ? await this.analyzeContextualFactors(normalizedError, context)
+        ? await this.analyzeContextualFactors(normalizedError, normalizedContext)
         : [];
 
       // Step 5: Pattern recognition and historical analysis
       const historicalInsights = this.config.patternRecognition
-        ? await this.analyzeHistoricalPatterns(normalizedError, context)
+        ? await this.analyzeHistoricalPatterns(normalizedError, normalizedContext)
         : null;
 
       // Step 6: Generate recommendations
@@ -156,7 +193,7 @@ export class ErrorClassificationEngine {
 
       // Learn from this classification
       if (this.config.learningEnabled) {
-        this.patternLearner.recordClassification(result, context);
+        this.patternLearner.recordClassification(result, normalizedContext);
       }
 
       return result;
@@ -165,7 +202,7 @@ export class ErrorClassificationEngine {
       console.error('Error classification failed:', classificationError);
 
       // Return safe fallback classification
-      return this.createFallbackClassification(error, context);
+      return this.createFallbackClassification(error, normalizedContext);
     }
   }
 
@@ -297,6 +334,13 @@ export class ErrorClassificationEngine {
       stack = error.stack;
       name = error.name;
       cause = (error as any).cause;
+
+      const errorWithCode = error as { code?: string; errorCode?: string };
+      if (typeof errorWithCode.code === 'string') {
+        code = errorWithCode.code;
+      } else if (typeof errorWithCode.errorCode === 'string') {
+        code = errorWithCode.errorCode;
+      }
     } else if (typeof error === 'string') {
       message = error;
     } else if (error && typeof error === 'object') {
@@ -328,9 +372,48 @@ export class ErrorClassificationEngine {
     };
   }
 
+  private normalizeContext(context: Partial<ErrorContext>): ErrorContext {
+    const capabilities: BrowserCapabilities = {
+      audioWorklet: context.browserInfo?.capabilities?.audioWorklet ?? false,
+      webSpeech: context.browserInfo?.capabilities?.webSpeech ?? false,
+      mediaRecorder: context.browserInfo?.capabilities?.mediaRecorder ?? false,
+      websockets: context.browserInfo?.capabilities?.websockets ?? true,
+      localStorage: context.browserInfo?.capabilities?.localStorage ?? true
+    };
+
+    const browserInfo: BrowserInfo = {
+      name: context.browserInfo?.name ?? 'unknown',
+      version: context.browserInfo?.version ?? 'unknown',
+      platform: context.browserInfo?.platform ?? 'unknown',
+      capabilities
+    };
+
+    const voiceConfig: VoiceConfig = {
+      sttProvider: context.voiceConfig?.sttProvider ?? 'unknown',
+      ttsProvider: context.voiceConfig?.ttsProvider ?? 'unknown',
+      language: context.voiceConfig?.language ?? 'en-US',
+      confidenceThreshold: context.voiceConfig?.confidenceThreshold ?? 0.75,
+      noiseReduction: context.voiceConfig?.noiseReduction ?? true
+    };
+
+    return {
+      sessionId: context.sessionId ?? 'unknown_session',
+      userId: context.userId ?? 'anonymous',
+      pageUrl: context.pageUrl ?? 'about:blank',
+      pageTitle: context.pageTitle ?? '',
+      userRole: context.userRole ?? 'guest',
+      deviceType: context.deviceType ?? 'desktop',
+      browserInfo,
+      voiceConfig,
+      recentCommands: context.recentCommands ?? [],
+      currentMode: context.currentMode ?? 'visitor',
+      contextualData: context.contextualData ?? {}
+    };
+  }
+
   private async performPrimaryClassification(
     normalizedError: any,
-    context: Partial<ErrorContext>,
+    context: ErrorContext,
     additionalData?: Record<string, any> // TODO: Implement additional data processing
   ): Promise<VoiceError> {
     const errorCode = await this.classifyErrorCode(normalizedError, context, additionalData);
@@ -347,7 +430,7 @@ export class ErrorClassificationEngine {
       severity,
       message: this.generateUserFriendlyMessage(errorCode, normalizedError.message),
       details,
-      context: context as ErrorContext,
+      context,
       timestamp: new Date(),
       retryable: this.isRetryable(errorCode),
       fallbackAvailable: this.hasFallback(errorCode),
@@ -359,14 +442,32 @@ export class ErrorClassificationEngine {
     return voiceError;
   }
 
+  private normalizeProvidedCode(code: unknown): VoiceErrorCode | null {
+    if (typeof code !== 'string') {
+      return null;
+    }
+
+    const normalized = code.trim().replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
+    if (KNOWN_ERROR_CODES.includes(normalized as VoiceErrorCode)) {
+      return normalized as VoiceErrorCode;
+    }
+
+    return null;
+  }
+
   private async classifyErrorCode(
     normalizedError: any,
     context: Partial<ErrorContext>,
     _additionalData?: Record<string, any> // TODO: Implement additional data processing
   ): Promise<VoiceErrorCode> {
-    const message = normalizedError.message.toLowerCase();
-    const code = normalizedError.code?.toLowerCase();
-    const name = normalizedError.name?.toLowerCase();
+    const directCode = this.normalizeProvidedCode(normalizedError.code);
+    if (directCode) {
+      return directCode;
+    }
+
+    const message = (normalizedError.message || '').toLowerCase();
+    const code = typeof normalizedError.code === 'string' ? normalizedError.code.toLowerCase() : undefined;
+    const name = typeof normalizedError.name === 'string' ? normalizedError.name.toLowerCase() : undefined;
 
     // Voice Recognition Errors
     if (this.isVoiceRecognitionError(message, code, _additionalData)) {
@@ -657,8 +758,7 @@ export class ErrorClassificationEngine {
     const clarificationErrors = [
       'INTENT_AMBIGUOUS',
       'INTENT_CONFLICTING',
-      'VOICE_LOW_CONFIDENCE',
-      'ACTION_ELEMENT_NOT_FOUND'
+      'VOICE_LOW_CONFIDENCE'
     ];
 
     return clarificationErrors.includes(code);
